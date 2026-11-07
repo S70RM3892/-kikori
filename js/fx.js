@@ -24,6 +24,20 @@ const FX = (() => {
   let dpsT = 0;
   const focus = { t: 0, dur: 0, x: 0, y: 0, col: '255,255,255', lines: null, k: 0 };
   let lastHit = { t: -9, tier: 0, stier: 0, x: 0, y: 0 };
+  // 画面全体: 縁の光（スタイルランクの色）・拍の脈動・空のかなたへ飛んだ木のきらめき
+  let vPulse = 0, lastBeat = 1;
+  const twinkles = [];
+  const hslRGB = (h) => {
+    const f = (n) => { const k = (n + h / 30) % 12; return Math.round(255 * (0.5 - 0.5 * Math.max(-1, Math.min(k - 3, 9 - k, 1)))); };
+    return `${f(0)},${f(8)},${f(4)}`;
+  };
+  const ONO = {
+    normal: ['ズバッ!!', 'ザシュッ!!', 'スパーン!!', 'ザンッ!!', 'バキィッ!!', 'ズシャッ!!'],
+    crit: ['ドゴォッ!!', 'ズドンッ!!', 'バゴォン!!', 'ドガァッ!!'],
+    just: ['キィン!!', 'カキーン!!', 'シャキーン!!'],
+    fever: ['ズドドドッ!!', 'ズババババ!!', 'ドドドドッ!!'],
+  };
+  const ONO_COL = [['#ffffff', '#1a0a00'], ['#ffe14a', '#3a1400'], ['#7fe8ff', '#002a3a'], ['#ff6ab0', '#3a0018'], ['#9dff4a', '#0a2a00']];
   const streaks = [];
   let focusCool = 0;
 
@@ -70,6 +84,7 @@ const FX = (() => {
     const night = document.body.classList.contains('night');
     calm = night;
     rmotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    if (night) Sfx.musicLevel(0); // 夜は BGM を止める
     quality = night ? Math.min(1, settings.fx) : settings.fx;
     allowFlash = settings.flash && !night;
     World.setQuality(settings);
@@ -389,6 +404,7 @@ const FX = (() => {
     const c = ox;
     c.setTransform(DPR, 0, 0, DPR, 0, 0);
     c.clearRect(0, 0, OW, OH);
+    drawVignette(c, real);
     if (!gl) drawFallbackTree(c);
     drawTrail(c);
     for (let i = parts.length - 1; i >= 0; i--) {
@@ -406,6 +422,7 @@ const FX = (() => {
         p.y = it * it * p.sy + 2 * it * t * p.cy + t * t * p.ty;
       } else {
         p.vy += (p.t === 'chip' ? 900 : p.t === 'confetti' ? 60 : p.t === 'dust' ? -20 : p.t === 'drop' || p.t === 'pix' ? 700 : p.g || 0) * dt;
+        if (p.t === 'ember') p.vx += Math.sin(clock * 3 + (p.ph || 0)) * 30 * dt;
         if (p.t === 'confetti' || p.t === 'petal' || p.t === 'feather') { p.vx += Math.sin(clock * 4 + (p.ph || 0)) * 40 * dt; p.vx *= 1 - 1.2 * dt; p.vy = Math.min(p.vy, 90); }
         p.x += p.vx * dt;
         p.y += p.vy * dt;
@@ -487,6 +504,53 @@ const FX = (() => {
           c.beginPath(); c.moveTo(-L, 0); c.lineTo(0, -w * 2.2); c.lineTo(L, 0); c.lineTo(0, w * 2.2); c.closePath(); c.fill();
           c.fillStyle = '#ffffff';
           c.beginPath(); c.moveTo(-L * 0.92, 0); c.lineTo(0, -w * 0.7); c.lineTo(L * 0.92, 0); c.lineTo(0, w * 0.7); c.closePath(); c.fill();
+          break;
+        }
+        case 'xslash': {
+          // 会心: 十字に交差する斬撃
+          c.globalCompositeOperation = 'lighter';
+          c.globalAlpha = Math.min(1, a * 1.8);
+          for (const k of [-1, 1]) {
+            c.save();
+            c.rotate(p.rot + k * 0.62);
+            const L = p.s * (0.75 + 0.25 * (1 - a)), w = p.w * Math.sin(Math.min(1, (1 - a) * 3 + 0.2) * Math.PI) + 1;
+            c.fillStyle = `rgba(${p.col},0.75)`;
+            c.beginPath(); c.moveTo(-L, 0); c.lineTo(0, -w * 2.2); c.lineTo(L, 0); c.lineTo(0, w * 2.2); c.closePath(); c.fill();
+            c.fillStyle = '#ffffff';
+            c.beginPath(); c.moveTo(-L * 0.92, 0); c.lineTo(0, -w * 0.7); c.lineTo(L * 0.92, 0); c.lineTo(0, w * 0.7); c.closePath(); c.fill();
+            c.restore();
+          }
+          break;
+        }
+        case 'arcslash': {
+          // JUST: 三日月の斬撃
+          c.rotate(p.rot);
+          c.globalCompositeOperation = 'lighter';
+          c.globalAlpha = Math.min(1, a * 1.8);
+          const R = p.s * (0.7 + 0.3 * (1 - a));
+          c.fillStyle = `rgba(${p.col},0.8)`;
+          c.beginPath(); c.arc(0, 0, R, -1.15, 1.15); c.arc(R * 0.3, 0, R * 0.82, 1.05, -1.05, true); c.closePath(); c.fill();
+          c.strokeStyle = '#ffffff'; c.lineWidth = 2.5; c.lineCap = 'round';
+          c.beginPath(); c.arc(0, 0, R * 0.97, -1.0, 1.0); c.stroke();
+          break;
+        }
+        case 'wave': {
+          // 画面いっぱいに広がる衝撃波
+          c.globalCompositeOperation = 'lighter';
+          const R = 30 + (Math.hypot(OW, OH) * 0.9) * U.ease.outCubic(1 - a);
+          c.strokeStyle = `rgba(${p.col},${0.45 * a})`;
+          c.lineWidth = 6 + 26 * a;
+          c.beginPath(); c.arc(0, 0, R, 0, 7); c.stroke();
+          c.strokeStyle = `rgba(255,255,255,${0.5 * a})`;
+          c.lineWidth = 2;
+          c.beginPath(); c.arc(0, 0, R, 0, 7); c.stroke();
+          break;
+        }
+        case 'ember': {
+          c.globalCompositeOperation = 'lighter';
+          const r = p.s * (1.6 + Math.sin(clock * 9 + (p.ph || 0)) * 0.4);
+          c.globalAlpha = Math.min(1, a * 1.4);
+          c.drawImage(flareSprite(p.col), -r * 2, -r * 2, r * 4, r * 4);
           break;
         }
         case 'pillar': {
@@ -598,6 +662,100 @@ const FX = (() => {
     }
     c.stroke();
     c.restore();
+  }
+
+  // ------------------------------------------------------------- 画面全体: スタイルランクの色で縁が光り、拍で脈打つ
+  function rankRGB(r) {
+    const R = D.STYLE.RANKS[r];
+    return R.rainbow || G.T.fever > 0 ? hslRGB((clock * 90) % 360) : hexRGB(R.col);
+  }
+  function drawVignette(c, real) {
+    vPulse = Math.max(0, vPulse - real * 2.2);
+    const T = G.T, r = T.rank;
+    const base = [0, 0, 0.05, 0.09, 0.13, 0.17, 0.21, 0.25][r] + (T.fever > 0 ? 0.1 : 0) + (T.golden > 0 ? 0.08 : 0);
+    const a = Math.min(0.5, (base + vPulse) * (calm ? 0.4 : 1));
+    // 高ランクでは画面の下から火の粉が昇る
+    if (r >= 4 && !calm && !rmotion && quality > 0 && !blocked() && Math.random() < (r - 3) * 7 * real * (quality === 2 ? 1 : 0.5)) {
+      spawn({ t: 'ember', x: Math.random() * OW, y: OH + 10, vx: (Math.random() - 0.5) * 30, vy: -(140 + Math.random() * 160 + r * 20), life: 1.6 + Math.random(), max: 2.6, s: 1.6 + Math.random() * 2.2, col: r >= 7 || T.fever > 0 ? hslRGB(Math.random() * 360) : hexRGB(D.STYLE.RANKS[r].col), ph: Math.random() * 6, g: -40 });
+    }
+    if (a < 0.02) return;
+    const col = T.golden > 0 && r < 5 ? '255,200,60' : rankRGB(r);
+    const w = Math.min(OW, OH) * (0.1 + a * 0.22);
+    c.save();
+    const edge = (x0, y0, x1, y1, rx, ry, rw, rh) => {
+      const g = c.createLinearGradient(x0, y0, x1, y1);
+      g.addColorStop(0, `rgba(${col},${a})`);
+      g.addColorStop(1, `rgba(${col},0)`);
+      c.fillStyle = g;
+      c.fillRect(rx, ry, rw, rh);
+    };
+    edge(0, 0, 0, w, 0, 0, OW, w);
+    edge(0, OH, 0, OH - w, 0, OH - w, OW, w);
+    edge(0, 0, w, 0, 0, 0, w, OH);
+    edge(OW, 0, OW - w, 0, OW - w, 0, w, OH);
+    c.restore();
+  }
+  // BGM の拍ごとに画面が脈打つ（Bランク以上・フィーバー中）
+  function beatPulse() {
+    const bp = Sfx.beatPhase();
+    if (bp < 0) { lastBeat = 1; return; }
+    if (bp < lastBeat) {
+      const r = G.T.rank, fev = G.T.fever > 0;
+      if ((r >= 3 || fev) && !calm && !blocked()) {
+        vPulse = Math.max(vPulse, 0.06 + r * 0.025 + (fev ? 0.08 : 0));
+        if (!rmotion) World.punch(0.006 + r * 0.0025 + (fev ? 0.008 : 0));
+        if (r >= 5 || fev) UI.beat();
+      }
+    }
+    lastBeat = bp;
+  }
+  // スタイルランクが変わったとき
+  function onRank(d) {
+    const R = D.STYLE.RANKS[d.rank];
+    World.setRank(d.rank, R.col, R.rainbow);
+    Sfx.musicLevel(calm || !G.S.settings.bgm ? 0 : d.rank);
+    if (!d.up) { if (d.prev >= 3) Sfx.rankDown(); return; }
+    if (blocked()) return;
+    Sfx.rankUp(d.rank);
+    vPulse = Math.max(vPulse, 0.25 + d.rank * 0.04);
+    if (d.rank < 3) return;
+    const np = notchPoint();
+    const cx = OW / 2, cy = Math.min(OH * 0.42, np.y - 140);
+    floatText(cx, cy, R.id, { size: 84 + d.rank * 12, fill: R.col, stroke: '#1a0a00', rainbow: !!R.rainbow, pop: 2.8, vy: -14, life: 0.95, rot: -0.08 });
+    floatText(cx, cy + 58 + d.rank * 4, R.word, { size: 22 + d.rank * 2, fill: '#ffffff', stroke: '#1a0a00', pop: 2.2, vy: -14, life: 0.95 });
+    spawn({ t: 'wave', x: cx, y: cy, life: 0.6, max: 0.6, col: rankRGB(d.rank) });
+    if (d.rank >= 5) {
+      focusLines(cx, cy, 0.5, rankRGB(d.rank), 0.8);
+      World.roll((Math.random() < 0.5 ? -1 : 1) * 0.06);
+      addFlash(0.16, rankRGB(d.rank));
+      UI.shakeHud();
+    }
+    UI.wave(d.rank);
+    Sfx.vibrate(d.rank >= 5 ? [20, 30, 40] : 12);
+  }
+  // 倒し方を選ぶ: 最速で斬ると空のかなたへ、会心や複数本は粉々、ランクが高いほど派手な倒れ方が増える
+  function fellVariant(d) {
+    const tree = d.tree;
+    if (tree.boss || tree.rar.id !== 'normal' || clock - lastHit.t > 0.12 && !d.multi) return 'launch';
+    const r = Math.random(), rk = G.T.rank;
+    if (lastHit.stier >= 5 && r < 0.4) return 'star';
+    if ((lastHit.tier >= 2 || d.multi >= 3) && r < 0.6) return 'shatter';
+    if (r < 0.06 + rk * 0.025) return 'star';
+    if (r < 0.16 + rk * 0.05) return 'shatter';
+    return 'launch';
+  }
+  function drawTwinkles(c, real) {
+    for (let i = twinkles.length - 1; i >= 0; i--) {
+      const tw = twinkles[i];
+      tw.t -= real;
+      if (tw.t > 0) continue;
+      twinkles.splice(i, 1);
+      Sfx.twinkle();
+      spawn({ t: 'star', x: tw.x, y: tw.y, life: 0.7, max: 0.7, s: 13, col: '#ffffff' });
+      spawn({ t: 'flare', x: tw.x, y: tw.y, life: 0.5, max: 0.5, s: 70, col: '255,250,200' });
+      burst(tw.x, tw.y, 10, { col: '#fff6a0', speed: 160, life: 0.5 });
+      floatText(tw.x, tw.y + 30, 'キラーン☆', { size: 16, fill: '#fff6a0', stroke: '#3a2a00', vy: -20, life: 0.8, light: true });
+    }
   }
 
   // ------------------------------------------------------------- 幻想の斧: 斧ごとの斬撃演出
@@ -714,8 +872,15 @@ const FX = (() => {
       if (s >= 2 || d.just || d.tier) {
         const tr = trail.length >= 2 ? trail[trail.length - 1] : null, tp = trail.length >= 4 ? trail[trail.length - 4] : null;
         const rot = tr && tp ? U.clamp(Math.atan2(tr.y - tp.y, tr.x - tp.x), -0.5, 0.5) * (tr.x >= tp.x ? 1 : -1) : 0;
-        spawn({ t: 'slash', x, y, life: 0.17 + s * 0.012, max: 0.17 + s * 0.012, s: (90 + s * 26 + (d.just ? 40 : 0)) * Math.min(1.4, J), w: 2.4 + s * 0.7 + d.tier * 0.8, rot, col: d.just ? '255,215,70' : d.tier >= 3 ? '255,90,170' : gcol });
+        // 会心は十字、JUST は三日月、ふつうは一閃（毎回少し角度を揺らす）
+        const kind = d.tier >= 1 ? 'xslash' : d.just ? 'arcslash' : 'slash';
+        const scol = d.just ? '255,215,70' : d.tier >= 3 ? '255,90,170' : G.T.rank >= 4 ? rankRGB(G.T.rank) : gcol;
+        spawn({ t: kind, x, y, life: 0.17 + s * 0.012, max: 0.17 + s * 0.012, s: (90 + s * 26 + (d.just ? 40 : 0)) * Math.min(1.4, J) * (kind === 'arcslash' ? 0.7 : 1), w: 2.4 + s * 0.7 + d.tier * 0.8, rot: rot + (Math.random() - 0.5) * 0.25 + (kind === 'arcslash' && (d.dir || 1) < 0 ? Math.PI : 0), col: scol });
       }
+      vPulse = Math.max(vPulse, 0.04 + s * 0.02 + d.tier * 0.06 + (d.just ? 0.05 : 0));
+      // 大きな一撃は画面ごと傾く（向きは毎回変わる）
+      if (s >= 5 || d.tier >= 2 || (d.just && d.chain > 0 && d.chain % 5 === 0)) World.roll((Math.random() < 0.5 ? -1 : 1) * (0.025 + d.tier * 0.012 + (s >= 5 ? 0.015 : 0)));
+      if (d.tier >= 3) spawn({ t: 'wave', x, y, life: 0.55, max: 0.55, col: d.tier >= 4 ? hslRGB((clock * 200) % 360) : '255,120,190' });
       signature(eqx, x, y, d, q);
       if (s >= 2) {
         const nSp = Math.round((5 + 5 * (s - 2)) * J * q);
@@ -760,8 +925,9 @@ const FX = (() => {
     }
     // 擬音: 強く斬ったときだけ、斜めの描き文字がドンと出る
     if (!tapLike && !calm && quality > 0 && (s >= 4 || d.tier >= 2 || (d.just && d.chain >= 5)) && Math.random() < 0.65) {
-      const w = U.pick(['ズバッ!!', 'ザシュッ!!', 'スパーン!!', 'ザンッ!!', 'バキィッ!!']);
-      floatText(x - dir * (70 + Math.random() * 30), y - 78 - Math.random() * 26, w, { size: 28 + s * 3 + d.tier * 4, fill: d.tier >= 3 ? '#ffe14a' : '#ffffff', stroke: '#1a0a00', rot: -dir * (0.18 + Math.random() * 0.16), pop: 2.3, vy: -18, vx: -dir * 20, life: 0.55 });
+      const set = d.tier >= 2 ? ONO.crit : G.T.fever > 0 && Math.random() < 0.5 ? ONO.fever : d.just && Math.random() < 0.5 ? ONO.just : ONO.normal;
+      const oc = d.tier >= 3 ? ONO_COL[1] : G.T.rank >= 4 && Math.random() < 0.6 ? [D.STYLE.RANKS[G.T.rank].col, '#1a0a00'] : U.pick(ONO_COL);
+      floatText(x - dir * (70 + Math.random() * 30), y - 78 - Math.random() * 26, U.pick(set), { size: 28 + s * 3 + d.tier * 4 + G.T.rank * 1.5, fill: oc[0], stroke: oc[1], rainbow: G.T.rank >= 7 && Math.random() < 0.5, rot: -dir * (0.12 + Math.random() * 0.26), pop: 2.3, vy: -18, vx: -dir * 20, life: 0.55 });
     }
     lastHit = { t: clock, tier: d.tier, stier: s, x, y };
     comboPop = 1;
@@ -846,8 +1012,21 @@ const FX = (() => {
     const big = tree.boss || tree.rar.id !== 'normal';
     Sfx.fell(tree.rar.id, tree.boss, d.streak || 0);
     Sfx.vibrate(tree.boss ? [30, 40, 60] : 15);
-    World.onFell(d);
+    const variant = blocked() ? 'launch' : fellVariant(d);
+    World.onFell(d, variant);
     if (blocked()) return;
+    if (variant === 'star') {
+      const np = notchPoint();
+      twinkles.push({ t: 0.55, x: U.clamp(np.x + (lastHit.x > np.x ? -1 : 1) * 30 + (Math.random() - 0.5) * 60, 40, OW - 40), y: Math.max(70, OH * 0.1) });
+    } else if (variant === 'shatter') {
+      Sfx.shatter();
+      const np = notchPoint();
+      floatText(np.x, np.y - 110, U.pick(['粉砕!!', '木っ端微塵!!', 'バラバラ!!']), { size: 30, fill: '#ffd27a', stroke: '#2a0a00', rot: (Math.random() - 0.5) * 0.3, pop: 2.4, vy: -30, life: 0.7 });
+      for (let i = 0; i < 14 * (quality + 1); i++) {
+        const a = Math.random() * Math.PI * 2, v = 200 + Math.random() * 380;
+        spawn({ t: 'chip', x: np.x, y: np.y - 60, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 200, life: 0.9, max: 0.9, s: 3 + Math.random() * 4, rot: Math.random() * 6, vr: (Math.random() - 0.5) * 20, col: Math.random() < 0.5 ? '#f2d39b' : '#8a5a32' });
+      }
+    }
     // 普通の木は止めずに次へ（スローはボス・レア木だけ）
     if (!calm && big) {
       slowmo = Math.max(slowmo, 0.55);
@@ -862,7 +1041,7 @@ const FX = (() => {
       merged.multi = { t: floatText(np.x, np.y - 150, `${m}本斬り${'!'.repeat(Math.min(4, m - 1))}`, { size: 26 + m * 6, fill: m >= 4 ? '#ffffff' : '#ffe14a', stroke: '#2a0a00', rainbow: m >= 4, rot: -0.1, pop: 2.4, vy: -24, life: 1.0 }), at: clock };
       Sfx.multi(m);
       Sfx.vibrate(10 + m * 8);
-      if (m >= 3) focusLines(np.x, np.y, 0.35 + m * 0.05, '255,240,180', Math.min(1, m / 5));
+      if (m >= 3) { focusLines(np.x, np.y, 0.35 + m * 0.05, '255,240,180', Math.min(1, m / 5)); spawn({ t: 'wave', x: np.x, y: np.y, life: 0.5, max: 0.5, col: '255,220,120' }); }
       if (m >= 5) { UI.banner('一閃 5本斬り!!!', '一振りで森ごと伐り拓いた', 'combo'); confetti(70); }
     }
     const cc = sceneCenter();
@@ -935,7 +1114,8 @@ const FX = (() => {
     });
     G.on('milestone', () => { Sfx.milestone(); confetti(30); });
     G.on('prestige', () => { Sfx.prestige(); confetti(160); addFlash(0.6); });
-    G.on('load', () => { World.reset(); parts.length = 0; texts.length = 0; roulettes.length = 0; });
+    G.on('load', () => { World.reset(); parts.length = 0; texts.length = 0; roulettes.length = 0; twinkles.length = 0; World.setRank(0, '#ffffff', false); Sfx.musicLevel(0); });
+    G.on('rank', onRank);
     G.on('golden', (d) => {
       UI.banner('GOLDEN TIME!!', `${d.time}秒間、斬るたびに木材が噴き出す`, 'golden');
       Sfx.golden();
@@ -984,8 +1164,10 @@ const FX = (() => {
         if (ti) floatText(ti.cx + (Math.random() - 0.5) * 90, ti.bottom - 10, '+' + U.fmt(st.dps * 0.7 * G.gameSpeed()), { size: 12, fill: '#ffe9c9', stroke: 'rgba(40,20,0,0.8)', vy: -45, life: 0.6, light: true });
       }
     }
+    beatPulse();
     World.frame(dt, real, blocked());
     drawOverlay(dt, real);
+    drawTwinkles(ox, real);
   }
 
   function axeIcon(a, size = 48) {

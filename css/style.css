@@ -214,12 +214,12 @@ button:focus-visible, summary:focus-visible, textarea:focus-visible, input:focus
 #buffs {
   position: absolute;
   left: max(16px, env(safe-area-inset-left, 0px));
-  top: calc(var(--top) + 186px);
+  top: calc(var(--top) + 266px);
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
-@media (min-width: 900px) { #buffs { top: calc(var(--top) + 118px); } }
+@media (min-width: 900px) { #buffs { top: calc(var(--top) + 198px); } }
 .buff {
   display: flex;
   align-items: center;
@@ -1218,3 +1218,54 @@ body.night .gs-rays { animation: none; }
   .cur-wood { padding: 4px 10px 4px 6px; }
   .cur-wood .ico { font-size: 22px; }
 }
+
+/* ------------------------------------------------------------- スタイルランク（左上）と画面全体の脈動 */
+.rank-box {
+  --rk: #9aa6b2;
+  position: absolute;
+  left: max(16px, env(safe-area-inset-left, 0px));
+  top: calc(var(--top) + 186px);
+  min-width: 74px;
+  text-align: left;
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+}
+@media (min-width: 900px) { .rank-box { top: calc(var(--top) + 118px); } }
+.rank-box.show { opacity: 1; }
+.rank-box small { display: block; font-size: 9px; font-weight: 800; letter-spacing: 0.18em; color: var(--muted); text-shadow: 0 1px 0 #000; }
+.rk-l {
+  font-family: var(--font-d);
+  font-size: 44px;
+  line-height: 1;
+  color: var(--rk);
+  -webkit-text-stroke: 2px #140800;
+  paint-order: stroke fill;
+  text-shadow: 0 0 16px var(--rk), 0 4px 0 #140800;
+  transform-origin: left center;
+}
+.rk-w { min-height: 1.2em; font-family: var(--font-d); font-size: 12px; color: #fff; text-shadow: 0 2px 0 #000, 0 0 8px var(--rk); white-space: nowrap; }
+.rk-g { width: 74px; height: 5px; margin-top: 2px; border-radius: 3px; background: rgba(0, 0, 0, 0.6); overflow: hidden; }
+.rk-g i { display: block; height: 100%; background: var(--rk); transform-origin: left; transform: scaleX(0); box-shadow: 0 0 6px var(--rk); }
+.rk-m { margin-top: 1px; font-size: 10px; font-weight: 800; color: #ffe9b0; text-shadow: 0 1px 0 #000; }
+.rank-box[data-r="7"] .rk-l, .rank-box[data-r="7"] .rk-g i { animation: hueSpin 0.9s linear infinite; }
+.rank-box[data-r="5"] .rk-l, .rank-box[data-r="6"] .rk-l, .rank-box[data-r="7"] .rk-l { font-size: 52px; }
+.rank-box.slam .rk-l { animation: rankSlam 0.5s cubic-bezier(0.2, 1.6, 0.4, 1); }
+.rank-box[data-r="7"].slam .rk-l { animation: rankSlam 0.5s cubic-bezier(0.2, 1.6, 0.4, 1), hueSpin 0.9s linear infinite; }
+@keyframes rankSlam { from { transform: scale(2.6) rotate(-12deg); opacity: 0; } 60% { transform: scale(0.9); opacity: 1; } }
+#hud.beat .rank-box.show .rk-l, #hud.beat .combo-n { animation: beatPop 0.22s ease-out; }
+@keyframes beatPop { 30% { transform: scale(1.14); } }
+/* ランクが上がると端のボタンとドックが順に跳ねる */
+#hud.wave .w-btn, #hud.wave .dk { animation: wBtnWave 0.5s ease-out both; }
+#hud.wave .rail .w-btn:nth-child(2), #hud.wave .dk:nth-child(2) { animation-delay: 0.06s; }
+#hud.wave .rail .w-btn:nth-child(3), #hud.wave .dk:nth-child(3) { animation-delay: 0.12s; }
+#hud.wave .dk:nth-child(4) { animation-delay: 0.18s; }
+@keyframes wBtnWave { 35% { transform: translateY(-10px) scale(1.08); filter: brightness(1.4); } }
+/* S以上: 端のボタンがランクの色に光る */
+#hud[data-rank="5"] .w-btn, #hud[data-rank="6"] .w-btn, #hud[data-rank="7"] .w-btn { border-color: var(--rkc); box-shadow: 0 4px 0 #000, 0 0 14px var(--rkc), inset 0 0 0 1px rgba(255, 255, 255, 0.14); }
+#hud[data-rank="7"] .w-btn { animation: hueGlow 1.2s linear infinite; }
+#hud[data-rank="7"].wave .w-btn { animation: wBtnWave 0.5s ease-out both, hueGlow 1.2s linear infinite; }
+@media (prefers-reduced-motion: reduce) {
+  #hud.wave .w-btn, #hud.wave .dk, #hud.beat .rk-l, #hud.beat .combo-n, .rank-box.slam .rk-l { animation: none !important; }
+}
+body.night #hud[data-rank] .w-btn { animation: none; }

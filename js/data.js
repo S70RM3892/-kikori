@@ -234,6 +234,22 @@ const D = (() => {
   // ---------------------------------------------------------------- ボーナスルーレット・連続伐採・実況
   const ROULETTE = [{ m: 2, w: 50 }, { m: 3, w: 25 }, { m: 5, w: 15 }, { m: 10, w: 8 }, { m: 100, w: 1 }];
   const STREAK_MS = [[10, 5, 0], [25, 10, 1], [50, 20, 1], [100, 40, 2], [200, 80, 3], [500, 150, 5]]; // [本数, ジェム, 宝箱]
+  // スタイルランク: 斬り方で上がり、時間で下がる。上がるほど画面全体・BGM・報酬が変わる
+  const STYLE = {
+    MAX: 210, DECAY: 4, DECAY_RANK: 3, // 毎秒の減り（ランクが高いほど速く減る）
+    BREAK: 0.45, // コンボが切れたら残る割合
+    VARIETY: 1.25, // 直前と違う斬り方なら
+    RANKS: [
+      { id: 'E', th: 0, word: '', col: '#9aa6b2', mult: 1 },
+      { id: 'D', th: 10, word: 'ザクッ', col: '#7fd0ff', mult: 1.03 },
+      { id: 'C', th: 25, word: 'ノッてきた!', col: '#7aff8a', mult: 1.06 },
+      { id: 'B', th: 45, word: 'アツい!!', col: '#ffe14a', mult: 1.1 },
+      { id: 'A', th: 70, word: '止まらない!!', col: '#ff9a2a', mult: 1.15 },
+      { id: 'S', th: 100, word: '神斬り!!!', col: '#ff3d8b', mult: 1.25 },
+      { id: 'SS', th: 135, word: '天下無双!!!!', col: '#c46bff', mult: 1.35 },
+      { id: 'SSS', th: 175, word: '森羅万象!!!!!', col: '#ffffff', mult: 1.5, rainbow: true },
+    ],
+  };
   const ANNOUNCE = { 10: 'NICE!', 25: 'GREAT!', 50: 'AWESOME!!', 100: 'UNSTOPPABLE!!', 200: 'GODLIKE!!!', 300: 'LEGENDARY!!!', 500: 'MYTHIC!!!!', 777: 'JACKPOT!!!!', 1000: '伐採神!!!!!', 2000: '∞' };
 
   // ---------------------------------------------------------------- 宝箱
@@ -311,6 +327,9 @@ const D = (() => {
   ach('golden1', '✨', 'ゴールデンタイム', 'ゴールデンタイムに入る', (S) => st(S, 'goldens') >= 1, 20);
   ach('golden25', '👑', '黄金の木こり', 'ゴールデンタイム25回', (S) => st(S, 'goldens') >= 25, 80);
   ach('streak25', '🔗', '25本連続', 'コンボを切らずに木を25本', (S) => st(S, 'bestStreak') >= 25, 40);
+  ach('rankA', '🅰️', 'Aランク', 'スタイルランクAに到達', (S) => st(S, 'bestRank') >= 4, 20);
+  ach('rankS', '💥', 'Sランク', 'スタイルランクSに到達', (S) => st(S, 'bestRank') >= 5, 50);
+  ach('rankSSS', '🌈', '森羅万象', 'スタイルランクSSSに到達', (S) => st(S, 'bestRank') >= 7, 200);
   ach('multi2', '⚔️', '二本斬り', '一振りで木を2本倒す', (S) => st(S, 'bestMulti') >= 2, 15);
   ach('multi3', '🌀', '三本斬り', '一振りで木を3本倒す', (S) => st(S, 'bestMulti') >= 3, 40);
   ach('multi5', '⚡', '一閃五本', '一振りで木を5本倒す', (S) => st(S, 'bestMulti') >= 5, 120);
@@ -368,5 +387,5 @@ const D = (() => {
     critm: [[10, '会心の衝撃波'], [20, '会心で時が止まる']],
   };
 
-  return { ROULETTE, STREAK_MS, ANNOUNCE, SLASH_FX, AXE_PATHS, CFG, WORKERS, MILESTONES, UPGRADES, RARITY, RARITY_ORDER, AXES, SP_TEXT, BIOMES, TREE_RARITY, SQUIRREL_FX, CHESTS, LOGIN, PERKS, MISSIONS, ACH };
+  return { STYLE, ROULETTE, STREAK_MS, ANNOUNCE, SLASH_FX, AXE_PATHS, CFG, WORKERS, MILESTONES, UPGRADES, RARITY, RARITY_ORDER, AXES, SP_TEXT, BIOMES, TREE_RARITY, SQUIRREL_FX, CHESTS, LOGIN, PERKS, MISSIONS, ACH };
 })();

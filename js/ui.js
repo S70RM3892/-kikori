@@ -93,6 +93,8 @@ const UI = (() => {
     Sfx.setEnabled(st.sound);
     Sfx.setVolume(st.vol);
     Sfx.setVibe(st.vibe);
+    Sfx.setBgm(st.bgm);
+    Sfx.musicLevel(st.bgm && st.sound && !document.body.classList.contains('night') ? G.T.rank : 0);
     U.setNumMode(st.num);
     $('#btn-sound').textContent = st.sound ? '🔊' : '🔇';
     $('#btn-sound').setAttribute('aria-pressed', String(st.sound));
@@ -212,6 +214,25 @@ const UI = (() => {
       setText('chain', chain >= 2 ? `JUST ×${chain}` : '');
       setScale('combo-win', T.combo > 0 ? T.comboTimer / (T.comboWin || 1) : 0);
     }
+    // スタイルランク（画面の左）
+    const RK = D.STYLE.RANKS, rk = T.rank, nx = RK[rk + 1];
+    const rb = $('#rank-box');
+    if (rb) {
+      const lo = RK[rk].th, hi = nx ? nx.th : D.STYLE.MAX;
+      setScale('rank-g', (T.style - lo) / Math.max(1, hi - lo));
+      setText('rank-l', RK[rk].id);
+      setText('rank-w', RK[rk].word);
+      setText('rank-m', rk ? `報酬×${RK[rk].mult}` : '');
+      if (last.rk !== rk) {
+        last.rk = rk;
+        rb.dataset.r = String(rk);
+        rb.style.setProperty('--rk', RK[rk].col);
+        const hud = $('#hud');
+        hud.dataset.rank = String(rk);
+        hud.style.setProperty('--rkc', RK[rk].col);
+      }
+      setCls('rank-box', 'show', T.style > 1.5 || rk > 0);
+    }
     // フィーバー・ゴールデン
     if (T.fever > 0) {
       setText('fever-l', `FEVER!! ×${st.feverMult}`);
@@ -224,6 +245,22 @@ const UI = (() => {
     setCls('fever', 'near', T.fever <= 0 && T.feverGauge / D.CFG.FEVER_NEED > 0.8);
     setCls('hud', 'golden', T.golden > 0);
     setCls('hud', 'fevering', T.fever > 0);
+  }
+  // ランクが上がったとき: 端のボタンとドックが順番に跳ねる
+  function wave(r) {
+    const h = $('#hud');
+    h.classList.remove('wave');
+    void h.offsetWidth;
+    h.classList.add('wave');
+    const rb = $('#rank-box');
+    if (rb) { rb.classList.remove('slam'); void rb.offsetWidth; rb.classList.add('slam'); }
+  }
+  // BGM の拍に合わせて HUD が脈打つ
+  function beat() {
+    const h = $('#hud');
+    h.classList.remove('beat');
+    void h.offsetWidth;
+    h.classList.add('beat');
   }
   function shakeHud() {
     const h = $('#hud');
@@ -1207,6 +1244,7 @@ const UI = (() => {
     const seg = (k, opts) => `<div class="seg">${opts.map(([v, t]) => `<button type="button" data-k="${k}" data-v="${v}" class="${String(st[k]) === String(v) ? 'on' : ''}">${t}</button>`).join('')}</div>`;
     body.innerHTML =
       row('サウンド', tog('sound')) +
+      row('BGM（ランクで盛り上がる）', tog('bgm')) +
       row('音量', `<input type="range" id="set-vol" min="0" max="1" step="0.05" value="${st.vol}" aria-label="音量">`) +
       row('バイブ', tog('vibe')) +
       row('エフェクト', seg('fx', [[0, '少'], [1, '普'], [2, '多']])) +
@@ -1373,5 +1411,5 @@ const UI = (() => {
     }
   }
 
-  return { init, frame, bump, banner, toast, modal, rebuild, blocked, nightCheck, afterHit, tapSwing: doTap, shakeHud, openDrawer, closeDrawer, get tab() { return tab; } };
+  return { init, frame, bump, banner, toast, modal, rebuild, blocked, nightCheck, afterHit, tapSwing: doTap, shakeHud, wave, beat, openDrawer, closeDrawer, get tab() { return tab; } };
 })();

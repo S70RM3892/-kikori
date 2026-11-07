@@ -6,7 +6,12 @@ const Sfx = (() => {
   let ctx = null, master = null, noiseBuf = null;
   let enabled = true, vol = 0.7, vibe = true;
   const last = {};
-  let feverTimer = null, feverNext = 0, feverStep = 0;
+  let feverOn = false;
+  // BGM: スタイルランクが上がるほど楽器が重なる（0 = 無音 … 7 = 全部）。小節の頭で切り替える
+  const BPM = 132, STEP = 60 / BPM / 4;
+  const mus = { timer: null, next: 0, t0: 0, step: 0, level: 0, target: 0, enabled: true };
+  const ROOT = [0, 0, 3, -2]; // ラ・ラ・ド・ソ（ラの短調）
+  const ARP = [0, 7, 12, 7, 15, 12, 7, 3];
 
   function ensure() {
     if (!enabled) return false;
@@ -254,26 +259,77 @@ const Sfx = (() => {
     if (!ok()) return;
     tone(880, 0.4, 'triangle', 0.08, 0, 220);
   }
-  function startLoop() {
-    stopLoop();
-    if (!ok()) return;
-    feverNext = ctx.currentTime + 0.05;
-    feverStep = 0;
-    feverTimer = setInterval(() => {
-      if (!ok()) return;
-      while (feverNext < ctx.currentTime + 0.25) {
-        const w = feverNext - ctx.currentTime;
-        if (feverStep % 2 === 0) tone(150, 0.16, 'sine', 0.35, w, 45);
-        else noise(0.04, 0.12, 'highpass', 7000, 0.7, w);
-        if (feverStep % 4 === 3) tone(note([0, 7, 5, 12][(feverStep >> 2) % 4], 262), 0.12, 'square', 0.035, w);
-        feverNext += 0.19;
-        feverStep++;
-      }
-    }, 90);
+  // フィーバー中は BGM が全部の楽器で鳴る
+  function startLoop() { feverOn = true; musicStart(); }
+  function stopLoop() { feverOn = false; }
+  function musicLevel(l) {
+    mus.target = l;
+    if (l > 0 || feverOn) musicStart();
   }
-  function stopLoop() {
-    if (feverTimer) clearInterval(feverTimer);
-    feverTimer = null;
+  function musicStart() {
+    if (mus.timer || !ok() || !mus.enabled) return;
+    mus.next = ctx.currentTime + 0.08;
+    mus.t0 = mus.next;
+    mus.step = 0;
+    mus.level = mus.target;
+    mus.timer = setInterval(musicTick, 50);
+  }
+  function musicStop() {
+    if (mus.timer) clearInterval(mus.timer);
+    mus.timer = null;
+  }
+  function musicTick() {
+    if (!ok()) return;
+    while (mus.next < ctx.currentTime + 0.2) {
+      const w = mus.next - ctx.currentTime;
+      const s = mus.step % 16, bar = Math.floor(mus.step / 16) % 4;
+      if (s === 0) {
+        mus.level = mus.target;
+        if (mus.level <= 0 && !feverOn) { musicStop(); return; }
+      }
+      const L = feverOn ? 7 : mus.level;
+      const root = ROOT[bar];
+      if (L >= 1 && s % 4 === 0) tone(150, 0.16, 'sine', 0.26, w, 45); // キック
+      if (L >= 2 && s % 4 === 2) noise(0.03, 0.035, 'highpass', 8000, 0.7, w); // ハイハット
+      if (L >= 3 && s % 2 === 0) tone(note(root + (s % 8 === 6 ? 12 : 0), 110), STEP * 1.7, 'triangle', 0.08, w); // ベース
+      if (L >= 4 && (s === 4 || s === 12)) noise(0.12, 0.1, 'bandpass', 1500, 1.2, w); // クラップ
+      if (L >= 5) tone(note(root + ARP[mus.step % 8], 440), STEP * 0.9, 'square', 0.016, w); // アルペジオ
+      if (L >= 6 && s % 2 === 1) noise(0.02, 0.02, 'highpass', 9000, 0.7, w);
+      if (L >= 7 && s === 0) { noise(0.9, 0.05, 'highpass', 6000, 0.6, w); tone(note(root + 24, 220), STEP * 6, 'sawtooth', 0.02, w); }
+      if (L >= 7 && s === 8) tone(note(root + 19, 220), STEP * 6, 'sawtooth', 0.018, w);
+      mus.next += STEP;
+      mus.step++;
+    }
+  }
+  // 今の拍の中での位置（0 → 1）。BGM が鳴っていなければ -1
+  function beatPhase() {
+    if (!mus.timer || !ctx) return -1;
+    const b = (ctx.currentTime - mus.t0) / (STEP * 4);
+    return b < 0 ? -1 : b - Math.floor(b);
+  }
+  const musicOn = () => !!mus.timer;
+  function setBgm(v) { mus.enabled = !!v; if (!v) musicStop(); else if (mus.target > 0) musicStart(); }
+  // ランクが上がった瞬間
+  function rankUp(r) {
+    if (!ok()) return;
+    const seq = r >= 7 ? [0, 4, 7, 12, 16, 19, 24, 28] : r >= 5 ? [0, 4, 7, 12, 16, 19] : [0, 4, 7, 12];
+    seq.forEach((st, i) => tone(note(st + r, 523), 0.14, 'square', 0.045, i * 0.04));
+    noise(0.4, 0.12, 'highpass', 4000, 0.7, 0, 9000);
+    tone(70, 0.4, 'sine', 0.35, 0, 35);
+  }
+  function rankDown() {
+    if (!ok() || throttle('rdown', 400)) return;
+    tone(440, 0.2, 'triangle', 0.04, 0, 300);
+  }
+  function twinkle() {
+    if (!ok() || throttle('twinkle', 120)) return;
+    tone(2637, 0.4, 'sine', 0.06, 0, 3520);
+    tone(3951, 0.5, 'sine', 0.035, 0.06);
+  }
+  function shatter() {
+    if (!ok() || throttle('shatter', 60)) return;
+    noise(0.25, 0.35, 'bandpass', 700, 0.9, 0, 200);
+    for (let i = 0; i < 4; i++) noise(0.04, 0.2, 'bandpass', 1500 + Math.random() * 2500, 2, i * 0.03);
   }
   function boss() {
     if (!ok()) return;
@@ -403,7 +459,7 @@ const Sfx = (() => {
     [0, 4, 7, 11, 14, 18].forEach((s, i) => tone(note(s, 698), 0.5, 'sine', 0.05, i * 0.09));
   }
 
-  function setEnabled(v) { enabled = v; if (!v) stopLoop(); if (ctx && master) master.gain.value = v ? vol * 0.55 : 0; }
+  function setEnabled(v) { enabled = v; if (!v) { stopLoop(); musicStop(); } if (ctx && master) master.gain.value = v ? vol * 0.55 : 0; }
   function setVolume(v) { vol = v; if (master) master.gain.value = enabled ? vol * 0.55 : 0; }
   function setVibe(v) { vibe = !!v; }
   function vibrate(ms) {
@@ -420,5 +476,6 @@ const Sfx = (() => {
     crash, rouletteTick, rouletteWin, golden, streak, levelUp, chop, crit, fell, coin, gem, buy, milestone, error,
     feverStart, feverEnd, boss, bossWin, bossFail, tick, stage, ach, squirrel, chest, gachaRoll, gachaReveal,
     prestige, goddess, gachaUp, showcase, equip, speed, comboFinish, axeHit, spawn, carry, multi,
+    musicLevel, beatPhase, musicOn, setBgm, rankUp, rankDown, twinkle, shatter,
   };
 })();

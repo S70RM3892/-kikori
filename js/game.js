@@ -31,10 +31,10 @@ const G = (() => {
         missionsDone: 0, loginDays: 0, studies: 0, sleeps: 0, goddess: 0, hires: 0, bestStage: 1,
         gotSSR: 0, gotUR: 0, gotLR: 0, gotEX: 0, playTime: 0, gemsAll: 0, bestSpirits: 0, bestBoss: 0, bestComboDmg: 0,
         justs: 0, maxChain: 0, greats: 0, maxSpeeds: 0, echoes: 0, thunders: 0, blasts: 0,
-        goldens: 0, roulettes: 0, bestRoulette: 0, bestStreak: 0, rouletteWood: 0, multiKills: 0, bestMulti: 0,
+        goldens: 0, roulettes: 0, bestRoulette: 0, bestStreak: 0, rouletteWood: 0, multiKills: 0, bestMulti: 0, bestRank: 0,
       },
       daily: { last: '' },
-      settings: { sound: true, vol: 0.7, vibe: true, fx: 2, shake: true, flash: true, num: 'jp', night: true, buyAmt: 1, speed: 1 },
+      settings: { sound: true, bgm: true, vol: 0.7, vibe: true, fx: 2, shake: true, flash: true, num: 'jp', night: true, buyAmt: 1, speed: 1 },
       study: null,
       tut: 0,
       lastSave: Date.now(),
@@ -51,6 +51,7 @@ const G = (() => {
     checkT: 0, dirty: true, st: null,
     justChain: 0, blastCount: 0, pending: [],
     treeStreak: 0, golden: 0, goldenMax: 1, comboDmg: 0, speedCap: 3, carry: null, carryNext: null,
+    style: 0, rank: 0, styleSig: '', styleVar: false,
   };
 
   // ------------------------------------------------------------- イベント
@@ -279,7 +280,7 @@ const G = (() => {
     const tr = T.tree;
     tr.alive = false;
     const st = stats();
-    const reward = tr.maxHp * rewardRate(tr.stage) * tr.rar.mult * st.reward * (tr.boss ? 1.5 : 1);
+    const reward = tr.maxHp * rewardRate(tr.stage) * tr.rar.mult * st.reward * (tr.boss ? 1.5 : 1) * styleMult();
     gainWood(reward);
     let gems = tr.rar.gems;
     if (Math.random() < st.gem) gems += 1;
@@ -301,6 +302,7 @@ const G = (() => {
     T.carry = null;
     const multi = carry ? carry.n : 0;
     if (multi >= 2) {
+      styleAdd(2 * multi);
       S.stats.multiKills++;
       if (multi > S.stats.bestMulti) S.stats.bestMulti = multi;
     }
@@ -446,7 +448,7 @@ const G = (() => {
         emit('golden', { time: C.GOLDEN_TIME });
       }
       if (T.golden > 0) {
-        gold = hpFor(T.tree.stage) * rewardRate(T.tree.stage) * st.reward * C.GOLDEN_RATE * (1 + Math.max(0, stier) * 0.25);
+        gold = hpFor(T.tree.stage) * rewardRate(T.tree.stage) * st.reward * C.GOLDEN_RATE * (1 + Math.max(0, stier) * 0.25) * styleMult();
         gainWood(gold);
       }
     }
@@ -470,6 +472,10 @@ const G = (() => {
     };
     T.comboDmg += dmg;
     ev.total = T.comboDmg;
+    if (isTap) styleAdd(0.3);
+    else styleAdd(1.2 + 0.7 * Math.max(0, stier) + (just ? 2 + 0.25 * Math.min(T.justChain, 12) : 0) + tier * 2.5, `${Math.max(0, stier)}${just ? 'j' : ''}${tier ? 'c' : ''}`);
+    ev.rank = T.rank;
+    ev.variety = T.styleVar;
     emit('swing', ev);
     if (alive) hit(dmg, isTap ? null : { n: 1, dir: o.dir || 1 });
     for (const p of procs) T.pending.push({ t: T.time + p.delay, kind: p.kind, dmg: p.dmg, n: p.n, x: o.x, y: o.y, dir: o.dir || 1 });
@@ -477,6 +483,34 @@ const G = (() => {
   }
   // ドラッグしない操作（タップ・キーボード）は弱い一振り
   const tap = (x, y) => swing({ kind: 'tap', x, y });
+
+  // ------------------------------------------------------------- スタイルランク
+  const SR = D.STYLE;
+  const styleMult = () => SR.RANKS[T.rank].mult;
+  // sig: 斬り方の種類。直前と違えば少し多めに入る
+  function styleAdd(pts, sig) {
+    if (!(pts > 0)) return;
+    T.styleVar = false;
+    if (sig != null) {
+      if (T.styleSig && T.styleSig !== sig) { pts *= SR.VARIETY; T.styleVar = true; }
+      T.styleSig = sig;
+    }
+    if (T.fever > 0) pts *= 1.5;
+    if (T.golden > 0) pts *= 1.3;
+    T.style = Math.min(SR.MAX, T.style + pts);
+    updateRank();
+  }
+  function updateRank() {
+    let r = 0;
+    for (let i = 0; i < SR.RANKS.length; i++) if (T.style >= SR.RANKS[i].th) r = i;
+    // 下がるときは少し粘る（境目でチカチカしない）
+    if (r < T.rank && T.style > SR.RANKS[T.rank].th - 4) r = T.rank;
+    if (r === T.rank) return;
+    const prev = T.rank;
+    T.rank = r;
+    if (r > (S.stats.bestRank || 0)) S.stats.bestRank = r;
+    emit('rank', { rank: r, prev, up: r > prev });
+  }
 
   function startFever() {
     const st = stats();
@@ -858,8 +892,14 @@ const G = (() => {
       if (T.comboTimer <= 0) {
         if (T.comboDmg > (S.stats.bestComboDmg || 0)) S.stats.bestComboDmg = T.comboDmg;
         emit('comboEnd', { n: T.combo, dmg: T.comboDmg, best: T.comboDmg >= S.stats.bestComboDmg });
+        T.style *= SR.BREAK;
+        T.styleSig = '';
         T.combo = 0; T.justChain = 0; T.blastCount = 0; T.treeStreak = 0;
       }
+    }
+    if (T.style > 0) {
+      T.style = Math.max(0, T.style - (SR.DECAY + SR.DECAY_RANK * T.rank) * dt);
+      updateRank();
     }
     if (T.golden > 0) {
       T.golden -= dt;
@@ -890,6 +930,7 @@ const G = (() => {
           // 斬撃の余りが、生えたばかりの次の木に入る
           if (!alive) continue;
           emit('proc', Object.assign({ alive, total: T.comboDmg }, p));
+          styleAdd(2.5);
           hit(p.dmg, { n: p.n, dir: p.dir });
           continue;
         }
@@ -897,6 +938,7 @@ const G = (() => {
         else if (p.kind === 'thunder') S.stats.thunders++;
         else S.stats.blasts++;
         if (alive && T.combo > 0) T.comboDmg += p.dmg;
+        if (alive) styleAdd(p.kind === 'echo' ? 0.4 : p.kind === 'thunder' ? 1 : 3);
         emit('proc', Object.assign({ alive, total: T.comboDmg }, p));
         if (alive) hit(p.dmg);
       }
@@ -1004,6 +1046,7 @@ const G = (() => {
   function reset() {
     T.tree = null; T.combo = 0; T.fever = 0; T.feverGauge = 0; T.bossTimer = 0; T.pendingBoss = false;
     T.justChain = 0; T.blastCount = 0; T.pending = []; T.golden = 0; T.treeStreak = 0;
+    T.style = 0; T.rank = 0; T.styleSig = ''; T.carry = null; T.carryNext = null;
     T.squirrel = null; T.squirrelTimer = 25; T.farmKills = 0; T.incomeEMA = 0;
     dirty();
     ensureMissions();
@@ -1037,7 +1080,7 @@ const G = (() => {
     T, on, emit, stats, dirty, tick, tap, swing, speedTier, startFever,
     unitDps, previewUpgrade, buyWorker, buyAmount, workerCost, maxAffordable, buyUpgrade, upgCost, upgMaxed,
     pull, canPull, freeLeft, xpNeed, gainXp, equip, openChest, claimMission, missionProgress, missionText,
-    pickup, pickupLeft, gameSpeed, speedMax, cycleSpeed, PICKUPS,
+    pickup, pickupLeft, gameSpeed, speedMax, cycleSpeed, PICKUPS, styleMult,
     catchSquirrel, goddessAnswer, challengeBoss, prestige, spiritGain, startStage, perk,
     startStudy, abortStudy, finishStudy, studyLeft, applyOffline, checkDaily,
     save, serialize, loadFrom, init, exportSave, importSave, hardReset,

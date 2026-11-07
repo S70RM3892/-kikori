@@ -28,7 +28,9 @@ const World = (() => {
   let chips = null, leaves = null, coins = null;
   const P = { chips: [], leaves: [], coins: [] };
   const blasts = [];
-  const cam = { base: null, look: null, fovBase: 48, shake: 0, punch: 0, kick: 0, dolly: 0 };
+  const cam = { base: null, look: null, fovBase: 48, shake: 0, punch: 0, kick: 0, dolly: 0, roll: 0 };
+  // スタイルランクで空と光が色づく
+  let rankMix = 0, rankTarget = 0, rankRainbow = false, rankCol = null;
   let pal = null, palIdx = -1;
   let tex = {}, geo = {};
   let feverMix = 0, goldenMix = 0, bossMix = 0;
@@ -79,6 +81,7 @@ const World = (() => {
     e3 = new T3.Euler(); s3 = new T3.Vector3(); cTmp = new T3.Color(); cWhite = new T3.Color(1, 1, 1);
     raycaster = new T3.Raycaster(); plane = new T3.Plane(new T3.Vector3(0, 0, 1), 0); ndc = new T3.Vector2();
     lightCol = new T3.Color();
+    rankCol = new T3.Color();
     scene = new T3.Scene();
     camera = new T3.PerspectiveCamera(48, 1, 0.1, 500);
     cam.base = new T3.Vector3(0, 3.6, 12);
@@ -791,7 +794,8 @@ const World = (() => {
       o.shake = Math.min(1.8, o.shake + 0.3);
     }
   }
-  function onFell(d) {
+  // variant: 'launch'（回って吹っ飛ぶ）/ 'star'（空のかなたへ）/ 'shatter'（粉々）
+  function onFell(d, variant = 'launch') {
     if (!ok || !cur) return;
     const o = cur;
     cur = null;
@@ -812,6 +816,22 @@ const World = (() => {
       o.vz = -1 - rnd() * 2.5;
       o.spin = -o.dir * (5 + rnd() * 5 + s);
       o.spinX = (rnd() - 0.5) * 3;
+      if (variant === 'star') {
+        o.vx = o.dir * (1 + rnd() * 1.5);
+        o.vy = 15 + rnd() * 4;
+        o.vz = -4 - rnd() * 3;
+        o.spin = -o.dir * (10 + rnd() * 6);
+      } else if (variant === 'shatter') {
+        // 上半分は粉々に砕けて消える
+        o.upper.visible = false;
+        o.vx = 0; o.vy = 0; o.vz = 0; o.spin = 0; o.spinX = 0;
+        const hp = v2.set(0, cm, 0.3);
+        const light = cTmp.set(WOOD.r, WOOD.g, WOOD.b).clone(), dark = new T3.Color(pal.trunk);
+        emitChips(hp.x, o.ny + 0.3, 0.4, 1, 18, 1.8, light, dark);
+        emitChips(hp.x, o.ny + 0.3, 0.4, -1, 18, 1.8, light, dark);
+        emitChips(0, (o.ny + o.h) * 0.5, 0.4, o.dir, 16, 2.2, light, dark);
+        emitLeaves(0, o.h + 1.2 * o.k, 0.3, 36, 4.2 * o.k, pal.leaves.map((c) => new T3.Color(c)));
+      }
     } else {
       // 倒れる側の縁を蝶番にする
       const rn = o.rAt(o.ny);
@@ -852,6 +872,13 @@ const World = (() => {
   }
   function shake(v) { if (allowShake) cam.shake = Math.min(1.8, cam.shake + v); }
   function punch(v) { cam.punch = Math.max(cam.punch, v); }
+  function roll(v) { if (Math.abs(v) > Math.abs(cam.roll)) cam.roll = v; }
+  // ランクの色（r: 0..7）。高いランクほど強く色づき、最高ランクは虹色に回る
+  function setRank(r, col, rainbow) {
+    rankTarget = r >= 3 ? Math.min(1, (r - 2) / 5) : 0;
+    rankRainbow = !!rainbow;
+    if (!rainbow && rankCol) rankCol.set(col);
+  }
 
   // ------------------------------------------------------------- 斧の操作
   function grab(p) {
@@ -968,6 +995,12 @@ const World = (() => {
       skyU.top.value.set(pal.sky[0]);
       skyU.bottom.value.set(pal.sky[1]);
     }
+    rankMix += (rankTarget - rankMix) * Math.min(1, real * 2);
+    if (rankMix > 0.01) {
+      if (rankRainbow) rankCol.setHSL((time * 0.22) % 1, 0.9, 0.6);
+      skyU.top.value.lerp(rankCol, rankMix * 0.45);
+      skyU.bottom.value.lerp(rankCol, rankMix * 0.25);
+    }
     lightBoost = Math.max(0, lightBoost - real * 5);
     hemi.intensity = hemiBase + lightBoost + feverMix * 0.25 * (0.5 + 0.5 * Math.sin(time * 9.5));
     if (lightBoost > 0.01) hemi.color.lerp(lightCol, Math.min(1, lightBoost * 0.5));
@@ -1082,6 +1115,7 @@ const World = (() => {
     cam.punch *= Math.pow(0.002, real);
     cam.kick *= Math.pow(0.0004, real);
     cam.dolly *= Math.pow(0.02, real);
+    cam.roll *= Math.pow(0.004, real);
     // ボスは大きいので少し引いて全身を見せる
     bossMix += ((cur && cur.tree.boss ? 1 : 0) - bossMix) * Math.min(1, real * 3);
     const sway = Math.sin(time * 0.33) * 0.35 + feverMix * Math.sin(time * 1.7) * 0.6;
@@ -1091,6 +1125,7 @@ const World = (() => {
       camera.position.y += (rnd() - 0.5) * cam.shake * 0.32;
     }
     camera.lookAt(cam.look.x + cam.kick * 0.4, cam.look.y - cam.dolly * 0.05 + bossMix * 0.9, cam.look.z);
+    if (Math.abs(cam.roll) > 0.0005 && allowShake) camera.rotateZ(cam.roll);
     camera.fov = cam.fovBase * (1 - Math.min(0.3, cam.punch));
     camera.updateProjectionMatrix();
     renderer.render(scene, camera);
@@ -1119,7 +1154,7 @@ const World = (() => {
   return {
     get ok() { return ok; },
     init, resize, frame, setQuality, palette, trunkInfo, canopyScreen, notchScreen, toScreen,
-    reset, onSpawn, onHit, onProc, onFell, onBossFail, finisher, flashLight, shake, punch, grab, drag, release,
+    reset, onSpawn, onHit, onProc, onFell, onBossFail, finisher, flashLight, shake, punch, roll, setRank, grab, drag, release,
     set onLanded(fn) { onLanded = fn; },
     set onAxeChange(fn) { onAxeChange = fn; },
     axeScreen,
