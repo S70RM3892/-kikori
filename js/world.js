@@ -766,6 +766,17 @@ const World = (() => {
     if (!ok || !cur) return;
     const o = cur;
     const hp = (p.y != null && hitWorld(p.y)) || v2.set(0, o.ny, o.rAt(o.ny));
+    if (p.kind === 'skill') {
+      // 必殺技: 幹が大きく揺れて木片が両側へ吹き飛ぶ
+      o.flash = 1;
+      o.shake = 1.8;
+      const light = cTmp.set(WOOD.r, WOOD.g, WOOD.b).clone(), dark = new T3.Color(pal.trunk);
+      emitChips(hp.x, hp.y, hp.z + 0.1, 1, 16, 1.8, light, dark);
+      emitChips(hp.x, hp.y, hp.z + 0.1, -1, 16, 1.8, light, dark);
+      emitLeaves(0, o.h + 1.2 * o.k, 0.3, 14, 3.4 * o.k, pal.leaves.map((c) => new T3.Color(c)));
+      cam.dolly = Math.max(cam.dolly, 1.2);
+      return;
+    }
     if (p.kind === 'carry') {
       // 斬撃の余りが生えたばかりの木に入る
       o.flash = 1;
@@ -936,20 +947,39 @@ const World = (() => {
     } else {
       // 待機中: 切り込みに刺さっている
       // 刃先だけ幹の正面に食い込ませ、柄は右手前へ突き出す
+      const sk = eq && D.SKILLS[eq.id];
       if (o) {
         const sc = o.root.scale.x;
         const rn = o.rAt(o.ny) * sc;
-        tx = 0.08 * sc; ty = (o.ny + 0.12) * o.root.scale.y; tz = rn * 0.92;
+        if (sk) { tx = rn + 0.75 * sc; ty = (o.ny + 0.45) * o.root.scale.y; tz = rn * 0.6; }
+        else { tx = 0.08 * sc; ty = (o.ny + 0.12) * o.root.scale.y; tz = rn * 0.92; }
       } else { tx = 0.6; ty = 0.4; tz = 0.8; }
+      rz = 0.3 + Math.sin(time * 2.2) * 0.03;
+      ry = -0.85;
+      sx = -1;
+      // SSR以上の斧は幹の横に浮かんで、斧ごとの動きで待っている
+      if (sk) {
+        rz = 0.25; ry = -0.55;
+        switch (sk.motion) {
+          case 'giant': idleK = 1 + Math.sin(time * 2.2) * 0.06; ty += Math.sin(time * 1.6) * 0.06; break;
+          case 'rise': ty += Math.sin(time * 2.4) * 0.14; break;
+          case 'throw': rz += Math.sin(time * 1.8) * 0.35; ty += Math.sin(time * 2) * 0.05; break;
+          case 'dash': tx += (Math.random() - 0.5) * 0.03; ty += (Math.random() - 0.5) * 0.03; rz += Math.sin(time * 9) * 0.06; break;
+          case 'vortex': ry += time * 1.4; ty += Math.sin(time * 1.5) * 0.08; break;
+          case 'draw': rz = -0.9; ry = -0.2; ty -= 0.2; break;
+          case 'spin': rz += time * 1.2; break;
+          case 'orbit': tx += Math.cos(time * 1.6) * 0.18; tz += Math.sin(time * 1.6) * 0.18; ty += Math.sin(time * 3.2) * 0.05; break;
+          case 'omega': ty += Math.sin(time * 1.4) * 0.16; ry += time * 0.8; idleK = 1 + Math.sin(time * 3) * 0.05; break;
+        }
+      }
       const f = Math.min(1, real * 10);
       g.position.x += (tx - g.position.x) * f;
       g.position.y += (ty - g.position.y) * f;
       g.position.z += (tz - g.position.z) * f;
-      rz = 0.3 + Math.sin(time * 2.2) * 0.03;
-      ry = -0.85;
-      sx = -1;
     }
-    let k = 1.05;
+    let k = 1.05 * idleK;
+    idleK = 1;
+    if (axe.sa && skillPose(real)) return;
     if (axe.spin > 0) {
       // 装備した瞬間: くるくる回りながら大きくなって手元に来る
       axe.spin = Math.max(0, axe.spin - real * 1.6);
@@ -959,6 +989,84 @@ const World = (() => {
     }
     g.rotation.set(0, ry, rz);
     g.scale.set(sx * k, k, k);
+  }
+  // ------------------------------------------------------------- 必殺技の動き（斧ごとに9種類）
+  let idleK = 1;
+  // dur: 全体の長さ、hit: 当たる瞬間（秒）
+  function skill(kind, hit, dir) {
+    if (!ok || !axe) return;
+    axe.sa = { kind, t: 0, hit, dur: hit + 0.35, dir: dir || 1 };
+  }
+  function skillPose(real) {
+    const sa = axe.sa, g = axe.g, o = cur;
+    sa.t += real;
+    const p = Math.min(1, sa.t / sa.dur), h = sa.hit / sa.dur;
+    const a = Math.min(1, p / h); // 当たるまでの進み
+    const sc = o ? o.root.scale.x : 1;
+    const by = o ? o.ny * o.root.scale.y : 1.2, rn = o ? o.rAt(o.ny) * sc : 0.5, bz = rn + 0.7;
+    const d = sa.dir;
+    let x = d * 0.9, y = by + 0.2, z = bz, rx = 0, ry = -0.3 * d, rz = 0.2, k = 1.05;
+    const E = U.ease;
+    switch (sa.kind) {
+      case 'giant': {
+        const up = a < 0.75 ? E.outCubic(a / 0.75) : 1;
+        k = 1.05 + 2.5 * (p < h ? up : Math.max(0, 1 - (p - h) / (1 - h)));
+        y = by + 1.4 * up; x = d * (0.6 + 0.8 * up);
+        rz = a < 0.75 ? -1.4 * up : -1.4 + 2.2 * E.inCubic((a - 0.75) / 0.25);
+        break;
+      }
+      case 'rise': {
+        if (a < 0.7) { y = by + 4.5 * E.outCubic(a / 0.7); rz = a * 14; }
+        else { y = by + 4.5 * (1 - E.inCubic((a - 0.7) / 0.3)); rz = -0.9; }
+        x = d * 0.5; k = 1.4;
+        break;
+      }
+      case 'throw': {
+        const th = a * Math.PI * 2;
+        x = d * (0.9 + 3 * Math.sin(th)); y = by + 1.6 * (1 - Math.cos(th)); z = bz + 1.2 * Math.sin(th * 0.5);
+        rz = th * 4; k = 1.3;
+        break;
+      }
+      case 'dash': {
+        const ph = a * Math.PI * 4;
+        x = 2.4 * Math.cos(ph) * (1 - a * 0.4); y = by + 0.4 * Math.sin(ph * 2);
+        rz = Math.sin(ph) > 0 ? 0.9 : -0.9; ry = Math.sin(ph) > 0 ? -0.4 : 0.4; k = 1.25;
+        break;
+      }
+      case 'vortex': {
+        y = by + (a < 0.85 ? 1.7 : 1.7 * (1 - (a - 0.85) / 0.15)); x = 0; z = bz + 0.3;
+        ry = sa.t * 32; rz = 0.6; k = 1.6 + 0.2 * Math.sin(sa.t * 20);
+        break;
+      }
+      case 'draw': {
+        if (a < 0.45) { k = 1.05 * (1 - a / 0.45); x = d * 0.9; }
+        else { k = 1.4; x = -d * 1.3; rz = 1.5; ry = 0.4 * d; }
+        break;
+      }
+      case 'spin': {
+        x = d * 0.35; y = by + 0.25; rz = sa.t * 24; k = 1.55;
+        break;
+      }
+      case 'orbit': {
+        const th = a * Math.PI * 4, R = rn + 1.6;
+        x = Math.cos(th) * R; z = Math.sin(th) * R; y = by + 0.45 + Math.sin(th * 2) * 0.25;
+        ry = -th + Math.PI / 2; rz = 0.4; k = 1.35;
+        break;
+      }
+      case 'omega': {
+        if (a < 0.3) { y = by + 3 * E.outCubic(a / 0.3); rz = a * 30; k = 1.3; }
+        else if (a < 0.75) { const q = (a - 0.3) / 0.45; y = by + 3; rz = -1.2 * q; k = 1.3 + 3 * E.outCubic(q); ry = sa.t * 6; }
+        else { const q = (a - 0.75) / 0.25; y = by + 3 * (1 - E.inCubic(q)); rz = -1.2 + 2.4 * q; k = 4.3; }
+        x = d * 0.7;
+        if (p > h) k = 1.05 + 3.25 * Math.max(0, 1 - (p - h) / (1 - h));
+        break;
+      }
+    }
+    g.position.set(x, y, z);
+    g.rotation.set(rx, ry, rz);
+    g.scale.set(d * k, k, k);
+    if (sa.t >= sa.dur) axe.sa = null;
+    return true;
   }
   // 斧の画面上の位置（装備演出の光などに使う）
   function axeScreen() {
@@ -1154,7 +1262,7 @@ const World = (() => {
   return {
     get ok() { return ok; },
     init, resize, frame, setQuality, palette, trunkInfo, canopyScreen, notchScreen, toScreen,
-    reset, onSpawn, onHit, onProc, onFell, onBossFail, finisher, flashLight, shake, punch, roll, setRank, grab, drag, release,
+    reset, onSpawn, onHit, onProc, onFell, onBossFail, finisher, flashLight, shake, punch, roll, setRank, skill, grab, drag, release,
     set onLanded(fn) { onLanded = fn; },
     set onAxeChange(fn) { onAxeChange = fn; },
     axeScreen,

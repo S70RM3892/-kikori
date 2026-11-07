@@ -72,6 +72,8 @@ const D = (() => {
     GLV_BASE: 150, GLV_GROW: 1.32, GLV_ROLL: 0.15, GLV_LUCK: 0.02,
     ROLL_TICK_MAX: 600, // 1フレームで処理する回転数の上限
     OFFLINE_ROLL_MAX: 200000, // 離れている間に回す回数の上限
+    // 必殺技が当たるまでの時間（斧の動きに合わせる）
+    SKILL_DELAY: { giant: 0.55, rise: 0.62, throw: 0.85, dash: 0.62, vortex: 0.8, draw: 0.38, spin: 0.55, orbit: 0.9, omega: 1.05 },
     PREMIUM_LUCK: 5, // ジェムで引くプレミアムガチャの幸運（強化・ランクとは別枠）
     SPEED3_STAGE: 30, // 3倍速の解放ステージ
   };
@@ -247,6 +249,49 @@ const D = (() => {
     luck: (v) => `ガチャの幸運 +${Math.round(v * 100)}%`,
     roll: (v) => `ガチャの回転 +${Math.round(v * 100)}%`,
   };
+
+  // ---------------------------------------------------------------- SSR以上の斧の必殺技・カットイン
+  // motion: 3Dの斧の動き / ov: 発動したときの画面の演出 / stamp: カットインの大きな文字
+  // line: キャッチコピー / pat: カットインの背景模様 / motif: カットインを流れる記号 / fx: 斬るたびの演出
+  const SKILLS = {
+    a_gold: { name: '黄金一閃', motion: 'giant', ov: 'coinrain', stamp: '金', line: '正直者だけが振るえる輝き！', pat: 'rays', motif: '🪙', fx: 'gold' },
+    a_dragon: { name: '竜牙両断', motion: 'rise', ov: 'flame', stamp: '竜', line: '竜の首すら一撃で落とす！', pat: 'flames', motif: '🐉', fx: 'fire' },
+    a_star: { name: '流星乱舞', motion: 'throw', ov: 'meteor', stamp: '星', line: '夜空ごと砕け散れ！', pat: 'stars', motif: '⭐', fx: 'meteor' },
+    a_kikui: { name: '妖・紅葉狩り', motion: 'dash', ov: 'bloom', stamp: '妖', line: '木を喰らい、紅に染まる……', pat: 'waves', motif: '🍁', fx: 'maple' },
+    a_ygg: { name: '世界樹の芽吹き', motion: 'vortex', ov: 'leafstorm', stamp: '樹', line: '枯れ木も芽吹く、生命の一撃', pat: 'dots', motif: '🍃', fx: 'leaf' },
+    x_luna: { name: '月下美刃', motion: 'draw', ov: 'moon', stamp: '月', line: '月が満ちる前に、伐る', pat: 'stars', motif: '🌙' },
+    x_crystal: { name: 'クリスタルレイン', motion: 'spin', ov: 'shardrain', stamp: '晶', line: '光を砕いて、降り注げ！', pat: 'grid', motif: '💎' },
+    x_gear: { name: '超高速歯車', motion: 'spin', ov: 'clock', stamp: '歯', line: '回れ回れ、もっと速く！', pat: 'stripes', motif: '⚙️' },
+    x_seraph: { name: '天使の祝福', motion: 'rise', ov: 'feathers', stamp: '翼', line: '天より舞い降りる、慈悲の刃', pat: 'rays', motif: '🪶' },
+    a_obsidian: { name: '黒曜裂断', motion: 'draw', ov: 'crack', stamp: '黒', line: '割れた闇は、何より鋭い', pat: 'stripes', motif: '🖤', fx: 'obsidian' },
+    x_heart: { name: 'ラブリー♡ハートブレイク', motion: 'giant', ov: 'hearts', stamp: '恋', line: '伐られた木も、恋に落ちる♡', pat: 'dots', motif: '💗', fx: 'heart' },
+    x_snow: { name: '六花吹雪', motion: 'vortex', ov: 'snow', stamp: '雪', line: '凍てつく、六つの花びら', pat: 'dots', motif: '❄️', fx: 'snow' },
+    a_ragna: { name: '終末の雷鎚', motion: 'rise', ov: 'bolts', stamp: '神', line: '世界の終わりを、伐り拓く！', pat: 'lightning', motif: '⚡', fx: 'ragna' },
+    a_void: { name: '虚空断', motion: 'draw', ov: 'void', stamp: '虚', line: '見えない刃は、避けられない', pat: 'cosmic', motif: '🌀', fx: 'void' },
+    a_chrono: { name: 'タイムストップ・スラッシュ', motion: 'dash', ov: 'clockstop', stamp: '時', line: '時よ止まれ。斬るのは今だ', pat: 'grid', motif: '⏳', fx: 'chrono' },
+    x_galaxy: { name: 'ギャラクシー・ストリーム', motion: 'orbit', ov: 'galaxy', stamp: '銀河', line: '一億の星を、この手に', pat: 'cosmic', motif: '🌌' },
+    x_kera: { name: '雷霆万鈞', motion: 'rise', ov: 'thunderstorm', stamp: '雷', line: '天の怒りを、思い知れ！', pat: 'lightning', motif: '⚡' },
+    x_volca: { name: '焔竜咆哮', motion: 'giant', ov: 'inferno', stamp: '炎', line: 'グオオオオッ！！', pat: 'flames', motif: '🔥' },
+    x_sun: { name: 'サンシャイン・ブレイク', motion: 'throw', ov: 'sun', stamp: '陽', line: '真昼の太陽、ここに降臨', pat: 'rays', motif: '☀️', fx: 'sun' },
+    x_trident: { name: '海神の三叉撃', motion: 'dash', ov: 'tsunami', stamp: '海', line: '大海原ごと、薙ぎ払え！', pat: 'waves', motif: '🌊', fx: 'trident' },
+    a_shinra: { name: '森羅万象', motion: 'orbit', ov: 'rainbowblades', stamp: '森羅', line: 'この世のすべてを、伐る', pat: 'rays', motif: '🌈', fx: 'rainbow' },
+    a_inf: { name: '無限連斬', motion: 'dash', ov: 'infinity', stamp: '∞', line: '会心は、終わらない', pat: 'cosmic', motif: '♾️', fx: 'infinity' },
+    x_horizon: { name: 'イベント・ホライゾン', motion: 'vortex', ov: 'blackhole', stamp: '穴', line: '光さえ、逃がさない', pat: 'cosmic', motif: '🕳️' },
+    x_phoenix: { name: '不死鳥の炎舞', motion: 'rise', ov: 'phoenixfire', stamp: '鳳', line: '燃え尽きても、蘇る！', pat: 'flames', motif: '🔥' },
+    x_saturn: { name: 'プラネット・リング', motion: 'orbit', ov: 'rings', stamp: '環', line: '惑星の輪が、森を断つ', pat: 'cosmic', motif: '🪐', fx: 'saturn' },
+    x_katana: { name: '居合・斬鉄閃', motion: 'draw', ov: 'iai', stamp: '斬', line: '鞘に納めたとき、すでに斬れている', pat: 'stripes', motif: '⚔️', fx: 'katana' },
+    x_genesis: { name: '天地創造', motion: 'giant', ov: 'genesis', stamp: '創', line: 'はじまりの光よ、満ちよ！', pat: 'rays', motif: '✨' },
+    x_aurora: { name: 'オーロラ・カーテン', motion: 'vortex', ov: 'aurora', stamp: '極光', line: '夜空のカーテンが、揺れる', pat: 'waves', motif: '🌈', fx: 'aurora' },
+    x_imag: { name: '√-1 ディメンション', motion: 'draw', ov: 'glitchstorm', stamp: '虚数', line: 'ERROR: 現実を検出できません', pat: 'grid', motif: '👾' },
+    x_ryujin: { name: '龍神招雷', motion: 'orbit', ov: 'golddragon', stamp: '龍', line: '黄金の龍よ、雷雲を呼べ！', pat: 'lightning', motif: '🐲', fx: 'ryujin' },
+    x_houou: { name: '鳳凰転生', motion: 'rise', ov: 'rainbowfire', stamp: '凰', line: '千年の炎が、虹に変わる', pat: 'flames', motif: '🌈', fx: 'houou' },
+    x_olympus: { name: '神々の宴', motion: 'throw', ov: 'heavenlight', stamp: '天', line: '雲の上から、神々が見ている', pat: 'rays', motif: '☁️', fx: 'olympus' },
+    x_amaterasu: { name: '天照・日輪斬', motion: 'giant', ov: 'sunpillar', stamp: '照', line: '夜は、もう来ない', pat: 'rays', motif: '☀️', fx: 'amaterasu' },
+    x_chaos: { name: 'カオス・ゼロ', motion: 'vortex', ov: 'chaos', stamp: '混沌', line: 'すべては、無に還る', pat: 'cosmic', motif: '🌑', fx: 'chaos' },
+    x_omega: { name: 'Ω・ファイナルエンド', motion: 'omega', ov: 'omega', stamp: 'Ω', line: '一千万回に一度の、終焉', pat: 'cosmic', motif: '💠', fx: 'omega' },
+  };
+  // レアごとの必殺技: need = ゲージ（1撃+1、JUST+1、会心+2）、mult = 斬撃の何倍か
+  const SKILL_TIER = { SSR: { need: 30, mult: 8 }, UR: { need: 26, mult: 12 }, LR: { need: 22, mult: 18 }, EX: { need: 20, mult: 25 }, MYTH: { need: 18, mult: 35 }, GOD: { need: 16, mult: 50 }, OMEGA: { need: 12, mult: 80 } };
 
   // ---------------------------------------------------------------- 斧のセット（そろえると永続ボーナス）
   const SETS = [
@@ -448,6 +493,9 @@ const D = (() => {
     ach('set' + i, '🗂️', nm, `斧のセットを${n}つそろえる`, (S) => SETS.filter((x) => x.axes.every((id) => S.axes[id])).length >= n, [20, 60, 200, 1000][i]));
   [[30, '30本集めた'], [50, '50本集めた']].forEach(([n, nm], i) =>
     ach('own' + i, '🪓', nm, `斧を${n}種類集める`, (S) => Object.keys(S.axes).length >= n, [40, 150][i]));
+  [[1, '必殺技デビュー'], [50, '必殺技の使い手'], [500, '必殺技マスター']].forEach(([n, nm], i) =>
+    ach('skill' + i, '💥', nm, `斧の必殺技を${n}回出す`, (S) => st(S, 'skills') >= n, [15, 60, 200][i]));
+  ach('skillAll', '📖', '奥義全集', `${Object.keys(SKILLS).length}種類すべての必殺技を見る`, (S) => Object.keys(S.skillSeen || {}).length >= Object.keys(SKILLS).length, 800);
   ach('shop1', '🛒', 'お買い物', 'ジェムショップで買い物', (S) => st(S, 'shopBuys') >= 1, 10);
   ach('shop50', '🛍️', 'お得意様', 'ジェムショップで50回買う', (S) => st(S, 'shopBuys') >= 50, 100);
   const fantasyOwned = (S) => AXES.filter((a) => a.fantasy && S.axes[a.id]).length;
@@ -485,5 +533,5 @@ const D = (() => {
     critm: [[10, '会心の衝撃波'], [20, '会心で時が止まる']],
   };
 
-  return { SETS, SHOP, STYLE, ROULETTE, STREAK_MS, ANNOUNCE, SLASH_FX, AXE_PATHS, CFG, WORKERS, MILESTONES, UPGRADES, RARITY, RARITY_ORDER, AXES, SP_TEXT, BIOMES, TREE_RARITY, SQUIRREL_FX, CHESTS, LOGIN, PERKS, MISSIONS, ACH };
+  return { SKILLS, SKILL_TIER, SETS, SHOP, STYLE, ROULETTE, STREAK_MS, ANNOUNCE, SLASH_FX, AXE_PATHS, CFG, WORKERS, MILESTONES, UPGRADES, RARITY, RARITY_ORDER, AXES, SP_TEXT, BIOMES, TREE_RARITY, SQUIRREL_FX, CHESTS, LOGIN, PERKS, MISSIONS, ACH };
 })();

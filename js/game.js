@@ -29,7 +29,7 @@ const G = (() => {
       wood: 0, gems: 0, tickets: 10, chests: 0, spirits: 0,
       stage: 1, maxStage: 1, kills: 0, farming: false,
       workers: {}, upg: {}, axes: {}, equip: null, pity: 0,
-      ach: {}, achSeen: 0, missions: [], missionLv: 0, buffs: [],
+      ach: {}, achSeen: 0, skillSeen: {}, missions: [], missionLv: 0, buffs: [],
       stats: {
         taps: 0, crits: 0, supers: 0, ultras: 0, gods: 0, maxCombo: 0, fevers: 0, bosses: 0, squirrels: 0,
         pulls: 0, kills: 0, chestsOpened: 0, gold: 0, rainbow: 0, woodRun: 0, woodAll: 0, prestiges: 0,
@@ -37,7 +37,7 @@ const G = (() => {
         gotSSR: 0, gotUR: 0, gotLR: 0, gotEX: 0, playTime: 0, gemsAll: 0, bestSpirits: 0, bestBoss: 0, bestComboDmg: 0,
         justs: 0, maxChain: 0, greats: 0, maxSpeeds: 0, echoes: 0, thunders: 0, blasts: 0,
         goldens: 0, roulettes: 0, bestRoulette: 0, bestStreak: 0, rouletteWood: 0, multiKills: 0, bestMulti: 0, bestRank: 0,
-        rolls: 0, rareRolls: 0, gotMYTH: 0, gotGOD: 0, gotOMEGA: 0, bestAxeLv: 0, bestRoll: 0, bestRollAxe: '', shopBuys: 0,
+        skills: 0, rolls: 0, rareRolls: 0, gotMYTH: 0, gotGOD: 0, gotOMEGA: 0, bestAxeLv: 0, bestRoll: 0, bestRollAxe: '', shopBuys: 0,
       },
       daily: { last: '' },
       settings: { sound: true, bgm: true, vol: 0.7, vibe: true, fx: 2, shake: true, flash: true, num: 'jp', night: true, buyAmt: 1, speed: 1 },
@@ -57,7 +57,7 @@ const G = (() => {
     checkT: 0, dirty: true, st: null,
     justChain: 0, blastCount: 0, pending: [],
     treeStreak: 0, golden: 0, goldenMax: 1, comboDmg: 0, speedCap: 3, carry: null, carryNext: null,
-    style: 0, rank: 0, styleSig: '', styleVar: false, rollAcc: 0,
+    style: 0, rank: 0, styleSig: '', styleVar: false, rollAcc: 0, skill: 0,
   };
 
   // ------------------------------------------------------------- イベント
@@ -489,6 +489,20 @@ const G = (() => {
       dmg, tier, stier, just, chain: T.justChain, combo: T.combo, x: o.x, y: o.y, dir: o.dir || 1, alive, speed: o.speed || 0, gold,
       kind: isTap ? 'tap' : 'swing', procs: procs.map((p) => p.kind), blastIn: st.blastEvery ? st.blastEvery - T.blastCount : 0,
     };
+    // 必殺技（SSR以上の斧）: 斬るたびにゲージがたまり、満タンの一撃で発動。少し遅れて大ダメージ
+    const sk = st.eq && D.SKILLS[st.eq.id];
+    if (sk && alive && !isTap) {
+      const tk = D.SKILL_TIER[st.eq.r];
+      T.skill += 1 + (just ? 1 : 0) + (tier ? 2 : 0);
+      if (T.skill >= tk.need) {
+        T.skill = 0;
+        const delay = C.SKILL_DELAY[sk.motion] || 0.5;
+        ev.skill = { id: st.eq.id, axe: st.eq, sk, dmg: dmg * tk.mult, delay, dir: o.dir || 1 };
+        S.stats.skills = (S.stats.skills || 0) + 1;
+        S.skillSeen[st.eq.id] = 1;
+        T.pending.push({ t: T.time + delay, kind: 'skill', dmg: ev.skill.dmg, n: 1, x: o.x, y: o.y, dir: o.dir || 1, id: st.eq.id });
+      }
+    }
     T.comboDmg += dmg;
     ev.total = T.comboDmg;
     if (isTap) styleAdd(0.3);
@@ -496,6 +510,7 @@ const G = (() => {
     ev.rank = T.rank;
     ev.variety = T.styleVar;
     emit('swing', ev);
+    if (ev.skill) emit('skill', ev.skill);
     if (alive) hit(dmg, isTap ? null : { n: 1, dir: o.dir || 1 });
     for (const p of procs) T.pending.push({ t: T.time + p.delay, kind: p.kind, dmg: p.dmg, n: p.n, x: o.x, y: o.y, dir: o.dir || 1 });
     return ev;
@@ -663,7 +678,7 @@ const G = (() => {
       if (ri >= 4) rare++;
       if (o.isNew || o.lvUp) changed = true;
       if (!best || ri > RANK[best.r] || (ri === RANK[best.r] && o.isNew && !best.isNew)) best = o;
-      if ((ri >= 4 || (o.isNew && ri >= 2) || (o.lvUp && ri >= 5)) && notable.length < 40) notable.push(o);
+      if ((ri >= 4 || (o.isNew && ri >= 2) || (o.lvUp && ri >= 3)) && notable.length < 40) notable.push(o);
     }
     S.stats.rolls += n;
     S.stats.rareRolls += rare;
@@ -1033,6 +1048,15 @@ const G = (() => {
           continue;
         }
         const alive = !!(T.tree && T.tree.alive);
+        if (p.kind === 'skill') {
+          // 必殺技の本命: 生えたばかりの次の木にも当たり、余りは貫通する
+          if (!alive) continue;
+          T.comboDmg += p.dmg;
+          emit('proc', Object.assign({ alive, total: T.comboDmg }, p));
+          styleAdd(8);
+          hit(p.dmg, { n: 1, dir: p.dir });
+          continue;
+        }
         if (p.kind === 'carry') {
           // 斬撃の余りが、生えたばかりの次の木に入る
           if (!alive) continue;
@@ -1202,6 +1226,7 @@ const G = (() => {
     unitDps, previewUpgrade, buyWorker, buyAmount, workerCost, maxAffordable, buyUpgrade, upgCost, upgMaxed,
     pull, canPull, freeLeft, xpNeed, gainXp, equip, openChest, claimMission, missionProgress, missionText,
     pickup, pickupLeft, gameSpeed, speedMax, cycleSpeed, PICKUPS, styleMult,
+    skillInfo: () => { const eq = stats().eq, sk = eq && D.SKILLS[eq.id]; return sk ? { sk, axe: eq, need: D.SKILL_TIER[eq.r].need, gauge: T.skill } : null; },
     rollRate, luckNow, axeLv, lvOf, buyShop, buffOf, setsDone, autoRoll, gachaNeed,
     catchSquirrel, goddessAnswer, challengeBoss, prestige, spiritGain, startStage, perk,
     startStudy, abortStudy, finishStudy, studyLeft, applyOffline, checkDaily,

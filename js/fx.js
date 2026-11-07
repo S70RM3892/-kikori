@@ -288,6 +288,7 @@ const FX = (() => {
   function drawBolts(c, dt) {
     for (let i = bolts.length - 1; i >= 0; i--) {
       const b = bolts[i];
+      if (b.delay > 0) { b.delay -= dt; continue; }
       b.life -= dt;
       if (b.life <= 0) { bolts.splice(i, 1); continue; }
       const a = b.life / b.max;
@@ -295,7 +296,7 @@ const FX = (() => {
       c.globalCompositeOperation = 'lighter';
       c.lineJoin = 'round';
       c.lineCap = 'round';
-      for (const [w, col] of [[14, `rgba(110,170,255,${0.35 * a})`], [6, `rgba(190,225,255,${0.9 * a})`], [2, `rgba(255,255,255,${a})`]]) {
+      for (const [w, col] of [[14, b.col ? `rgba(${b.col},${0.35 * a})` : `rgba(110,170,255,${0.35 * a})`], [6, b.col ? `rgba(${b.col},${0.9 * a})` : `rgba(190,225,255,${0.9 * a})`], [2, `rgba(255,255,255,${a})`]]) {
         c.strokeStyle = col;
         c.lineWidth = w;
         c.beginPath();
@@ -410,6 +411,7 @@ const FX = (() => {
     drawTrail(c);
     for (let i = parts.length - 1; i >= 0; i--) {
       const p = parts[i];
+      if (p.delay > 0) { p.delay -= dt; continue; }
       p.life -= dt;
       if (p.life <= 0) {
         if (p.home) { if (p.kind === 'gem') Sfx.gem(); else Sfx.coin(); UI.bump(p.kind); if (p.cb) p.cb(); }
@@ -422,7 +424,8 @@ const FX = (() => {
         p.x = it * it * p.sx + 2 * it * t * p.cx + t * t * p.tx;
         p.y = it * it * p.sy + 2 * it * t * p.cy + t * t * p.ty;
       } else {
-        p.vy += (p.t === 'chip' ? 900 : p.t === 'confetti' ? 60 : p.t === 'dust' ? -20 : p.t === 'drop' || p.t === 'pix' ? 700 : p.g || 0) * dt;
+        p.vy += (p.t === 'chip' ? 900 : p.t === 'confetti' ? 60 : p.t === 'dust' ? -20 : p.t === 'drop' || p.t === 'pix' ? 700 : p.t === 'rcoin' ? 500 : p.g || 0) * dt;
+        if (p.t === 'heart' || p.t === 'flake') { p.vx += Math.sin(clock * 3 + (p.ph || 0)) * 40 * dt; p.vy = Math.min(p.vy, 140); }
         if (p.t === 'ember') p.vx += Math.sin(clock * 3 + (p.ph || 0)) * 30 * dt;
         if (p.t === 'confetti' || p.t === 'petal' || p.t === 'feather') { p.vx += Math.sin(clock * 4 + (p.ph || 0)) * 40 * dt; p.vx *= 1 - 1.2 * dt; p.vy = Math.min(p.vy, 90); }
         p.x += p.vx * dt;
@@ -452,6 +455,62 @@ const FX = (() => {
           c.fillStyle = a > 0.75 ? '#fff4b0' : a > 0.5 ? '#ffb02e' : a > 0.28 ? '#ff5a1f' : 'rgba(70,50,50,0.8)';
           c.beginPath(); c.arc(0, 0, p.s * (1.7 - a), 0, 7); c.fill();
           break;
+        case 'heart': {
+          const z = p.s;
+          c.rotate(Math.sin(clock * 3 + (p.ph || 0)) * 0.3);
+          c.fillStyle = p.col;
+          c.beginPath(); c.moveTo(0, z * 0.45); c.bezierCurveTo(-z * 1.1, -z * 0.35, -z * 0.55, -z * 1.15, 0, -z * 0.45); c.bezierCurveTo(z * 0.55, -z * 1.15, z * 1.1, -z * 0.35, 0, z * 0.45); c.fill();
+          break;
+        }
+        case 'flake':
+          c.rotate(p.rot); c.strokeStyle = p.col; c.lineWidth = Math.max(1, p.s * 0.22); c.lineCap = 'round';
+          for (let k = 0; k < 3; k++) { c.rotate(Math.PI / 3); c.beginPath(); c.moveTo(-p.s, 0); c.lineTo(p.s, 0); c.moveTo(p.s * 0.55, 0); c.lineTo(p.s * 0.8, -p.s * 0.25); c.moveTo(p.s * 0.55, 0); c.lineTo(p.s * 0.8, p.s * 0.25); c.stroke(); }
+          break;
+        case 'meteor':
+          c.globalCompositeOperation = 'lighter'; c.strokeStyle = p.col; c.lineCap = 'round';
+          c.lineWidth = p.s; c.beginPath(); c.moveTo(0, 0); c.lineTo(-p.vx * 0.09, -p.vy * 0.09); c.stroke();
+          c.fillStyle = '#ffffff'; c.beginPath(); c.arc(0, 0, p.s * 0.8, 0, 7); c.fill();
+          break;
+        case 'clockface': {
+          c.globalCompositeOperation = 'lighter'; c.strokeStyle = p.col; c.globalAlpha = Math.min(1, a * 1.5);
+          const R = p.s * (1.15 - a * 0.15);
+          c.lineWidth = 4; c.beginPath(); c.arc(0, 0, R, 0, 7); c.stroke();
+          for (let k = 0; k < 12; k++) { const an = (k / 12) * Math.PI * 2; c.lineWidth = k % 3 ? 2 : 5; c.beginPath(); c.moveTo(Math.cos(an) * R * 0.82, Math.sin(an) * R * 0.82); c.lineTo(Math.cos(an) * R * 0.95, Math.sin(an) * R * 0.95); c.stroke(); }
+          const t1 = (p.spin || 1) * clock * 9, t2 = (p.spin || 1) * clock * 0.75;
+          c.lineWidth = 4; c.beginPath(); c.moveTo(0, 0); c.lineTo(Math.cos(t1) * R * 0.8, Math.sin(t1) * R * 0.8); c.stroke();
+          c.lineWidth = 7; c.beginPath(); c.moveTo(0, 0); c.lineTo(Math.cos(t2) * R * 0.5, Math.sin(t2) * R * 0.5); c.stroke();
+          break;
+        }
+        case 'ribbon': {
+          // オーロラの帯（画面の幅いっぱい）
+          c.globalCompositeOperation = 'lighter'; c.globalAlpha = Math.sin(a * Math.PI) * 0.7;
+          c.translate(-p.x, -p.y);
+          c.fillStyle = p.col;
+          c.beginPath();
+          for (let xx = 0; xx <= OW; xx += 16) c.lineTo(xx, p.by + Math.sin(xx * 0.012 + clock * 2 + p.ph) * 26);
+          for (let xx = OW; xx >= 0; xx -= 16) c.lineTo(xx, p.by + 46 + Math.sin(xx * 0.012 + clock * 2 + p.ph + 1) * 30);
+          c.closePath(); c.fill();
+          break;
+        }
+        case 'tide': {
+          // 画面を横切る大波
+          c.translate(-p.x, -p.y); c.globalAlpha = Math.min(1, a * 2) * 0.75;
+          const off = (1 - a) * (OW + 400) - 200;
+          const g2 = c.createLinearGradient(0, OH * 0.45, 0, OH);
+          g2.addColorStop(0, 'rgba(160,240,255,0.9)'); g2.addColorStop(1, 'rgba(10,90,180,0.9)');
+          c.fillStyle = g2;
+          c.beginPath(); c.moveTo(off - 400, OH);
+          for (let xx = -400; xx <= 400; xx += 20) c.lineTo(off + xx, OH * 0.55 + Math.cos((xx / 400) * Math.PI) * -OH * 0.12 + Math.sin(xx * 0.05 + clock * 6) * 10);
+          c.lineTo(off + 400, OH); c.closePath(); c.fill();
+          break;
+        }
+        case 'crack':
+          c.strokeStyle = p.col; c.lineWidth = 2.4; c.globalAlpha = Math.min(1, a * 2);
+          c.beginPath();
+          for (const seg of p.pts) { c.moveTo(seg[0], seg[1]); for (let k = 2; k < seg.length; k += 2) c.lineTo(seg[k], seg[k + 1]); }
+          c.stroke();
+          break;
+        case 'rcoin':
         case 'coin':
           c.fillStyle = '#ffcf4a'; c.strokeStyle = '#8a5a10'; c.lineWidth = 1.5;
           c.beginPath(); c.arc(0, 0, p.s, 0, 7); c.fill(); c.stroke();
@@ -832,9 +891,129 @@ const FX = (() => {
     }
   }
 
+  // ------------------------------------------------------------- 必殺技（SSR以上の斧）
+  const RN = Math.random;
+  const pk = (a) => a[Math.floor(RN() * a.length)];
+  const qn = () => [0.4, 0.7, 1][quality];
+  // 画面の上から降らせる
+  function rain(t, cols, n, o = {}) {
+    n = Math.round(n * qn());
+    for (let i = 0; i < n; i++) {
+      const life = (o.life || 2.2) * (0.8 + RN() * 0.4);
+      spawn({ t, x: RN() * OW, y: -20 - RN() * 60, vx: (o.vx || 0) + (RN() - 0.5) * 80, vy: (o.vy || 260) + RN() * 200, life, max: life, s: (o.s || 6) * (0.7 + RN() * 0.6), col: pk(cols), rot: RN() * 6, vr: (RN() - 0.5) * 8, ph: RN() * 6, g: o.g || 0, delay: RN() * (o.spread || 0.5) });
+    }
+  }
+  // 一点から四方へ
+  function radial(t, cols, n, x, y, o = {}) {
+    n = Math.round(n * qn());
+    for (let i = 0; i < n; i++) {
+      const an = RN() * Math.PI * 2, v = (o.sp || 420) * (0.35 + RN() * 0.65), life = (o.life || 0.9) * (0.7 + RN() * 0.6);
+      spawn({ t, x, y, vx: Math.cos(an) * v, vy: Math.sin(an) * v - (o.up || 0), life, max: life, s: (o.s || 5) * (0.7 + RN() * 0.6), col: pk(cols), rot: RN() * 6, vr: (RN() - 0.5) * 10, ph: RN() * 6, g: o.g || 0, delay: RN() * (o.spread || 0) });
+    }
+  }
+  const toRGB = (c) => (c[0] === '#' ? hexRGB(c) : c);
+  const waves = (cols, n, x, y, gap = 0.12) => { for (let i = 0; i < n; i++) spawn({ t: 'wave', x, y, life: 0.7, max: 0.7, col: toRGB(cols[i % cols.length]), delay: i * gap }); };
+  const pillar = (x, y, col, w = 70) => spawn({ t: 'pillar', x, y, life: 0.7, max: 0.7, s: w, col });
+  function boltsAt(n, x, y, col, spread = 160) {
+    for (let i = 0; i < n; i++) {
+      const b = makeBolt(x + (RN() - 0.5) * spread, y + (RN() - 0.5) * 60);
+      b.col = col; b.life = b.max = 0.3 + RN() * 0.2; b.delay = i * 0.06;
+      bolts.push(b);
+    }
+  }
+  const slashes = (n, x, y, col, len = 260, w = 3) => { for (let i = 0; i < n; i++) spawn({ t: 'slash', x: x + (RN() - 0.5) * 70, y: y + (RN() - 0.5) * 90, life: 0.26, max: 0.26, s: len, w, rot: RN() * Math.PI, col, delay: i * 0.045 }); };
+  const implode = (x, y, col, sz = 160) => spawn({ t: 'implode', x, y, tx: x, ty: y, life: 0.55, max: 0.55, s: sz, col });
+  const bigTxt = (txt, x, y, size, col, o = {}) => floatText(x, y, txt, Object.assign({ size, fill: col, stroke: '#140818', pop: 2.8, vy: -12, life: 1.2 }, o));
+  const clockAt = (x, y, col, s = 120, spin = 1) => spawn({ t: 'clockface', x, y, life: 1.1, max: 1.1, s, col, spin });
+  function crackAt(x, y, n = 9, col = '#ffffff') {
+    const pts = [];
+    for (let i = 0; i < n; i++) {
+      let an = (i / n) * Math.PI * 2 + RN() * 0.4, px = 0, py = 0;
+      const seg = [0, 0];
+      for (let k = 0; k < 6; k++) { an += (RN() - 0.5) * 0.7; const L = 30 + RN() * 60; px += Math.cos(an) * L; py += Math.sin(an) * L; seg.push(px, py); }
+      pts.push(seg);
+    }
+    spawn({ t: 'crack', x, y, life: 0.9, max: 0.9, col, pts });
+  }
+  const ribbon = (col, by, ph = 0) => spawn({ t: 'ribbon', x: 0, y: 0, by, life: 1.8, max: 1.8, col, ph });
+  const RAINBOW = ['#ff5a5a', '#ffd23a', '#7aff6a', '#4fe3ff', '#c46bff', '#ff6ad5'];
+  // 35種類の必殺技の演出（x, y は当たった所）
+  const OV = {
+    coinrain: (x, y) => { rain('rcoin', ['#ffcf4a'], 40, { s: 8 }); radial('star', ['#fff3a0', '#ffd23a'], 24, x, y); waves(['#ffd23a', '#fff6a0'], 2, x, y); addFlash(0.3, '255,215,90'); },
+    flame: (x, y) => { radial('fire', ['#ff7a1a'], 46, x, y, { sp: 380, s: 9, g: -120 }); waves(['#ff7a1a', '#ffd27a'], 2, x, y); addFlash(0.3, '255,140,60'); },
+    meteor: (x, y) => { rain('meteor', ['#fff6a0', '#bfe8ff', '#ffb0e0'], 26, { vx: -380, vy: 520, s: 4, life: 1.2, spread: 0.7 }); radial('star', ['#ffffff', '#fff6a0'], 20, x, y); addFlash(0.2, '200,220,255'); },
+    bloom: (x, y) => { radial('petal', ['#ff2a4a', '#b0002a', '#ff7a8a'], 60, x, y, { sp: 360, s: 7, life: 1.6, g: 60 }); waves(['#ff2a4a'], 2, x, y); addFlash(0.25, '255,40,80'); },
+    leafstorm: (x, y) => { rain('petal', ['#7aff6a', '#2ab04a', '#c8ff9a'], 44, { s: 7 }); radial('petal', ['#7aff6a', '#2ab04a'], 30, x, y, { s: 6 }); pillar(x, y, '120,255,140', 60); },
+    moon: (x, y) => { for (let i = 0; i < 4; i++) spawn({ t: 'moon', x, y, vx: (i - 1.5) * 160, vy: -60, life: 0.7, max: 0.7, s: 60 + i * 20, rot: i * 0.8, col: i % 2 ? '#ffffff' : '#a8c8ff', delay: i * 0.06 }); rain('star', ['#ffffff', '#cfe0ff'], 22, { s: 4 }); addFlash(0.25, '190,210,255'); },
+    shardrain: (x, y) => { rain('shard', ['#a8f6ff', '#7fe8ff', '#e8fdff', '#c49bff'], 46, { s: 9 }); radial('shard', ['#a8f6ff', '#ffffff'], 24, x, y, { s: 8 }); waves(['#7fe8ff'], 2, x, y); },
+    clock: (x, y) => { clockAt(x, y - 60, '#ffd27a', 130); radial('gearp', ['#e0aa48', '#cfd6e0'], 22, x, y, { s: 7 }); waves(['#ffd27a'], 2, x, y); },
+    feathers: (x, y) => { rain('feather', ['#ffffff', '#fff6d8', '#ffe9a8'], 40, { vy: 120, s: 7, life: 2.6 }); pillar(x, y, '255,245,200', 90); addFlash(0.3, '255,250,220'); },
+    crack: (x, y) => { crackAt(x, y, 10, '#d8c8ff'); radial('shard', ['#2a1a40', '#6a5a8a', '#000000'], 30, x, y, { s: 8 }); addFlash(0.4, '0,0,0'); },
+    hearts: (x, y) => { rain('heart', ['#ff6ab0', '#ff9ad0', '#ffd0e8', '#ff3d8b'], 40, { vy: 160, s: 10 }); radial('heart', ['#ff3d8b', '#ff9ad0'], 24, x, y, { s: 9 }); waves(['#ff6ab0', '#ffd0e8'], 3, x, y); },
+    snow: (x, y) => { rain('flake', ['#ffffff', '#cfefff', '#9fd8ff'], 50, { vy: 140, s: 8, life: 2.6 }); radial('flake', ['#ffffff'], 20, x, y, { s: 9 }); addFlash(0.3, '220,240,255'); },
+    bolts: (x, y) => { boltsAt(7, x, y, '255,110,200', 220); waves(['#ff6ab0', '#ffffff'], 2, x, y); addFlash(0.4, '255,140,220'); },
+    void: (x, y) => { implode(x, y, '#b06aff', 200); radial('spark', ['#b06aff', '#ffffff'], 30, x, y, { sp: 600, life: 0.4 }); addFlash(0.45, '0,0,0'); },
+    clockstop: (x, y) => { clockAt(OW / 2, OH * 0.4, '#7fffe8', Math.min(OW, OH) * 0.32, -1); slowmo = Math.max(slowmo, 0.55); bigTxt('時', OW / 2, OH * 0.4, 120, '#7fffe8', { life: 1.1 }); waves(['#7fffe8'], 3, x, y, 0.15); },
+    galaxy: (x, y) => { radial('star', ['#ffffff', '#9fd0ff', '#ffb0e0', '#c8a0ff', '#fff0a0'], 60, x, y, { sp: 520, s: 5, life: 1.2 }); waves(['#b39aff', '#7fd0ff', '#ff9ae6'], 3, x, y); },
+    thunderstorm: (x, y) => { boltsAt(12, OW / 2, y, '255,240,140', OW * 0.9); addFlash(0.55, '255,255,220'); waves(['#ffe14a'], 2, x, y); },
+    inferno: (x, y) => { radial('fire', ['#ff5a1a'], 70, x, y, { sp: 460, s: 12, g: -160 }); pillar(x, y, '255,120,40', 100); addFlash(0.4, '255,120,40'); },
+    sun: (x, y) => { spawn({ t: 'flare', x, y: y - 60, life: 0.9, max: 0.9, s: 380, col: '255,210,90' }); for (let i = 0; i < 12; i++) spawn({ t: 'slash', x, y: y - 60, life: 0.5, max: 0.5, s: 240, w: 5, rot: (i / 12) * Math.PI, col: '255,220,120', delay: i * 0.02 }); addFlash(0.4, '255,230,140'); },
+    tsunami: (x, y) => { spawn({ t: 'tide', x: 0, y: 0, life: 1.1, max: 1.1, col: '#4fb4ff' }); radial('drop', ['#9fd8ff', '#ffffff', '#5ab8ff'], 40, x, y, { sp: 500, s: 5 }); waves(['#4fe3ff'], 2, x, y); },
+    rainbowblades: (x, y) => { for (let i = 0; i < 12; i++) spawn({ t: 'slash', x: x + (RN() - 0.5) * 80, y: y + (RN() - 0.5) * 90, life: 0.3, max: 0.3, s: 280, w: 4, rot: RN() * Math.PI, col: hslRGB(i * 30), delay: i * 0.04 }); waves(RAINBOW, 4, x, y, 0.08); },
+    infinity: (x, y) => { bigTxt('∞', x, y - 80, 150, '#ffffff', { rainbow: true }); radial('star', RAINBOW, 40, x, y); waves(['#3affd0', '#ffffff'], 3, x, y); },
+    blackhole: (x, y) => { implode(x, y, '#ffb070', 240); implode(x, y, '#b06aff', 160); for (let i = 0; i < 36 * qn(); i++) { const an = RN() * Math.PI * 2, r = 160 + RN() * 200; spawn({ t: 'spark', x: x + Math.cos(an) * r, y: y + Math.sin(an) * r, vx: -Math.cos(an) * 700, vy: -Math.sin(an) * 700, life: 0.3, max: 0.3, s: 3, col: i % 2 ? '#ff9a4a' : '#b06aff' }); } addFlash(0.5, '0,0,0'); },
+    phoenixfire: (x, y) => { radial('fire', ['#ff7a1a'], 50, x, y, { sp: 400, s: 10, g: -140 }); rain('feather', ['#ffd060', '#ff7a2a', '#ff3a12'], 24, { vy: 150, s: 7 }); pillar(x, y, '255,140,60', 90); },
+    rings: (x, y) => { for (let i = 0; i < 4; i++) spawn({ t: 'ring', x, y, life: 0.7 + i * 0.12, max: 0.7 + i * 0.12, s: 200 + i * 90, col: i % 2 ? '#ffd27a' : '#ffe6b0', delay: i * 0.07 }); radial('star', ['#ffd27a', '#ffffff'], 24, x, y); },
+    iai: (x, y) => { addFlash(0.7, '255,255,255'); for (let i = 0; i < 7; i++) spawn({ t: 'slash', x: OW / 2 + (RN() - 0.5) * 60, y: y + (RN() - 0.5) * 160, life: 0.35, max: 0.35, s: OW * 0.75, w: 2, rot: (RN() - 0.5) * 0.9, col: '230,240,255', delay: 0.05 + i * 0.03 }); slowmo = Math.max(slowmo, 0.3); bigTxt('斬', x, y - 90, 110, '#ffffff', { life: 0.9 }); },
+    genesis: (x, y) => { pillar(x, y, '255,240,190', 140); waves(['#ffffff', '#ffe680', '#ff9ae6'], 3, x, y); radial('star', ['#ffffff', '#ffe680', '#ff9ae6', '#9fe8ff'], 50, x, y, { sp: 500 }); addFlash(0.5, '255,250,230'); },
+    aurora: (x, y) => { ribbon('rgba(90,255,180,0.8)', OH * 0.12, 0); ribbon('rgba(80,200,255,0.7)', OH * 0.2, 2); ribbon('rgba(255,110,230,0.6)', OH * 0.28, 4); rain('star', ['#ffffff', '#bfffe8'], 16, { s: 4 }); },
+    glitchstorm: (x, y) => { for (let i = 0; i < 40 * qn(); i++) spawn({ t: 'glitch', x: RN() * OW, y: RN() * OH, life: 0.15 + RN() * 0.3, max: 0.45, s: 10 + RN() * 40, h: 3 + RN() * 12, col: pk(['rgba(80,240,255,0.7)', 'rgba(255,60,120,0.7)', 'rgba(255,255,255,0.6)']), delay: RN() * 0.3 }); bigTxt('ERROR', x, y - 90, 54, '#ff4fd8', { life: 0.9 }); addFlash(0.3, '255,60,200'); },
+    golddragon: (x, y) => { boltsAt(8, x, y, '255,215,60', 260); rain('rcoin', ['#ffcf4a'], 30, { s: 8 }); pillar(x, y, '255,215,60', 110); bigTxt('龍', x, y - 100, 110, '#ffd84a'); },
+    rainbowfire: (x, y) => { radial('fire', ['#ff7a1a'], 40, x, y, { sp: 400, s: 10, g: -140 }); radial('star', RAINBOW, 40, x, y, { sp: 480 }); pillar(x, y, '255,170,240', 120); waves(RAINBOW, 3, x, y, 0.1); },
+    heavenlight: (x, y) => { for (let i = 0; i < 5; i++) spawn({ t: 'pillar', x: (i + 0.5) * (OW / 5), y: OH * (0.55 + RN() * 0.2), life: 0.9, max: 0.9, s: 60, col: '255,250,220', delay: i * 0.08 }); rain('feather', ['#ffffff', '#fff6d8'], 30, { vy: 120, s: 7 }); addFlash(0.4, '255,255,240'); },
+    sunpillar: (x, y) => { pillar(x, y, '255,225,120', 220); spawn({ t: 'flare', x, y, life: 1, max: 1, s: 460, col: '255,230,140' }); waves(['#ffd700', '#fff6c0', '#ffd700'], 3, x, y); radial('star', ['#ffd700', '#ffffff'], 50, x, y, { sp: 560 }); addFlash(0.6, '255,240,180'); },
+    chaos: (x, y) => { implode(x, y, '#b06aff', 260); crackAt(x, y, 12, '#c49bff'); for (let i = 0; i < 24 * qn(); i++) spawn({ t: 'glitch', x: RN() * OW, y: RN() * OH, life: 0.2 + RN() * 0.3, max: 0.5, s: 12 + RN() * 30, h: 4 + RN() * 10, col: 'rgba(176,106,255,0.7)', delay: RN() * 0.3 }); addFlash(0.6, '0,0,0'); },
+    omega: (x, y) => { bigTxt('Ω', OW / 2, OH * 0.38, 170, '#ffffff', { rainbow: true, life: 1.5 }); waves(RAINBOW, 5, x, y, 0.08); pillar(x, y, '255,170,255', 200); boltsAt(8, x, y, '255,120,255', 300); radial('star', RAINBOW, 60, x, y, { sp: 600 }); confetti(160); addFlash(0.6, '255,255,255'); },
+  };
+  const axeRGB = (a) => (a.glow && a.glow !== 'rainbow' ? hexRGB(a.glow) : hslRGB((clock * 200) % 360));
+  const axSeed = (id) => Math.max(0, D.AXES.findIndex((a) => a.id === id));
+  // 必殺技の発動: 斧が独自の動きを始め、カットインが走る
+  function onSkill(sv) {
+    World.skill(sv.sk.motion, sv.delay, sv.dir);
+    Sfx.skillStart(axSeed(sv.id));
+    if (blocked()) return;
+    slowmo = Math.max(slowmo, 0.1);
+    vPulse = Math.max(vPulse, 0.35);
+    UI.cutIn(sv.axe, 'skill');
+  }
+  // 必殺技が当たった瞬間
+  function onSkillHit(p) {
+    const a = G.AX[p.id], sk = D.SKILLS[p.id];
+    if (!a || !sk) return;
+    Sfx.skillHit(G.RANK[a.r], axSeed(p.id));
+    if (blocked() || !p.alive) return;
+    World.onProc(p);
+    const np = notchPoint(), x = np.x, y = np.y;
+    hitStop = Math.max(hitStop, 0.12);
+    World.punch(0.14);
+    World.shake(1.4);
+    World.roll((RN() < 0.5 ? -1 : 1) * 0.07);
+    World.flashLight(a.glow && a.glow !== 'rainbow' ? a.glow : '#ffffff', 2);
+    focusCool = 0;
+    focusLines(x, y, 0.55, axeRGB(a), 1);
+    floatText(x, y - 30, U.fmt(p.dmg), { size: 48, fill: '#ffffff', stroke: '#2a0a00', rainbow: G.RANK[a.r] >= 6, pop: 2.6, vy: -60, life: 1.3 });
+    floatText(x, y - 92, `${sk.name}!!`, { size: 24, fill: a.glow && a.glow !== 'rainbow' ? a.glow : '#ffffff', stroke: '#1a0a14', rainbow: a.glow === 'rainbow', pop: 2.2, vy: -50, life: 1.3 });
+    (OV[sk.ov] || OV.flame)(x, y);
+    vPulse = Math.max(vPulse, 0.5);
+    UI.shakeHud();
+    Sfx.vibrate([30, 30, 60]);
+  }
+
   // ------------------------------------------------------------- 幻想の斧: 斧ごとの斬撃演出
+  // 新しい演出キーの音は近いものを使う
+  const FX_SND = { gold: 'crystal', meteor: 'galaxy', maple: 'petal', leaf: 'feather', obsidian: 'crystal', heart: 'candy', snow: 'crystal', ragna: 'bolt', chrono: 'gear', sun: 'fire', trident: 'splash', rainbow: 'genesis', infinity: 'galaxy', saturn: 'galaxy', katana: 'beam', aurora: 'genesis', ryujin: 'bolt', houou: 'phoenix', olympus: 'feather', amaterasu: 'genesis', chaos: 'void', omega: 'genesis' };
   function signature(eq, x, y, d, q) {
-    const fx = eq && eq.fx;
+    const fx = eq && ((D.SKILLS[eq.id] && D.SKILLS[eq.id].fx) || eq.fx);
     if (!fx || quality === 0) return;
     const dir = d.dir || 1;
     const s = Math.max(0, d.stier);
@@ -897,13 +1076,36 @@ const FX = (() => {
         for (let i = 0; i < 2; i++) spawn({ t: 'ring', x, y, life: 0.5 + i * 0.15, max: 0.5 + i * 0.15, s: 120 + i * 80, col: `hsl(${(clock * 300 + i * 120) % 360},100%,70%)` });
         fan(n(8), 'star', 380, 0.7, 4, ['#ffffff', '#ffe680', '#ff9ae6', '#9fe8ff']);
         break;
+      case 'gold': fan(n(8), 'rcoin', 380, 0.8, 5, ['#ffcf4a']); fan(n(5), 'star', 300, 0.5, 3, ['#fff3a0']); break;
+      case 'meteor': fan(n(5), 'meteor', 520, 0.45, 3, ['#fff6a0', '#bfe8ff']); break;
+      case 'maple': fan(n(9), 'petal', 280, 1.2, 6, ['#ff2a4a', '#ff7a2a', '#b0002a']); break;
+      case 'leaf': fan(n(9), 'petal', 260, 1.3, 6, ['#7aff6a', '#2ab04a', '#c8ff9a']); break;
+      case 'obsidian': fan(n(9), 'shard', 460, 0.55, 6, ['#2a1a40', '#6a5a8a', '#9a6aff']); break;
+      case 'heart': fan(n(7), 'heart', 260, 1, 7, ['#ff6ab0', '#ff3d8b', '#ffd0e8']); break;
+      case 'snow': fan(n(8), 'flake', 240, 1.3, 6, ['#ffffff', '#bfe8ff']); break;
+      case 'ragna': { const b = makeBolt(x, y); b.col = '255,110,200'; b.life = b.max = 0.18; bolts.push(b); fan(n(6), 'spark', 480, 0.3, 2.4, ['#ff6ab0', '#ffffff']); break; }
+      case 'chrono': fan(n(5), 'gearp', 300, 0.6, 5, ['#7fffe8', '#cfd6e0']); if (R() < 0.25) spawn({ t: 'clockface', x, y: y - 40, life: 0.5, max: 0.5, s: 50, col: '#7fffe8' }); break;
+      case 'sun': spawn({ t: 'flare', x, y, life: 0.3, max: 0.3, s: 120, col: '255,210,90' }); fan(n(7), 'fire', 300, 0.5, 6, ['#ff7a1a'], { g: -100 }); break;
+      case 'trident': fan(n(8), 'drop', 420, 0.7, 4, ['#9fd8ff', '#3affe0']); spawn({ t: 'slash', x, y, life: 0.2, max: 0.2, s: 150, w: 3, rot: -0.2, col: '60,255,224' }); break;
+      case 'rainbow': fan(n(10), 'star', 360, 0.7, 4, RAINBOW_C); break;
+      case 'infinity': if (R() < 0.3) floatText(x, y - 60, '∞', { size: 34, fill: '#3affd0', rainbow: true, vy: -40, life: 0.6 }); fan(n(8), 'star', 340, 0.6, 3.6, ['#3affd0', '#ffffff']); break;
+      case 'saturn': spawn({ t: 'ring', x, y, life: 0.45, max: 0.45, s: 120, col: '#ffd27a' }); fan(n(6), 'star', 300, 0.6, 3.5, ['#ffe6b0', '#ffd27a']); break;
+      case 'katana': for (let i = 0; i < 2; i++) spawn({ t: 'slash', x: x + (R() - 0.5) * 30, y: y + (R() - 0.5) * 30, life: 0.18, max: 0.18, s: 220, w: 1.6, rot: (R() - 0.5) * 0.8, col: '230,240,255' }); break;
+      case 'aurora': fan(n(10), 'star', 300, 0.8, 3.6, ['#5affb4', '#50c8ff', '#ff6ee6']); break;
+      case 'ryujin': { const b = makeBolt(x, y); b.col = '255,215,60'; b.life = b.max = 0.2; bolts.push(b); fan(n(6), 'rcoin', 360, 0.7, 4, ['#ffcf4a']); break; }
+      case 'houou': fan(n(8), 'fire', 320, 0.6, 7, ['#ff7a1a'], { g: -140 }); fan(n(6), 'star', 360, 0.7, 4, RAINBOW_C); break;
+      case 'olympus': fan(n(6), 'feather', 220, 1.3, 6, ['#ffffff', '#bfe8ff']); spawn({ t: 'flare', x, y, life: 0.25, max: 0.25, s: 110, col: '220,240,255' }); break;
+      case 'amaterasu': spawn({ t: 'pillar', x, y, life: 0.3, max: 0.3, s: 50, col: '255,225,120' }); fan(n(8), 'star', 380, 0.7, 4, ['#ffd700', '#ffffff']); break;
+      case 'chaos': spawn({ t: 'implode', x, y, tx: x, ty: y, life: 0.3, max: 0.3, s: 90, col: '#b06aff' }); for (let i = 0; i < n(4); i++) spawn({ t: 'glitch', x: x + (R() - 0.5) * 160, y: y + (R() - 0.5) * 120, life: 0.18, max: 0.18, s: 18, h: 6, col: 'rgba(176,106,255,0.7)' }); break;
+      case 'omega': spawn({ t: 'wave', x, y, life: 0.45, max: 0.45, col: `${hslRGB((clock * 300) % 360)}` }); fan(n(10), 'star', 420, 0.8, 4.5, RAINBOW_C); break;
       case 'glitch':
         for (let i = 0; i < n(5); i++) spawn({ t: 'glitch', x: x + (R() - 0.5) * 160, y: y + (R() - 0.5) * 120, life: 0.12 + R() * 0.12, max: 0.24, s: 8 + R() * 22, h: 3 + R() * 8, col: R() < 0.5 ? 'rgba(80,240,255,0.7)' : 'rgba(255,60,120,0.7)' });
         if (R() < 0.15) floatText(x + (R() - 0.5) * 80, y - 70, ['ERR', '√-1', 'NaN', '0xDEAD'][Math.floor(R() * 4)], { size: 14, fill: '#ff4fd8', stroke: '#0a0014', vy: -40, life: 0.5, light: true });
         break;
     }
-    Sfx.axeHit(fx);
+    Sfx.axeHit(FX_SND[fx] || fx);
   }
+  const RAINBOW_C = ['#ff5a5a', '#ffd23a', '#7aff6a', '#4fe3ff', '#c46bff', '#ff6ad5'];
   // 斧を持ち替えた瞬間（ガチャの後・図鑑から装備）
   function onAxeChange(def) {
     const ap = World.axeScreen();
@@ -1013,6 +1215,7 @@ const FX = (() => {
 
   // 追撃（残像・落雷・爆裂）
   function onProc(p) {
+    if (p.kind === 'skill') { onSkillHit(p); return; }
     if (p.kind === 'carry') { onCarry(p); return; }
     if (p.kind === 'echo') Sfx.echo(p.n);
     else if (p.kind === 'thunder') Sfx.thunder(p.n);
@@ -1190,6 +1393,7 @@ const FX = (() => {
     G.on('prestige', () => { Sfx.prestige(); confetti(160); addFlash(0.6); });
     G.on('load', () => { World.reset(); parts.length = 0; texts.length = 0; roulettes.length = 0; twinkles.length = 0; World.setRank(0, '#ffffff', false); Sfx.musicLevel(0); });
     G.on('rank', onRank);
+    G.on('skill', onSkill);
     G.on('autoRoll', onRolls);
     G.on('golden', (d) => {
       UI.banner('GOLDEN TIME!!', `${d.time}秒間、斬るたびに木材が噴き出す`, 'golden');

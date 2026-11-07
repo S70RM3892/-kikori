@@ -439,6 +439,34 @@ const Sfx = (() => {
       case 'glitch': for (let i = 0; i < 4; i++) tone(200 + Math.random() * 2400, 0.03, 'square', 0.04, i * 0.025); break;
     }
   }
+  // 斧ごとの短い旋律（seed = 斧の番号）。カットインと必殺技で鳴る
+  const MOTIF_SCALE = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21];
+  function motif(seed) {
+    let x = (seed + 1) * 2654435761 % 4294967296;
+    const out = [];
+    for (let i = 0; i < 4; i++) { x = (x * 1103515245 + 12345) % 2147483648; out.push(MOTIF_SCALE[x % MOTIF_SCALE.length]); }
+    return out;
+  }
+  function cutin(rank, seed) {
+    if (!ok() || throttle('cutin', 200)) return;
+    noise(0.35, 0.18, 'bandpass', 600, 0.9, 0, 6000);
+    motif(seed).forEach((st, i) => tone(note(st, 392), 0.16, i % 2 ? 'square' : 'triangle', 0.05, 0.12 + i * 0.07));
+    if (rank >= 4) [0, 4, 7].forEach((st) => tone(note(st, 196), 0.8, 'sawtooth', 0.025, 0.4));
+  }
+  function skillStart(seed) {
+    if (!ok()) return;
+    noise(0.4, 0.2, 'bandpass', 400, 0.8, 0, 5000);
+    tone(180, 0.4, 'sawtooth', 0.06, 0, 720);
+    motif(seed).slice(0, 2).forEach((st, i) => tone(note(st + 12, 392), 0.12, 'square', 0.045, 0.1 + i * 0.06));
+  }
+  function skillHit(rank, seed) {
+    if (!ok()) return;
+    tone(60, 0.9, 'sine', 0.55, 0, 28);
+    noise(0.9, 0.35, 'lowpass', 900, 0.8, 0, 120);
+    noise(0.5, 0.2, 'highpass', 4000, 0.7, 0.02);
+    motif(seed).forEach((st, i) => tone(note(st, 523), 0.22, 'triangle', 0.06, 0.05 + i * 0.06));
+    if (rank >= 6) [0, 4, 7, 11, 14].forEach((st) => tone(note(st, 262), 1.4, 'sawtooth', 0.03, 0.1));
+  }
   // オートガチャの帯でレアが流れたときの小さな音
   function rollTick(rank) {
     if (!ok() || throttle('rtick2', 70)) return;
@@ -481,6 +509,6 @@ const Sfx = (() => {
     crash, rouletteTick, rouletteWin, golden, streak, levelUp, chop, crit, fell, coin, gem, buy, milestone, error,
     feverStart, feverEnd, boss, bossWin, bossFail, tick, stage, ach, squirrel, chest, gachaRoll, gachaReveal,
     prestige, goddess, gachaUp, showcase, equip, speed, comboFinish, axeHit, spawn, carry, multi,
-    rollTick, musicLevel, beatPhase, musicOn, setBgm, rankUp, rankDown, twinkle, shatter,
+    cutin, skillStart, skillHit, rollTick, musicLevel, beatPhase, musicOn, setBgm, rankUp, rankDown, twinkle, shatter,
   };
 })();

@@ -242,6 +242,14 @@ const UI = (() => {
       }
       setCls('rank-box', 'show', T.style > 1.5 || rk > 0);
     }
+    // 必殺技ゲージ（SSR以上の斧を装備しているとき）
+    const si = G.skillInfo();
+    setCls('skill-box', 'show', !!si);
+    if (si) {
+      setText('skill-n', si.sk.name);
+      setScale('skill-g', si.gauge / si.need);
+      setCls('skill-box', 'ready', si.gauge / si.need >= 0.8);
+    }
     // フィーバー・ゴールデン
     if (T.fever > 0) {
       setText('fever-l', `FEVER!! ×${st.feverMult}`);
@@ -803,6 +811,7 @@ const UI = (() => {
       `<dl><dt>レア</dt><dd><span class="rb r-${a.r}">${RLAB(a.r)}</span> ${oneIn(R.p)}</dd>` +
       `<dt>Lv</dt><dd>${n ? `Lv${lv}（${fmt(n)}枚・次のLvまで あと${fmt(Math.pow(2, lv) - n)}枚）` : '未所持'}</dd>` +
       `<dt>装備時タップ</dt><dd>×${tapM.toFixed(2)}</dd><dt>装備時特性</dt><dd>${esc(spText(a, lv))}</dd>` +
+      (D.SKILLS[a.id] ? `<dt>必殺技</dt><dd>「${esc(D.SKILLS[a.id].name)}」 ${D.SKILL_TIER[a.r].need}ゲージで発動・斬撃×${D.SKILL_TIER[a.r].mult}</dd>` : '') +
       `<dt>所持ボーナス</dt><dd>全ダメージ +${(R.pas * Math.max(1, lv) * 100).toFixed(1)}%${n ? '' : '（入手時）'}</dd></dl>`;
     const isEq = s.equip === a.id;
     const buttons = preview && !n ? [{ text: '閉じる', cls: 'primary' }] : [
@@ -810,6 +819,50 @@ const UI = (() => {
       { text: '閉じる' },
     ];
     modal({ title: a.name, body, cls: 'r-' + a.r, buttons });
+  }
+
+  // ------------------------------------------------------------- 斧ごとのカットイン（ガチャで出たとき・必殺技）
+  // 画面を止めない帯。get = ガチャで出た（順番待ち）、skill = 必殺技（すぐ出す）
+  const ciQ = [];
+  let ciBusy = false;
+  function cutIn(a, mode, o = {}) {
+    if (!a || !D.SKILLS[a.id]) return;
+    if (mode === 'skill') { playCutIn(a, mode, o); return; }
+    if (ciQ.length >= 3) ciQ.shift();
+    ciQ.push({ a, mode, o });
+    if (!ciBusy) nextCut();
+  }
+  function nextCut() {
+    const it = ciQ.shift();
+    if (!it) { ciBusy = false; return; }
+    ciBusy = true;
+    playCutIn(it.a, it.mode, it.o, nextCut);
+  }
+  function cutInHTML(a, mode, o) {
+    const sk = D.SKILLS[a.id], R = D.RARITY[a.r];
+    const motifs = Array.from({ length: 8 }, (_, i) => `<i style="--d:${(i * 0.13).toFixed(2)}s;--y:${(i * 37) % 90}%">${sk.motif}</i>`).join('');
+    const txt = mode === 'skill'
+      ? `<small>必殺技</small><b class="ci-name">${esc(sk.name)}</b><span class="ci-line">${esc(a.name)}</span>`
+      : `<div class="ci-top"><span class="rb r-${a.r}">${RLAB(a.r)}</span>${o.isNew ? '<em class="ci-new">NEW!!</em>' : o.lvUp ? `<em class="ci-new">Lv${o.lv}↑</em>` : ''}<small>${oneIn(R.p)}</small></div><b class="ci-name">${esc(a.name)}</b><span class="ci-line">「${esc(sk.line)}」</span>`;
+    return `<div class="ci-band"><div class="ci-pat"></div><div class="ci-motif">${motifs}</div><div class="ci-img">${FX.axeIcon(a, mode === 'skill' ? 120 : 150)}</div><div class="ci-txt">${txt}</div><div class="ci-stamp">${esc(sk.stamp)}</div></div>`;
+  }
+  function ciVars(e, a) {
+    e.style.setProperty('--c1', a.blade[0]);
+    e.style.setProperty('--c2', a.blade[1]);
+    e.style.setProperty('--cg', a.glow && a.glow !== 'rainbow' ? a.glow : '#ffffff');
+  }
+  function playCutIn(a, mode, o, done) {
+    const root = $('#cutins');
+    if (!root) { if (done) done(); return; }
+    if (mode === 'skill') root.querySelectorAll('.ci-skill').forEach((x) => x.remove());
+    const sk = D.SKILLS[a.id];
+    const e = el('div', `cutin ci-${mode} pat-${sk.pat}${a.glow === 'rainbow' ? ' rbw' : ''} r-${a.r}`, cutInHTML(a, mode, o || {}));
+    ciVars(e, a);
+    const dur = mode === 'skill' ? 1050 : 1900;
+    e.style.setProperty('--dur', dur + 'ms');
+    root.appendChild(e);
+    if (mode !== 'skill') { Sfx.cutin(G.RANK[a.r], D.AXES.indexOf(a)); Sfx.vibrate(G.RANK[a.r] >= 4 ? [15, 25, 30] : 12); }
+    setTimeout(() => { e.remove(); if (done) done(); }, dur);
   }
 
   // ------------------------------------------------------------- オートガチャの当たり: 小さなカードと、超レアの演出
@@ -844,10 +897,13 @@ const UI = (() => {
     if (overlayBusy || modalCur) { setTimeout(playCut, 600); return; }
     const rk = G.RANK[o.r];
     overlayBusy = true;
-    const ov = el('div', `cut-ov r-${o.r}${rk >= 7 ? ' myth' : ''}`);
-    ov.innerHTML = `<div class="gs-rays"></div><div class="cut-in"><div class="cut-odds">${oneIn(D.RARITY[o.r].p)}</div><div class="gs-rar"><span class="rb r-${o.r}">${RLAB(o.r)}</span>${o.isNew ? '<span class="gs-tag pu">NEW</span>' : ''}</div><div class="gs-img">${FX.axeIcon(o.axe, 210)}</div><div class="gs-name">${esc(o.axe.name)}</div><div class="gs-desc">${o.isNew ? esc(o.axe.desc) : o.lvUp ? `Lv${o.lv} に上がった！` : `${fmt(o.copies)}枚目`}</div></div>`;
+    const sk = D.SKILLS[o.axe.id];
+    const ov = el('div', `cut-ov r-${o.r}${rk >= 7 ? ' myth' : ''}${sk ? ' pat-' + sk.pat : ''}`);
+    ciVars(ov, o.axe);
+    ov.innerHTML = `${sk ? '<div class="ci-pat full"></div>' : ''}<div class="gs-rays"></div>${sk ? `<div class="ci-stamp full">${esc(sk.stamp)}</div>` : ''}<div class="cut-in"><div class="cut-odds">${oneIn(D.RARITY[o.r].p)}</div><div class="gs-rar"><span class="rb r-${o.r}">${RLAB(o.r)}</span>${o.isNew ? '<span class="gs-tag pu">NEW</span>' : ''}</div><div class="gs-img">${FX.axeIcon(o.axe, 210)}</div><div class="gs-name">${esc(o.axe.name)}</div>${sk ? `<div class="gs-line">「${esc(sk.line)}」</div>` : ''}<div class="gs-desc">${o.isNew ? esc(o.axe.desc) : o.lvUp ? `Lv${o.lv} に上がった！` : `${fmt(o.copies)}枚目`}</div>${sk ? `<div class="gs-sk">必殺技「${esc(sk.name)}」</div>` : ''}</div>`;
     document.body.appendChild(ov);
     Sfx.showcase(o.r);
+    if (sk) Sfx.cutin(rk, D.AXES.indexOf(o.axe));
     Sfx.vibrate(rk >= 7 ? [40, 40, 80] : [20, 30, 40]);
     FX.confetti(rk >= 7 ? 220 : rk >= 6 ? 160 : 100);
     FX.addFlash(rk >= 7 ? 0.7 : 0.4, rk >= 7 ? '255,255,255' : '255,240,200');
@@ -871,6 +927,7 @@ const UI = (() => {
       if (blocked() && !overlayBusy) continue;
       const now = performance.now();
       if ((rk >= 7 || (rk >= 5 && o.isNew)) && (rk >= 8 || now - lastCut > 6000) && cutQ.length < 3) { lastCut = now; cutscene(o); }
+      else if (rk >= 3 && (o.isNew || o.lvUp)) cutIn(o.axe, 'get', o);
       else if (rk >= 4 || o.isNew) rareCard(o);
     }
   }
@@ -982,10 +1039,12 @@ const UI = (() => {
   function showcase(ov, o, done) {
     const a = o.axe;
     const rk = rank6(o.r);
-    const box = el('div', `g-show r-${o.r}${a.fantasy ? ' fan' : ''}`);
-    box.innerHTML = `<div class="gs-rays"></div><div class="gs-in">` +
+    const sk = D.SKILLS[a.id];
+    const box = el('div', `g-show r-${o.r}${a.fantasy ? ' fan' : ''}${sk ? ' pat-' + sk.pat : ''}`);
+    ciVars(box, a);
+    box.innerHTML = `${sk ? '<div class="ci-pat full"></div>' : ''}<div class="gs-rays"></div>${sk ? `<div class="ci-stamp full">${esc(sk.stamp)}</div>` : ''}<div class="gs-in">` +
       `<div class="gs-rar"><span class="rb r-${o.r}">${RLAB(o.r)}</span>${a.fantasy ? '<span class="gs-tag fan">幻想の斧</span>' : ''}${o.pickup ? '<span class="gs-tag pu">PICKUP</span>' : ''}</div>` +
-      `<div class="gs-img">${FX.axeIcon(a, 210)}</div><div class="gs-name">${esc(a.name)}</div><div class="gs-desc">${esc(a.desc)}</div>` +
+      `<div class="gs-img">${FX.axeIcon(a, 210)}</div><div class="gs-name">${esc(a.name)}</div>${sk ? `<div class="gs-line">「${esc(sk.line)}」</div>` : ''}<div class="gs-desc">${esc(a.desc)}</div>${sk ? `<div class="gs-sk">必殺技「${esc(sk.name)}」</div>` : ''}` +
       `<div class="gs-sp">✦ ${esc(spText(a, o.lv))}</div><div class="gs-new">${o.isNew ? 'NEW!!' : o.lvUp ? `Lv${o.lv} にアップ!` : `${fmt(o.copies)}枚目`}</div><div class="gs-btns"></div></div>`;
     const bb = box.querySelector('.gs-btns');
     if (S().equip !== a.id) {
@@ -1003,6 +1062,7 @@ const UI = (() => {
     bb.appendChild(nb);
     ov.appendChild(box);
     Sfx.showcase(o.r);
+    if (sk) Sfx.cutin(rk, D.AXES.indexOf(a));
     Sfx.vibrate(rk >= 4 ? [30, 40, 60] : 20);
     FX.confetti(rk >= 5 ? 200 : rk >= 4 ? 140 : 70);
     FX.addFlash(rk >= 5 ? 0.6 : 0.35, rk >= 6 ? '255,120,220' : '255,255,255');
@@ -1401,6 +1461,7 @@ const UI = (() => {
       row('数字表記', seg('num', [['jp', '万億兆'], ['en', 'K M B'], ['sci', '1e10']])) +
       row('夜ふかしガード', tog('night')) +
       `<p class="muted small">夜ふかしガード: 22時以降は演出を抑えて画面を暖色に、23時以降は寝るよう促す。</p>` +
+      `<div class="set-sec">この端末のセーブ</div><p class="muted small">セーブはこの端末のこのブラウザの中だけに保存される（端末ID <b>${esc(deviceId())}</b>）。スマホとPCなど端末ごとに別々のデータで遊べる。データを別の端末へ移すときは「書き出し」→ 移したい端末で「読み込み」。</p>` +
       `<div class="set-sec">セーブ</div><div class="set-btns"><button type="button" class="btn small" data-act="save">今すぐセーブ</button><button type="button" class="btn small" data-act="export">書き出し</button><button type="button" class="btn small" data-act="import">読み込み</button></div>` +
       `<div class="set-io" hidden><textarea id="set-io-text" rows="4" aria-label="セーブデータ"></textarea><div class="set-btns"><button type="button" class="btn small primary" data-act="copy">コピー</button><button type="button" class="btn small primary" data-act="load">このデータを読み込む</button></div></div>` +
       `<div class="set-sec">危険</div><div class="set-btns"><button type="button" class="btn small danger" data-act="reset">データを全部消す</button></div>` +
@@ -1449,6 +1510,16 @@ const UI = (() => {
       if (e.target.id === 'set-vol') { st.vol = Number(e.target.value); applySettings(); }
     });
     modal({ title: '⚙️ 設定', body, cls: 'settings-modal', buttons: [{ text: '閉じる', onClick: () => G.save() }] });
+  }
+
+  // 端末ごとのID（セーブとは別に保存。表示用）
+  function deviceId() {
+    const K = 'dopadopa-kikori-device';
+    try {
+      let id = localStorage.getItem(K);
+      if (!id) { id = Math.random().toString(36).slice(2, 6).toUpperCase() + '-' + Math.random().toString(36).slice(2, 6).toUpperCase(); localStorage.setItem(K, id); }
+      return id;
+    } catch (e) { return '保存できない環境'; }
   }
 
   // ------------------------------------------------------------- 数字カウントアップ
@@ -1527,6 +1598,7 @@ const UI = (() => {
     });
     G.on('equip', () => { if (tab === 'upgrades' || tab === 'gacha') rebuild(); });
     G.on('autoRoll', onAutoRoll);
+    G.on('skill', () => { const b = $('#skill-box'); if (b) { b.classList.remove('fire'); void b.offsetWidth; b.classList.add('fire'); } });
     G.on('setDone', (set) => {
       banner('セット完成!!', `${set.icon} ${set.name} ・ ${bonusText(set.bonus)}`, 'unlock');
       toast(set.icon, `セット完成: ${set.name}`, bonusText(set.bonus), 'gold');
@@ -1586,5 +1658,5 @@ const UI = (() => {
     }
   }
 
-  return { init, frame, bump, banner, toast, modal, rebuild, blocked, nightCheck, afterHit, tapSwing: doTap, shakeHud, wave, beat, openDrawer, closeDrawer, get tab() { return tab; } };
+  return { init, frame, bump, banner, toast, modal, rebuild, blocked, nightCheck, afterHit, tapSwing: doTap, shakeHud, wave, beat, cutIn, openDrawer, closeDrawer, get tab() { return tab; } };
 })();

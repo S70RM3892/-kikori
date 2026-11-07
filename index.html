@@ -7,6 +7,12 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <meta name="description" content="斧をドラッグして3Dの木をスパッと斬りまくる、ドーパミン全開の木こりインクリメンタルゲーム。">
 <meta name="theme-color" content="#120d0a">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="ドパ木こり">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=M+PLUS+Rounded+1c:wght@500;700;800&display=swap">
@@ -70,6 +76,7 @@
       <div class="rk-g"><i id="rank-g"></i></div>
       <div class="rk-m" id="rank-m"></div>
     </div>
+    <div class="skill-box" id="skill-box" aria-hidden="true"><small>必殺技</small><b id="skill-n"></b><div class="sk-g"><i id="skill-g"></i></div></div>
     <div id="buffs" aria-live="polite"></div>
 
     <nav class="rail rail-left" aria-label="強化メニュー">
@@ -104,6 +111,7 @@
 <div id="banners" aria-live="polite"></div>
 <div id="toasts" aria-live="polite"></div>
 <div id="modal-root"></div>
+<div id="cutins" aria-hidden="true"></div>
 <div id="night-tint" hidden></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
