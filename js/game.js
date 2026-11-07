@@ -31,7 +31,7 @@ const G = (() => {
         missionsDone: 0, loginDays: 0, studies: 0, sleeps: 0, goddess: 0, hires: 0, bestStage: 1,
         gotSSR: 0, gotUR: 0, gotLR: 0, gotEX: 0, playTime: 0, gemsAll: 0, bestSpirits: 0, bestBoss: 0, bestComboDmg: 0,
         justs: 0, maxChain: 0, greats: 0, maxSpeeds: 0, echoes: 0, thunders: 0, blasts: 0,
-        goldens: 0, roulettes: 0, bestRoulette: 0, bestStreak: 0, rouletteWood: 0,
+        goldens: 0, roulettes: 0, bestRoulette: 0, bestStreak: 0, rouletteWood: 0, multiKills: 0, bestMulti: 0,
       },
       daily: { last: '' },
       settings: { sound: true, vol: 0.7, vibe: true, fx: 2, shake: true, flash: true, num: 'jp', night: true, buyAmt: 1, speed: 1 },
@@ -50,7 +50,7 @@ const G = (() => {
     incomeEMA: 0, incomeAcc: 0, incomeT: 0, dpsAcc: 0,
     checkT: 0, dirty: true, st: null,
     justChain: 0, blastCount: 0, pending: [],
-    treeStreak: 0, golden: 0, goldenMax: 1, comboDmg: 0, speedCap: 3,
+    treeStreak: 0, golden: 0, goldenMax: 1, comboDmg: 0, speedCap: 3, carry: null, carryNext: null,
   };
 
   // ------------------------------------------------------------- イベント
@@ -263,11 +263,16 @@ const G = (() => {
     emit('spawn', T.tree);
   }
 
-  function hit(dmg) {
+  // carry: 斬撃のとき { n: この一振りで何本目か, dir }。倒しきって余ったダメージは次の木へ持ち越す
+  function hit(dmg, carry) {
     const tr = T.tree;
     if (!tr || !tr.alive) return;
     tr.hp -= dmg;
-    if (tr.hp <= 0) { tr.hp = 0; fell(); }
+    if (tr.hp <= 0) {
+      T.carry = carry ? { dmg: -tr.hp, n: carry.n, dir: carry.dir } : null;
+      tr.hp = 0;
+      fell();
+    }
   }
 
   function fell() {
@@ -291,11 +296,21 @@ const G = (() => {
     if (tr.rar.id === 'gold') S.stats.gold++;
     if (tr.rar.id === 'rainbow') S.stats.rainbow++;
     T.respawn = T.time - tr.born < 0.6 ? C.RESPAWN_FAST : C.RESPAWN;
+    // 一振りで何本目か。余りがあれば次の木もすぐ生やして斬る
+    const carry = T.carry;
+    T.carry = null;
+    const multi = carry ? carry.n : 0;
+    if (multi >= 2) {
+      S.stats.multiKills++;
+      if (multi > S.stats.bestMulti) S.stats.bestMulti = multi;
+    }
+    T.carryNext = carry && carry.dmg > 0 && carry.n < C.CARRY_MAX ? { dmg: carry.dmg, n: carry.n + 1, dir: carry.dir } : null;
+    if (T.carryNext) T.respawn = C.RESPAWN_FAST;
     gainXp(tr.boss ? 40 : 3 * ({ normal: 1, silver: 2, gold: 4, rainbow: 10 }[tr.rar.id] || 1));
     // 連続伐採（コンボが切れないまま何本倒せるか）
     T.treeStreak = T.combo > 0 ? T.treeStreak + 1 : 1;
     if (T.treeStreak > S.stats.bestStreak) S.stats.bestStreak = T.treeStreak;
-    emit('fell', { tree: tr, reward, gems, chest, streak: T.treeStreak });
+    emit('fell', { tree: tr, reward, gems, chest, streak: T.treeStreak, multi });
     const sm = D.STREAK_MS.find((x) => x[0] === T.treeStreak);
     if (sm) {
       gainGems(sm[1]);
@@ -322,6 +337,8 @@ const G = (() => {
       S.kills++;
       if (S.kills >= C.TREES_PER_STAGE) advanceStage();
     }
+    // 次がボスなら一呼吸おく（余りの斬撃もここで止める）
+    if (!S.farming && isBossStage(S.stage) && !tr.boss) { T.respawn = C.RESPAWN_SLOW; T.carryNext = null; }
   }
 
   function advanceStage() {
@@ -342,7 +359,8 @@ const G = (() => {
     S.kills = 0;
     T.farmKills = 0;
     T.bossTimer = 0;
-    T.respawn = C.RESPAWN;
+    T.respawn = C.RESPAWN_SLOW;
+    T.carryNext = null;
     emit('bossFail', tr);
   }
 
@@ -453,7 +471,7 @@ const G = (() => {
     T.comboDmg += dmg;
     ev.total = T.comboDmg;
     emit('swing', ev);
-    if (alive) hit(dmg);
+    if (alive) hit(dmg, isTap ? null : { n: 1, dir: o.dir || 1 });
     for (const p of procs) T.pending.push({ t: T.time + p.delay, kind: p.kind, dmg: p.dmg, n: p.n, x: o.x, y: o.y, dir: o.dir || 1 });
     return ev;
   }
@@ -868,6 +886,13 @@ const G = (() => {
           continue;
         }
         const alive = !!(T.tree && T.tree.alive);
+        if (p.kind === 'carry') {
+          // 斬撃の余りが、生えたばかりの次の木に入る
+          if (!alive) continue;
+          emit('proc', Object.assign({ alive, total: T.comboDmg }, p));
+          hit(p.dmg, { n: p.n, dir: p.dir });
+          continue;
+        }
         if (p.kind === 'echo') S.stats.echoes++;
         else if (p.kind === 'thunder') S.stats.thunders++;
         else S.stats.blasts++;
@@ -893,6 +918,8 @@ const G = (() => {
       if (T.respawn <= 0) {
         if (T.pendingBoss) challengeBoss();
         else spawnTree();
+        if (T.carryNext && T.tree && T.tree.alive) T.pending.push(Object.assign({ t: T.time + C.CARRY_DELAY, kind: 'carry', x: null, y: null }, T.carryNext));
+        T.carryNext = null;
       }
     }
 

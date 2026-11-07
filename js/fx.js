@@ -91,7 +91,26 @@ const FX = (() => {
     x = hw * 2 + 12 >= OW ? OW / 2 : U.clamp(x, hw + 6, OW - hw - 6);
     const max = MAXT[quality];
     if (texts.length >= max) texts.splice(0, texts.length - max + 1);
-    texts.push({ x, y, s, size: o.size || 18, fill: o.fill || '#fff', stroke: o.stroke || 'rgba(30,14,4,0.9)', vy: o.vy || -70, vx: o.vx || 0, life: o.life || 0.9, max: o.life || 0.9, pop: o.pop || 1.5, rainbow: !!o.rainbow, light: !!o.light, font: o.font || FONT_D, rot: o.rot || 0 });
+    const t = { x, y, s, size: o.size || 18, fill: o.fill || '#fff', stroke: o.stroke || 'rgba(30,14,4,0.9)', vy: o.vy || -70, vx: o.vx || 0, life: o.life || 0.9, max: o.life || 0.9, pop: o.pop || 1.5, rainbow: !!o.rainbow, light: !!o.light, font: o.font || FONT_D, rot: o.rot || 0 };
+    texts.push(t);
+    return t;
+  }
+  // 連続で出る数字は1つにまとめて、出し直すたびに値を足してポンと跳ねさせる
+  const merged = {};
+  function mergeText(key, x, y, val, fmtFn, o, win = 0.55) {
+    const m = merged[key];
+    if (m && texts.includes(m.t) && clock - m.at < win) {
+      m.sum += val;
+      m.t.s = fmtFn(m.sum, ++m.n);
+      m.t.x = x; m.t.y = y; m.t.vy = o.vy || -70;
+      m.t.life = m.t.max;
+      m.t.size = Math.min((o.size || 18) * 1.6, m.t.size + 1.5);
+      m.at = clock;
+      return m.t;
+    }
+    const t = floatText(x, y, fmtFn(val, 1), o);
+    merged[key] = { t, sum: val, at: clock, n: 1 };
+    return t;
   }
   function burst(x, y, n, opts = {}) {
     for (let i = 0; i < n; i++) {
@@ -754,6 +773,7 @@ const FX = (() => {
 
   // 追撃（残像・落雷・爆裂）
   function onProc(p) {
+    if (p.kind === 'carry') { onCarry(p); return; }
     if (p.kind === 'echo') Sfx.echo(p.n);
     else if (p.kind === 'thunder') Sfx.thunder(p.n);
     else Sfx.blast(G.S.upg.blast || 0);
@@ -800,17 +820,50 @@ const FX = (() => {
     }
   }
 
+  // 斬撃の余りが、生えたばかりの次の木に入る（ザクッ、ザクッ、ザクッ）
+  function onCarry(p) {
+    Sfx.carry(p.n);
+    if (blocked() || !p.alive) return;
+    World.onProc(p);
+    const np = notchPoint();
+    const dir = p.dir || 1;
+    World.punch(0.05);
+    World.shake(0.35);
+    hitStop = Math.max(hitStop, 0.035);
+    spawn({ t: 'slash', x: np.x, y: np.y, life: 0.2, max: 0.2, s: 120 + p.n * 14, w: 3 + p.n * 0.6, rot: -dir * 0.12, col: '255,225,120' });
+    spawn({ t: 'flare', x: np.x, y: np.y, life: 0.16, max: 0.16, s: 60 + p.n * 8, col: '255,235,190' });
+    for (let i = 0; i < 6; i++) {
+      const a = (dir > 0 ? 0 : Math.PI) + (Math.random() - 0.5) * 1.4, v = 300 + Math.random() * 400;
+      spawn({ t: 'spark', x: np.x, y: np.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0.3, max: 0.3, s: 2.6, col: '#ffe9a0' });
+    }
+    floatText(np.x + dir * 50, np.y - 30, U.fmt(p.dmg), { size: 22 + p.n * 2, fill: '#ffe9b0', stroke: '#3a1400', vy: -100, vx: dir * 40, life: 0.75 });
+    if (p.n === 2) floatText(np.x - dir * 40, np.y - 70, '貫通!', { size: 16, fill: '#ffd23a', stroke: '#2a0a00', vy: -60, life: 0.6, light: true });
+  }
+
   // 伐採: とどめのスロー＋コイン
   function onFell(d) {
     const tree = d.tree;
     const big = tree.boss || tree.rar.id !== 'normal';
-    Sfx.fell(tree.rar.id, tree.boss);
+    Sfx.fell(tree.rar.id, tree.boss, d.streak || 0);
     Sfx.vibrate(tree.boss ? [30, 40, 60] : 15);
     World.onFell(d);
     if (blocked()) return;
-    if (!calm) {
-      slowmo = Math.max(slowmo, big ? 0.55 : 0.26);
-      World.finisher(big ? 1 : 0.35);
+    // 普通の木は止めずに次へ（スローはボス・レア木だけ）
+    if (!calm && big) {
+      slowmo = Math.max(slowmo, 0.55);
+      World.finisher(1);
+    } else World.finisher(0.12);
+    // 一振りで何本も倒した
+    if (d.multi >= 2) {
+      const np = notchPoint();
+      const m = d.multi;
+      const prev = merged.multi && merged.multi.t;
+      if (prev) { const i = texts.indexOf(prev); if (i >= 0) texts.splice(i, 1); }
+      merged.multi = { t: floatText(np.x, np.y - 150, `${m}本斬り${'!'.repeat(Math.min(4, m - 1))}`, { size: 26 + m * 6, fill: m >= 4 ? '#ffffff' : '#ffe14a', stroke: '#2a0a00', rainbow: m >= 4, rot: -0.1, pop: 2.4, vy: -24, life: 1.0 }), at: clock };
+      Sfx.multi(m);
+      Sfx.vibrate(10 + m * 8);
+      if (m >= 3) focusLines(np.x, np.y, 0.35 + m * 0.05, '255,240,180', Math.min(1, m / 5));
+      if (m >= 5) { UI.banner('一閃 5本斬り!!!', '一振りで森ごと伐り拓いた', 'combo'); confetti(70); }
     }
     const cc = sceneCenter();
     const finisher = clock - lastHit.t < 0.05 && (lastHit.tier >= 2 || lastHit.stier >= 5 || tree.boss);
@@ -819,14 +872,20 @@ const FX = (() => {
       focusLines(lastHit.x, lastHit.y, 0.5, '255,255,255', 0.9);
       Sfx.vibrate([20, 40, 30]);
     }
-    floatText(cc.x, cc.y - 10, '+' + U.fmt(d.reward), { size: big ? 40 : 28, fill: '#ffc04a', stroke: '#4a2400', vy: -70, life: 1.3, pop: 2 });
+    if (big) floatText(cc.x, cc.y - 10, '+' + U.fmt(d.reward), { size: 40, fill: '#ffc04a', stroke: '#4a2400', vy: -70, life: 1.3, pop: 2 });
+    else mergeText('reward', cc.x, cc.y - 10, d.reward, (v, n) => `+${U.fmt(v)}${n >= 2 ? ` (${n}本)` : ''}`, { size: 28, fill: '#ffc04a', stroke: '#4a2400', vy: -50, life: 1.1, pop: 1.8 });
     coins(cc.x, cc.y, big ? 16 : 7, 'wood');
     if (d.gems) {
       floatText(cc.x + 60, cc.y + 24, '💎+' + d.gems, { size: 20, fill: '#5ee8ff', stroke: '#06324a', vy: -60, life: 1.2 });
       coins(cc.x, cc.y, Math.min(8, d.gems), 'gem');
     }
     if (d.chest) floatText(cc.x - 60, cc.y + 24, '📦 宝箱GET!', { size: 17, fill: '#ffe08a', stroke: '#4a2400', vy: -50, life: 1.4 });
-    if (d.streak >= 3) floatText(cc.x, cc.y + 56, `🔗 ${d.streak}本連続`, { size: 15, fill: '#9dff4a', stroke: '#0a2a00', vy: -40, life: 1.1, light: true });
+    if (d.streak >= 3) {
+      const m = merged.streak;
+      const o = { size: 15 + Math.min(13, Math.floor(d.streak / 5)), fill: d.streak >= 50 ? '#ffe14a' : '#9dff4a', stroke: '#0a2a00', vy: -30, life: 1.1, light: d.streak < 25, rainbow: d.streak >= 100 };
+      if (m && texts.includes(m.t) && clock - m.at < 1) { m.t.s = `🔗 ${d.streak}本連続`; m.t.life = m.t.max; m.t.y = cc.y + 56; Object.assign(m.t, { size: o.size, fill: o.fill, rainbow: o.rainbow, light: o.light }); m.at = clock; }
+      else merged.streak = { t: floatText(cc.x, cc.y + 56, `🔗 ${d.streak}本連続`, o), at: clock };
+    }
     if (big) { confetti(tree.boss ? 80 : 36); addFlash(0.2, '255,230,150'); const np = notchPoint(); focusLines(np.x, np.y, tree.boss ? 0.7 : 0.4, '255,255,255', tree.boss ? 1 : 0.5); }
   }
   // 倒れた木が地面に着いた瞬間
@@ -848,6 +907,12 @@ const FX = (() => {
     G.on('fell', onFell);
     G.on('spawn', (tree) => {
       World.onSpawn(tree);
+      // ポンと生える土ぼこり
+      if (gl && !blocked() && quality > 0) {
+        const b = World.toScreen(0, 0.05, 0.7);
+        for (let i = 0; i < 2 + quality; i++) spawn({ t: 'dust', x: b.x + (Math.random() - 0.5) * 40, y: b.y, vx: (Math.random() - 0.5) * 140, vy: -30 - Math.random() * 40, life: 0.45, max: 0.45, s: 6 + Math.random() * 7 });
+      }
+      Sfx.spawn();
       if (tree.rar.id !== 'normal' && !blocked()) {
         const cc = sceneCenter();
         burst(cc.x, cc.y, 24, { col: tree.rar.id === 'gold' ? '#ffd84a' : tree.rar.id === 'silver' ? '#ffffff' : undefined, speed: 240 });

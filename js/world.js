@@ -687,7 +687,7 @@ const World = (() => {
   }
   // 当たり判定用の幹（スクリーン座標）
   function trunkInfo() {
-    if (!ok || !cur || !cur.tree.alive || cur.grow < 0.6) return null;
+    if (!ok || !cur || !cur.tree.alive || cur.grow < 0.3) return null;
     const o = cur;
     const rn = o.rAt(o.ny);
     const pb = toScreen(0, 0.05, o.r0), pt = toScreen(0, o.h, o.r1), pn = toScreen(0, o.ny, rn), pe = toScreen(rn, o.ny, 0);
@@ -742,6 +742,8 @@ const World = (() => {
     o.shake = Math.min(1.8, o.shake + 0.5 + s * 0.14 + (d.just ? 0.3 : 0));
     o.flash = Math.min(1, 0.55 + s * 0.08 + (d.just ? 0.3 : 0) + d.tier * 0.1);
     o.dir = d.dir || 1;
+    o.lastS = s;
+    o.lastHitT = time;
     const p = d.y != null ? hitWorld(d.y) : null;
     const hp = p || v2.set(0, o.ny, o.rAt(o.ny));
     const light = cTmp.set(WOOD.r, WOOD.g, WOOD.b).clone();
@@ -761,6 +763,17 @@ const World = (() => {
     if (!ok || !cur) return;
     const o = cur;
     const hp = (p.y != null && hitWorld(p.y)) || v2.set(0, o.ny, o.rAt(o.ny));
+    if (p.kind === 'carry') {
+      // 斬撃の余りが生えたばかりの木に入る
+      o.flash = 1;
+      o.shake = Math.min(1.8, o.shake + 0.8);
+      o.dir = p.dir || o.dir;
+      o.lastS = 3;
+      o.lastHitT = time;
+      emitChips(hp.x, hp.y, hp.z + 0.1, o.dir, 9, 1.2, cTmp.set(WOOD.r, WOOD.g, WOOD.b).clone(), new T3.Color(pal.trunk));
+      cam.kick = -o.dir * 0.1;
+      return;
+    }
     if (p.kind === 'thunder') { flashLight('#bfe0ff', 1.6); o.flash = 1; o.shake = Math.min(1.8, o.shake + 0.6); }
     else if (p.kind === 'blast') {
       const lv = G.S.upg.blast || 0;
@@ -784,17 +797,31 @@ const World = (() => {
     cur = null;
     o.falling = true;
     o.fallT = 0;
-    o.dir = d.tree.side || 1;
+    const swung = o.lastHitT != null && time - o.lastHitT < 0.35;
+    o.dir = swung ? o.dir : d.tree.side || 1;
     o.landed = false;
-    // 倒れる側の縁を蝶番にする
-    const rn = o.rAt(o.ny);
-    o.pivot.position.x = o.dir * rn * 0.9;
-    o.upper.position.x = -o.dir * rn * 0.9;
     const big = d.tree.boss || d.tree.rar.id !== 'normal';
+    if (!big) {
+      const s = swung ? o.lastS || 0 : 0;
+      const cm = (o.ny + o.top) * 0.5;
+      o.launch = true;
+      o.pivot.position.set(0, cm, 0);
+      o.upper.position.set(0, -cm, 0);
+      o.vx = o.dir * (6 + rnd() * 2.5 + s * 0.8);
+      o.vy = 4.5 + rnd() * 2 + s * 0.4;
+      o.vz = -1 - rnd() * 2.5;
+      o.spin = -o.dir * (5 + rnd() * 5 + s);
+      o.spinX = (rnd() - 0.5) * 3;
+    } else {
+      // 倒れる側の縁を蝶番にする
+      const rn = o.rAt(o.ny);
+      o.pivot.position.x = o.dir * rn * 0.9;
+      o.upper.position.x = -o.dir * rn * 0.9;
+    }
     emitCoins(0, o.h * 0.8, 0.6, big ? 46 : 16, big ? 1.4 : 1);
     emitLeaves(0, o.h + 1.2 * o.k, 0.3, big ? 30 : 12, 3 * o.k, pal.leaves.map((c) => new T3.Color(c)));
     fallers.push(o);
-    if (fallers.length > 3) disposeTree(fallers.shift());
+    if (fallers.length > 5) disposeTree(fallers.shift());
   }
   function onBossFail(tree) {
     if (!ok || !cur) return;
@@ -950,7 +977,7 @@ const World = (() => {
     // 現在の木
     const o = cur;
     if (o) {
-      o.grow = Math.min(1, o.grow + (dt * spd) / 0.42);
+      o.grow = Math.min(1, o.grow + (dt * spd) / 0.2); // ボヨンと一瞬で生える
       const gs = Math.max(0.01, U.ease.outElastic(o.grow) * 0.9 + o.grow * 0.1);
       o.root.scale.setScalar(gs);
       const dmg = 1 - o.tree.hp / o.tree.maxHp;
@@ -994,6 +1021,18 @@ const World = (() => {
     for (let i = fallers.length - 1; i >= 0; i--) {
       const f = fallers[i];
       f.fallT += dt * (1 + (spd - 1) * 0.5);
+      if (f.launch) {
+        const ft = dt * (1 + (spd - 1) * 0.5);
+        f.vy -= 20 * ft;
+        f.pivot.position.x += f.vx * ft;
+        f.pivot.position.y += f.vy * ft;
+        f.pivot.position.z += f.vz * ft;
+        f.pivot.rotation.z += f.spin * ft;
+        f.pivot.rotation.x += f.spinX * ft;
+        f.pivot.scale.setScalar(f.fallT < 0.3 ? 1 : Math.max(0.001, 1 - (f.fallT - 0.3) / 0.5));
+        if (f.fallT > 0.8) { disposeTree(f); fallers.splice(i, 1); }
+        continue;
+      }
       if (f.escape) {
         f.root.position.y += dt * 7;
         f.root.scale.multiplyScalar(Math.max(0.5, 1 - dt * 1.5));

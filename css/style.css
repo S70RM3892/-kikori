@@ -151,8 +151,8 @@ button:focus-visible, summary:focus-visible, textarea:focus-visible, input:focus
 .stage-line small { font-weight: 800; font-size: 11px; letter-spacing: 0.1em; color: #ffe7c2; }
 .stage-line b { font-family: var(--font-d); font-weight: 400; font-size: 22px; line-height: 1; }
 .stage-line span { font-weight: 800; font-size: 12px; }
-.pips { display: inline-flex; gap: 3px; align-items: center; }
-.pips i { width: 7px; height: 7px; border-radius: 50%; background: rgba(0, 0, 0, 0.5); border: 1px solid rgba(0, 0, 0, 0.7); }
+.pips { display: inline-flex; gap: 2px; align-items: center; }
+.pips i { width: 6px; height: 6px; border-radius: 50%; background: rgba(0, 0, 0, 0.5); border: 1px solid rgba(0, 0, 0, 0.7); }
 .pips i.on { background: var(--wood); box-shadow: 0 0 6px var(--wood); }
 .pips.boss i, .pips.farm i { display: none; }
 .pips.boss::after { content: 'BOSS'; font-family: var(--font-d); font-size: 12px; color: #ff6060; }

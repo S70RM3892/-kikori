@@ -153,13 +153,40 @@ const Sfx = (() => {
     }
   }
   // 倒れ始め: メキメキ＋報酬のきらめき（地響きは crash で着地時に）
-  function fell(rar, boss) {
+  // n: 連続で倒した本数。続けて倒すほど音が上がっていく
+  function fell(rar, boss, n = 0) {
     if (!ok()) return;
-    noise(0.45, 0.16, 'bandpass', 420, 2.5, 0, 1200);
-    tone(70, 0.35, 'sawtooth', 0.05, 0, 120);
     const big = boss || rar === 'gold' || rar === 'rainbow';
-    const seq = big ? [0, 4, 7, 12, 16, 19, 24] : [0, 7, 12];
-    seq.forEach((s, i) => tone(note(s, 784), 0.14, 'triangle', 0.08, 0.06 + i * 0.05));
+    if (big) {
+      noise(0.45, 0.16, 'bandpass', 420, 2.5, 0, 1200);
+      tone(70, 0.35, 'sawtooth', 0.05, 0, 120);
+      [0, 4, 7, 12, 16, 19, 24].forEach((s, i) => tone(note(s, 784), 0.14, 'triangle', 0.08, 0.06 + i * 0.05));
+      return;
+    }
+    if (throttle('fell', 40)) return;
+    // 普通の木: 短い「スパッ」と、吹っ飛ぶ風切り音
+    noise(0.12, 0.2, 'bandpass', 900, 1.5, 0, 2600);
+    noise(0.22, 0.08, 'bandpass', 600, 1, 0.03, 2400);
+    const up = PENTA[n % 5] + 12 * Math.min(2, Math.floor(n / 5));
+    [0, 7].forEach((s, i) => tone(note(s + up, 784), 0.12, 'triangle', 0.07, 0.03 + i * 0.045));
+  }
+  function spawn() {
+    if (!ok() || throttle('spawn', 70)) return;
+    tone(330, 0.07, 'sine', 0.1, 0, 640);
+    noise(0.05, 0.08, 'lowpass', 700, 1);
+  }
+  // 斬撃の余りが次の木に入る: 本数が増えるほど高く
+  function carry(n) {
+    if (!ok() || throttle('carry', 30)) return;
+    const p = 1 + (n - 1) * 0.12;
+    noise(0.08, 0.42, 'bandpass', 1300 * p, 1.3);
+    tone(200 * p, 0.11, 'sine', 0.32, 0, 60);
+    noise(0.05, 0.18, 'highpass', 5000, 0.8, 0.005);
+  }
+  function multi(n) {
+    if (!ok()) return;
+    [0, 4, 7, 12, 16, 19, 24].slice(0, Math.min(7, n + 2)).forEach((s, i) => tone(note(s, 659), 0.16, 'square', 0.05, i * 0.045));
+    if (n >= 4) noise(0.7, 0.12, 'highpass', 5000, 0.7, 0.1);
   }
   function crash(boss) {
     if (!ok()) return;
@@ -392,6 +419,6 @@ const Sfx = (() => {
     unlock: ensure, setEnabled, setVolume, setVibe, vibrate, whoosh, slash, grab, echo, thunder, blast, unlockFx,
     crash, rouletteTick, rouletteWin, golden, streak, levelUp, chop, crit, fell, coin, gem, buy, milestone, error,
     feverStart, feverEnd, boss, bossWin, bossFail, tick, stage, ach, squirrel, chest, gachaRoll, gachaReveal,
-    prestige, goddess, gachaUp, showcase, equip, speed, comboFinish, axeHit,
+    prestige, goddess, gachaUp, showcase, equip, speed, comboFinish, axeHit, spawn, carry, multi,
   };
 })();
