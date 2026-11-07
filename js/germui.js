@@ -48,6 +48,7 @@ const GUI = (() => {
     }, 720);
   }
   function onDim(d) {
+    if (d.to === 'forest') { const hud = $('#hud'); hud.dataset.rank = String(G.T.rank); hud.style.setProperty('--rkc', D.STYLE.RANKS[G.T.rank].col); }
     if (d.to === 'germ' && d.first) setTimeout(tutorial, 900);
     if (d.to === 'forest' && d.away) {
       const a = d.away;
@@ -59,7 +60,7 @@ const GUI = (() => {
   function tutorial() {
     _.modal({
       title: '🧫 菌斬り次元へようこそ',
-      body: `<ol class="g-tut"><li><b>刀をドラッグ</b>して菌を斬る。速く振るほど強い</li><li>菌の<b>中心（芯）</b>を通すとダメージ×${GD.CFG.CORE_MULT}</li><li><b>一振りで何体も</b>斬ると「一閃」。続けて斬るほど倍率が上がる</li><li>${GD.CFG.WAVE_KILLS}体でウェーブが進む。10ウェーブごとに<b>巨大病原体</b></li><li>ボスを倒すと<b>🧪変異因子</b>。「変異」は<b>森にも効く</b></li><li><b>刀ガチャ</b>はここにいる間ずっと自動で回る。SSR以上の刀には<b>奥義</b></li></ol><p class="muted">森の木こりはその間も働いている。左上の 🌲 で森へ帰れる。</p>`,
+      body: `<ol class="g-tut"><li><b>刀をドラッグ</b>して菌を斬る。斬った菌は一瞬止まり、まとめて真っ二つ</li><li><b>群れ</b>（横一列・弧・輪…）は一振りで払えば「一閃」。PENTA KILL・全滅ボーナス</li><li>倒すほど<b>斬撃ランク</b>（E〜SSS）と<b>無双ゲージ</b>がたまる。満タンで<b>無双モード</b></li><li><b>🎰スロット菌</b>は777でDNA×50、<b>💣爆裂菌</b>は誘爆の連鎖、<b>📦宝箱菌</b>・<b>🍀ラッキー細胞</b>も</li><li>10ウェーブごとに<b>巨大病原体</b>。光る<b>弱点</b>を斬って、最後は<b>一刀両断</b></li><li>初めて斬った株は<b>菌図鑑</b>へ。刀ガチャは自動で回り、SSR以上は<b>奥義</b>つき</li></ol><p class="muted">森の木こりはその間も働いている。左上の 🌲 で森へ帰れる。</p>`,
       buttons: [{ text: '斬りまくる！', cls: 'primary' }],
     });
   }
@@ -137,12 +138,28 @@ const GUI = (() => {
       _.setScale('ougi-g', oi.gauge / oi.need);
       _.setCls('ougi-box', 'ready', oi.gauge / oi.need >= 0.8);
     }
+    // 斬撃ランク
+    const RK = D.STYLE.RANKS, rk = T.rank, nx = RK[rk + 1];
+    const lo = RK[rk].th, hi = nx ? nx.th : D.STYLE.MAX;
+    _.setScale('grank-g', (T.style - lo) / Math.max(1, hi - lo));
+    _.setText('grank-l', RK[rk].id);
+    _.setText('grank-w', RK[rk].word);
+    _.setText('grank-m', rk ? `DNA×${RK[rk].mult}` : '');
+    _.setCls('grank-box', 'show', T.style > 1.5 || rk > 0);
+    const gb = $('#grank-box');
+    if (gb && gb.dataset.r !== String(rk)) { gb.dataset.r = String(rk); gb.style.setProperty('--rk', RK[rk].col); const hud = $('#hud'); hud.dataset.rank = String(rk); hud.style.setProperty('--rkc', RK[rk].col); }
+    // 無双ゲージ
+    if (T.musou > 0) { _.setScale('g-musou-fill', T.musou / (T.musouMax || 1)); _.setText('g-musou-l', `👹 無双 ${T.musou.toFixed(1)}秒`); }
+    else { _.setScale('g-musou-fill', T.musouG / 100); _.setText('g-musou-l', '無双ゲージ'); }
+    _.setCls('g-musou', 'on', T.musou > 0);
+    _.setCls('g-musou', 'near', T.musou <= 0 && T.musouG >= 80);
     // 大発生
     _.setCls('out-bar', 'show', T.outbreak > 0);
     if (T.outbreak > 0) _.setScale('out-fill', T.outbreak / st.outTime);
     updateDock();
   }
   function badges(setBadge) {
+    setBadge('dex', dexStats().pending || 0);
     if (!G.germOpen()) return;
     const g = S().germ;
     let c = 0;
@@ -344,6 +361,12 @@ const GUI = (() => {
       case 'boss': return `ボス ×${st.bossM.toFixed(2)}・${st.bossTime}秒`;
       case 'krollspd': return `刀ガチャ ${st.rollBase.toFixed(1)}回/秒`;
       case 'kluck': return `幸運 ×${st.luckBase.toFixed(2)}`;
+      case 'thunder': return `雷 ${pct(st.thunderP)}・${st.thunderN}体へ`;
+      case 'fire': return `炎上 ${pct(st.fireP)}`;
+      case 'ice': return `凍結 ${pct(st.iceP)}`;
+      case 'boom': return `誘爆 ${pct(st.chainP)}・範囲 ×${(st.boomR / GD.CFG.BOOM_R).toFixed(2)}`;
+      case 'musou': return `無双 ${st.musouTime.toFixed(1)}秒`;
+      case 'lucky': return `幸運菌 ×${st.luckK.toFixed(2)}`;
       default: return '';
     }
   }
@@ -389,17 +412,16 @@ const GUI = (() => {
       root.appendChild(tbl);
       const owned = Object.keys(g.kat).length;
       root.appendChild(_.el('div', 'sec-title', `刀コレクション <b>${owned}/${GD.KATANAS.length}</b><span>1種類ごとに森の全ダメージ +${Math.round(GD.CFG.KAT_SYNERGY * 100)}% ・ 所持ボーナス 刀 +${fmt(Math.round(st.pas * 100))}%</span>`));
-      const grid = _.el('div', 'axe-grid');
       const order = D.RARITY_ORDER.slice().reverse();
-      for (const k of GD.KATANAS.slice().sort((a, b) => order.indexOf(a.r) - order.indexOf(b.r))) {
+      const RI = G.RANK;
+      _.paged(root, 'kat', GD.KATANAS.slice().sort((a, b) => order.indexOf(a.r) - order.indexOf(b.r)), 48, [['すべて', () => true], ['持っている', (k) => g.kat[k.id]], ['未入手', (k) => !g.kat[k.id]], ['奥義つき', (k) => !!GD.OUGI[k.id]], ['MYTH以上', (k) => RI[k.r] >= 7]], (k) => {
         const n = g.kat[k.id] || 0;
         const b = _.el('button', `axe-card r-${k.r}${n ? ' owned' : ''}${g.keq === k.id ? ' eq' : ''}`);
         b.type = 'button';
-        b.innerHTML = `<span class="ac-r">${_.RLAB(k.r)}${GD.OUGI[k.id] ? '<i class="ac-fan">奥</i>' : ''}</span><div class="ac-icon">${FX.axeIcon(k, 50)}</div><div class="ac-name">${n ? _.esc(k.name) : '？？？'}</div><div class="ac-lv">${n ? `Lv${G.lvOf(n)} <small>×${fmt(n)}</small>` : _.oneIn(D.RARITY[k.r].p)}</div>${g.keq === k.id ? '<span class="ac-eq">装備中</span>' : ''}`;
+        b.innerHTML = `<span class="ac-r">${_.RLAB(k.r)}${GD.OUGI[k.id] ? '<i class="ac-fan">奥</i>' : ''}</span><div class="ac-icon">${n ? FX.itemIcon(k, 50) : FX.katanaSVG(Object.assign({}, k, { glow: null, blade: ['#3a3a4a', '#1a1a24'], handle: '#2a2a32' }), 50)}</div><div class="ac-name">${n ? _.esc(k.name) : '？？？'}</div><div class="ac-lv">${n ? `Lv${G.lvOf(n)} <small>×${fmt(n)}</small>` : _.oneIn(D.RARITY[k.r].p)}</div>${g.keq === k.id ? '<span class="ac-eq">装備中</span>' : ''}`;
         if (n) b.addEventListener('click', () => katDetail(k)); else b.disabled = true;
-        grid.appendChild(b);
-      }
-      root.appendChild(grid);
+        return b;
+      });
       Object.assign(this, { aR: auto.querySelector('.ac-r'), aLuck: auto.querySelector('.ac-luck'), aTotal: auto.querySelector('.ac-total'), aGlv: auto.querySelector('.ac-glv'), aGbar: auto.querySelector('.ac-gbar'), aGxp: auto.querySelector('.ac-gxp'), aBoost: auto.querySelector('.ac-boost'), aFeed: auto.querySelector('.ac-feed'), tbl, feedN: -1 });
     },
     update() {
@@ -496,8 +518,73 @@ const GUI = (() => {
     update() {},
   };
 
+  // ------------------------------------------------------------- タブ: 図鑑（両方の世界のコンプ率と報酬・菌の株）
+  function germSVG(X, size, known) {
+    if (!known) return `<svg viewBox="0 0 40 40" width="${size}" height="${size}" aria-hidden="true"><circle cx="20" cy="21" r="14" fill="#1c1626" stroke="#3a3048" stroke-width="2"/><text x="20" y="27" text-anchor="middle" font-size="16" font-weight="900" fill="#5a4a6a">?</text></svg>`;
+    const id = 'gs-' + X.sid;
+    const fill = X.pal === 'rainbow' ? `url(#${id})` : `url(#${id})`;
+    const stops = X.pal === 'rainbow' ? '<stop offset="0" stop-color="#ff5a5a"/><stop offset=".33" stop-color="#ffd23a"/><stop offset=".66" stop-color="#4fe3ff"/><stop offset="1" stop-color="#c46bff"/>' : `<stop offset="0" stop-color="${X.pal[0]}"/><stop offset="1" stop-color="${X.pal[1]}"/>`;
+    const acc = X.acc === 'horns' ? '<path d="M10 11 L13 3 L16 10 Z M24 10 L27 3 L30 11 Z" fill="#fff4e0" stroke="#000" stroke-width="1"/>' : X.acc === 'hat' ? '<rect x="11" y="9" width="18" height="2.5" fill="#1a1424"/><rect x="14" y="2" width="12" height="8" fill="#1a1424"/><rect x="14" y="7" width="12" height="2" fill="#ff3a6a"/>' : X.acc === 'shades' ? '<rect x="11" y="17" width="8" height="5" rx="1" fill="#0a0a12"/><rect x="21" y="17" width="8" height="5" rx="1" fill="#0a0a12"/>' : X.acc === 'halo' ? '<ellipse cx="20" cy="5" rx="9" ry="2.5" fill="none" stroke="#fff2a0" stroke-width="2"/>' : '';
+    const eyes = X.acc === 'shades' ? '' : '<circle cx="15" cy="19" r="3.4" fill="#fff"/><circle cx="25" cy="19" r="3.4" fill="#fff"/><circle cx="15.5" cy="19.5" r="1.8" fill="#140a14"/><circle cx="25.5" cy="19.5" r="1.8" fill="#140a14"/>';
+    return `<svg viewBox="0 0 40 40" width="${size}" height="${size}" aria-hidden="true"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1">${stops}</linearGradient></defs><circle cx="20" cy="22" r="14" fill="${fill}" stroke="#140a14" stroke-width="1.6"/>${eyes}<path d="M16 27 Q20 24 24 27" stroke="#5a0a1a" stroke-width="1.6" fill="none"/>${acc}</svg>`;
+  }
+  function dexStats() {
+    const s = S(), st = s.stats, open = G.germOpen();
+    const cats = [
+      ['🪓', '斧', Object.keys(s.axes).length, D.AXES.length],
+      ['🌲', '森の世界', Math.min(D.BIOMES.length, Math.floor(((st.bestStage || 1) - 1) / 10) + 1), D.BIOMES.length],
+      ['👑', '森の主', Math.min(D.BIOMES.length, Math.floor(((st.bestStage || 1) - 1) / 10)), D.BIOMES.length],
+      ['🏆', '実績', Object.keys(s.ach).length, D.ACH.length],
+    ];
+    if (open) {
+      const g = s.germ, mw = g.maxWave || 1;
+      cats.push(['⚔️', '刀', Object.keys(g.kat).length, GD.KATANAS.length], ['🦠', '菌の株', Object.keys(g.dex || {}).length, GD.STRAINS.length],
+        ['🔬', 'ミクロの世界', Math.min(GD.BIOMES.length, Math.floor((mw - 1) / 10) + 1), GD.BIOMES.length], ['☣️', 'ボス病原体', Math.min(GD.BOSSES.length, Math.floor((mw - 1) / 10)), GD.BOSSES.length]);
+    }
+    const pct = cats.reduce((a, c) => a + c[2] / c[3], 0) / cats.length;
+    const steps = Math.floor(pct * 50);
+    return { cats, pct, steps, pending: Math.max(0, steps - (s.dexClaim || 0)) };
+  }
+  function claimDex() {
+    const s = S(), d = dexStats();
+    if (d.pending <= 0) return;
+    let gems = 0;
+    for (let i = 0; i < d.pending; i++) gems += 10 + 2 * ((s.dexClaim || 0) + i);
+    G.gainGems(gems);
+    s.dexClaim = d.steps;
+    Sfx.gachaUp(4);
+    FX.confetti(120);
+    const res = G.autoRoll(60 * d.pending, G.luckNow() * 2);
+    _.toast('📖', `図鑑報酬 ×${d.pending}`, `💎+${gems} ・ 斧ガチャ ${fmt(res ? res.n : 0)}回（幸運×2）`, 'gold');
+    _.rebuild();
+  }
+  const TabDex = {
+    build(root) {
+      const s = S();
+      root.innerHTML = '';
+      const d = dexStats();
+      const box = _.el('div', 'dex-hero');
+      box.innerHTML = `<div class="dx-ring" style="--p:${(d.pct * 100).toFixed(1)}"><b>${(d.pct * 100).toFixed(1)}%</b><small>コンプ率</small></div><div class="dx-t"><b>📖 総合図鑑</b><p>2%ごとに報酬（ジェム＋幸運×2の斧ガチャ60回）。両方の世界を集めるほどたまる。</p><button type="button" class="btn primary dx-claim" ${d.pending ? '' : 'disabled'}>${d.pending ? `報酬を受け取る ×${d.pending}` : `次の報酬まで あと${(2 - ((d.pct * 100) % 2)).toFixed(1)}%`}</button></div>`;
+      box.querySelector('.dx-claim').addEventListener('click', claimDex);
+      root.appendChild(box);
+      const list = _.el('div', 'dex-cats');
+      list.innerHTML = d.cats.map(([ic, nm, a, b]) => `<div class="dx-cat"><span>${ic} ${nm}</span><b>${fmt(a)}/${fmt(b)}</b><div class="dx-bar"><i style="transform:scaleX(${Math.min(1, a / b)})"></i></div></div>`).join('');
+      root.appendChild(list);
+      if (G.germOpen()) {
+        const dex = s.germ.dex || {};
+        root.appendChild(_.el('div', 'sec-title', `🦠 菌図鑑 <b>${Object.keys(dex).length}/${GD.STRAINS.length}</b><span>10種ごとに DNA +${Math.round(GD.CFG.DEX_BONUS * 100)}%（いま ×${GM.stats().dexMult.toFixed(2)}）</span>`));
+        _.paged(root, 'dex', GD.STRAINS, 40, [['すべて', () => true], ['登録済み', (x) => dex[x.sid]], ['未登録', (x) => !dex[x.sid]]], (x) => {
+          const known = !!dex[x.sid];
+          return _.el('div', `dex-cell${known ? ' known' : ''}`, `${germSVG(x, 40, known)}<small>${known ? _.esc(x.name) : `W${x.wave}〜`}</small>${known ? `<em>${fmt(dex[x.sid])}</em>` : ''}`);
+        }, 'dex-grid');
+      } else root.appendChild(_.el('p', 'muted small tab-note', '転生すると菌斬り次元が開き、刀・菌の株・ミクロの世界・ボス病原体も図鑑に加わる。'));
+    },
+    update() {},
+  };
   function init() {
     _ = UI._;
+    Object.assign(_.TITLES, { dex: '📖 図鑑' });
+    _.TABS.dex = TabDex;
     Object.assign(_.TITLES, { gcells: '🛡️ 免疫細胞', gupg: '🗡️ 研ぎ', gkat: '⚔️ 刀ガチャ・刀', gmut: '🧬 変異', gdim: '🌀 次元' });
     _.LEFT.push('gcells', 'gupg', 'gkat');
     Object.assign(_.TABS, { gcells: TabCells, gupg: TabUpg, gkat: TabKat, gmut: TabMut, gdim: TabDim });

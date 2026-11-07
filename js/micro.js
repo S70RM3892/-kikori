@@ -236,7 +236,9 @@ const Micro = (() => {
     return geo;
   }
   // 顔: 目・黒目・光・まゆ・口（z+ がカメラ側）
+  let lastFace = null;
   function face(list, x, y, z, s, mood = 'angry') {
+    lastFace = { x, y, z, s };
     const white = col('#ffffff'), black = col('#140a14'), mouthC = col('#5a0a1a');
     for (const sx of [-1, 1]) {
       part(list, new T3.SphereGeometry(0.25, 14, 10), white, at(x + sx * 0.3 * s, y + 0.12 * s, z, s, 0, 0, 0, s, s * 1.1, s * 0.7));
@@ -358,12 +360,31 @@ const Micro = (() => {
       face(L, 0, 0.05, 0.92, 0.95);
     },
   };
-  function shapeGeo(shape, palette) {
-    const k = shape + '|' + (palette === 'rainbow' ? 'rb' : palette.join(','));
+  function accessory(L, acc) {
+    const f = lastFace;
+    if (!f || !acc) return;
+    const { x, y, z, s } = f;
+    if (acc === 'horns') {
+      for (const sx of [-1, 1]) part(L, new T3.ConeGeometry(0.11 * s, 0.42 * s, 8), col('#fff4e0'), at(x + sx * 0.42 * s, y + 0.78 * s, z - 0.25 * s, 1, 0, 0, -sx * 0.45));
+    } else if (acc === 'hat') {
+      part(L, new T3.CylinderGeometry(0.5 * s, 0.5 * s, 0.05 * s, 18), col('#1a1424'), at(x, y + 0.66 * s, z - 0.3 * s, 1, -0.25));
+      part(L, new T3.CylinderGeometry(0.3 * s, 0.32 * s, 0.42 * s, 16), col('#1a1424'), at(x, y + 0.88 * s, z - 0.36 * s, 1, -0.25));
+      part(L, new T3.CylinderGeometry(0.325 * s, 0.335 * s, 0.09 * s, 16), col('#ff3a6a'), at(x, y + 0.72 * s, z - 0.32 * s, 1, -0.25));
+    } else if (acc === 'shades') {
+      for (const sx of [-1, 1]) part(L, new T3.BoxGeometry(0.34 * s, 0.2 * s, 0.06 * s), col('#0a0a12'), at(x + sx * 0.29 * s, y + 0.12 * s, z + 0.27 * s));
+      part(L, new T3.BoxGeometry(0.2 * s, 0.04 * s, 0.04 * s), col('#0a0a12'), at(x, y + 0.16 * s, z + 0.28 * s));
+    } else if (acc === 'halo') {
+      part(L, new T3.TorusGeometry(0.4 * s, 0.05 * s, 6, 24), col('#fff2a0'), at(x, y + 0.95 * s, z - 0.25 * s, 1, Math.PI / 2 - 0.35));
+    }
+  }
+  function shapeGeo(shape, palette, acc) {
+    const k = shape + '|' + (palette === 'rainbow' ? 'rb' : palette.join(',')) + '|' + (acc || '');
     let g = geos.get(k);
     if (g) return g;
     const L = [];
+    lastFace = null;
     (SHAPES[shape] || SHAPES.ball)(L, bodyCol(palette), palette);
+    accessory(L, acc);
     g = merge(L);
     geos.set(k, g);
     return g;
@@ -385,15 +406,35 @@ const Micro = (() => {
 
   // ------------------------------------------------------------- 菌の出現と見た目
   function palOf(ge) {
+    if (ge.crit) return ['#fff8c0', '#ffb000'];
     if (ge.boss && ge.bossDef) return ge.bossDef.col;
     if (ge.v === 'gold') return ['#fff2a0', '#c88a00'];
     if (ge.v === 'rainbow') return 'rainbow';
     if (ge.v === 'armor') return ['#eef2f8', '#56606e'];
-    return GM.TY[ge.type].col;
+    if (ge.v === 'bomb') return ['#ff7a5a', '#2a0000'];
+    if (ge.v === 'lucky') return ['#ffe0ff', '#7a1aa8'];
+    if (ge.v === 'chest') return ['#ffd27a', '#6a3a10'];
+    const X = GD.STRAIN && GD.STRAIN[ge.sid];
+    return X ? X.pal : GM.TY[ge.type].col;
   }
+  const accOf = (ge) => (ge.crit ? 'halo' : ge.boss || ge.core ? null : (GD.STRAIN && GD.STRAIN[ge.sid] && GD.STRAIN[ge.sid].acc) || null);
+  let coreG = null;
   function onSpawn(ge) {
     if (!ok || objs.has(ge.id)) return;
     const t = GM.TY[ge.type];
+    if (ge.core) {
+      // ボスの弱点: 白く脈打つ光の核
+      const m = new T3.MeshBasicMaterial({ color: '#ffffff' });
+      const mesh = new T3.Mesh(coreG || (coreG = new T3.IcosahedronGeometry(1, 2)), m);
+      const grp = new T3.Group();
+      grp.add(mesh);
+      const aura = new T3.Sprite(new T3.SpriteMaterial({ map: glowTex(), color: '#ff3a5a', transparent: true, opacity: 0.9, blending: T3.AdditiveBlending, depthWrite: false }));
+      grp.add(aura);
+      grp.position.set(ge.x, ge.y, 0.4);
+      scene.add(grp);
+      objs.set(ge.id, { ge, grp, mesh, mat: m, aura, crown: null, t, born: time, flash: 0, sq: 0, sqAng: 0, z: 0.4, palette: ['#ffffff', '#ff2a4a'], dir: 1, isCore: true });
+      return;
+    }
     const palette = palOf(ge);
     const mat = new T3.MeshStandardMaterial({ vertexColors: true, roughness: 0.3, metalness: 0.05, emissive: 0x000000 });
     if (typeof Axe3D !== 'undefined' && Axe3D.env) { mat.envMap = Axe3D.env; mat.envMapIntensity = 0.55; }
@@ -401,12 +442,13 @@ const Micro = (() => {
     if (ge.v === 'armor') { mat.metalness = 0.85; mat.roughness = 0.22; mat.envMapIntensity = 1.1; }
     if (ge.v === 'ghost') { mat.transparent = true; mat.opacity = 0.8; }
     if (t.shape === 'void') { mat.emissive.set('#5a1a8a'); mat.emissiveIntensity = 0.35; }
-    const mesh = new T3.Mesh(shapeGeo(t.shape, palette), mat);
+    if (ge.crit) { mat.metalness = 0.6; mat.roughness = 0.2; mat.envMapIntensity = 1.3; }
+    const mesh = new T3.Mesh(shapeGeo(ge.crit ? 'ball' : t.shape, palette, accOf(ge)), mat);
     const grp = new T3.Group();
     grp.add(mesh);
     let aura = null;
     if (ge.v || ge.boss) {
-      const ac = ge.v === 'gold' ? '#ffd84a' : ge.v === 'rainbow' ? '#ffffff' : ge.boss ? '#ff3a5a' : ge.v === 'armor' ? '#b0c8ff' : ge.v === 'giant' ? '#ff9a4a' : ge.v === 'split' ? '#7affb0' : '#c8a0ff';
+      const ac = { gold: '#ffd84a', rainbow: '#ffffff', armor: '#b0c8ff', giant: '#ff9a4a', split: '#7affb0', bomb: '#ff3a1a', lucky: '#ff6af0', chest: '#ffd27a', critter: '#fff2a0' }[ge.v] || (ge.boss ? '#ff3a5a' : '#c8a0ff');
       aura = new T3.Sprite(new T3.SpriteMaterial({ map: glowTex(), color: ac, transparent: true, opacity: 0.55, blending: T3.AdditiveBlending, depthWrite: false }));
       aura.position.z = -0.6;
       grp.add(aura);
@@ -449,29 +491,96 @@ const Micro = (() => {
     o.sqAng = e.ang;
     const n = e.deflect ? 6 : e.killed ? 0 : 8 + e.stier * 2;
     if (n) emitDrops(e.g.x, e.g.y, n, capCol(o), 4 + e.stier, e.ang, e.g.r);
+    if (e.shatter) emitDrops(e.g.x, e.g.y, 26, '#dff6ff', 9, e.ang, e.g.r);
     if (e.g.boss) { cam.shake = Math.max(cam.shake, 0.25); }
   }
   function capCol(o) {
-    if (o.ge.v === 'gold') return '#fff6c0';
-    if (o.ge.v === 'rainbow') return '#ffffff';
-    return (o.ge.boss && o.ge.bossDef) ? col(o.ge.bossDef.col[0]).lerp(cWhite, 0.4).getStyle() : o.t.cap;
+    const ge = o.ge;
+    if (ge.v === 'gold' || ge.crit) return '#fff6c0';
+    if (ge.v === 'rainbow') return '#ffffff';
+    if (ge.v === 'bomb') return '#ffb03a';
+    if (ge.boss && ge.bossDef) return col(ge.bossDef.col[0]).lerp(cWhite, 0.4).getStyle();
+    const X = GD.STRAIN && GD.STRAIN[ge.sid];
+    return (X && X.cap) || o.t.cap;
   }
   // 倒した: 斬られた向きで2つに割れる（免疫細胞のときは、はじけて消える）
+  const dying = [];
+  let lineG = null;
+  const hooks = { release: null };
+  function cutLine(x, y, ang, len, w, c) {
+    const g = new T3.Group();
+    const mk = (cc, sw, op) => { const m = new T3.Mesh(lineG || (lineG = new T3.PlaneGeometry(1, 1)), new T3.MeshBasicMaterial({ color: cc, transparent: true, opacity: op, blending: T3.AdditiveBlending, depthWrite: false, side: T3.DoubleSide })); m.scale.set(1, sw, 1); g.add(m); return m; };
+    mk(c, w * 5, 0.45);
+    mk('#ffffff', w, 1);
+    g.position.set(x, y, 1);
+    g.rotation.z = ang;
+    g.scale.set(0.001, 1, 1);
+    g.userData.len = len;
+    scene.add(g);
+    return g;
+  }
+  function dropLine(g) { if (!g) return; scene.remove(g); g.children.forEach((m) => m.material.dispose()); }
   function onKill(d) {
     const o = objs.get(d.g.id);
     if (!o) return;
     objs.delete(d.g.id);
     const cc = capCol(o);
     const big = d.g.boss ? 3 : 1;
-    if (d.src === 'cell') {
+    if (d.src === 'cell' || o.isCore) {
       emitDrops(d.g.x, d.g.y, 14, cc, 3, rnd() * 6, d.g.r);
       disposeObj(o);
       return;
     }
+    const hold = d.g.boss ? 0.55 : d.src === 'slice' || d.src === 'zanshin' || d.src === 'thunder' || d.src === 'ougi' ? 0.085 : 0;
+    if (hold <= 0 || quality < 1) { doSplit(o, d, cc, big); return; }
+    const gc = (GM.stats().eq && GM.stats().eq.glow && GM.stats().eq.glow !== 'rainbow') ? GM.stats().eq.glow : '#bfe8ff';
+    const len = d.g.boss ? visW * 1.6 : d.g.r * 3;
+    const item = { o, d, cc, big, t0: time, tRel: time + hold, line: cutLine(d.g.x, d.g.y, d.ang, len, d.g.boss ? 0.12 : 0.05, gc) };
+    // 一閃: 斬り続けている間に倒した菌は、最後にまとめて割る
+    if (d.src === 'slice') for (const x of dying) if (x.d.src === 'slice' && !x.d.g.boss) x.tRel = Math.min(x.t0 + 0.45, Math.max(x.tRel, time + 0.1));
+    dying.push(item);
+  }
+  function releaseAll() { for (const x of dying) if (!x.d.g.boss) x.tRel = Math.min(x.tRel, time); }
+  function doSplit(o, d, cc, big) {
     split(o, d.ang, cc, big);
-    emitDrops(d.g.x, d.g.y, Math.round((14 + (d.issen || 1) * 3) * big), cc, 7 * Math.sqrt(big), d.ang, d.g.r);
-    if (d.g.boss) { cam.shake = Math.max(cam.shake, 1.4); cam.punch = Math.max(cam.punch, 0.25); }
-    else { cam.shake = Math.max(cam.shake, 0.12 + Math.min(0.5, (d.issen || 1) * 0.06)); }
+    emitDrops(d.g.x, d.g.y, Math.round((14 + (d.issen || 1) * 3) * big * (d.g.boss ? 2.5 : 1)), cc, 7 * Math.sqrt(big), d.ang, d.g.r);
+    if (d.g.boss) { cam.shake = Math.max(cam.shake, 1.6); cam.punch = Math.max(cam.punch, 0.3); boomFx({ x: d.g.x, y: d.g.y, r: d.g.r * 2.5, n: 1, boss: true }); }
+    else cam.shake = Math.max(cam.shake, 0.12 + Math.min(0.5, (d.issen || 1) * 0.06));
+  }
+  function stepDying() {
+    if (!dying.length) return;
+    const out = [];
+    for (let i = dying.length - 1; i >= 0; i--) {
+      const x = dying[i], o = x.o, k = time - x.t0;
+      o.grp.position.set(x.d.g.x + (rnd() - 0.5) * 0.07 * x.big, x.d.g.y + (rnd() - 0.5) * 0.07 * x.big, o.z);
+      o.mat.emissive.setRGB(1, 1, 1).multiplyScalar(0.3 + 0.3 * Math.abs(Math.sin(k * 50)));
+      if (x.line) { x.line.scale.x = Math.max(0.001, Math.min(1, k / 0.05) * x.line.userData.len); }
+      if (time >= x.tRel) { dying.splice(i, 1); dropLine(x.line); doSplit(o, x.d, x.cc, x.big); out.push(x.d); }
+    }
+    if (out.length && hooks.release) hooks.release(out);
+  }
+  // 爆発: 光の球が広がる
+  const flashes = [];
+  let ballG = null;
+  function boomFx(e) {
+    if (!ok) return;
+    const m = new T3.Mesh(ballG || (ballG = new T3.SphereGeometry(1, 18, 12)), new T3.MeshBasicMaterial({ color: e.boss ? '#ffffff' : '#ffb04a', transparent: true, opacity: 0.85, blending: T3.AdditiveBlending, depthWrite: false }));
+    m.position.set(e.x, e.y, 0.5);
+    m.scale.setScalar(0.2);
+    scene.add(m);
+    flashes.push({ m, t: 0, dur: e.boss ? 0.6 : 0.32, r: e.r });
+    emitDrops(e.x, e.y, e.boss ? 40 : 16, e.boss ? '#ffffff' : '#ffd27a', e.boss ? 14 : 8, rnd() * 6, e.r * 0.4);
+    cam.shake = Math.max(cam.shake, Math.min(1.4, 0.25 + 0.06 * (e.n || 1)));
+  }
+  function stepFlashes(dt) {
+    for (let i = flashes.length - 1; i >= 0; i--) {
+      const f = flashes[i];
+      f.t += dt;
+      const p = f.t / f.dur;
+      if (p >= 1) { scene.remove(f.m); f.m.material.dispose(); flashes.splice(i, 1); continue; }
+      f.m.scale.setScalar(Math.max(0.01, f.r * (0.25 + 0.75 * U.ease.outCubic(p))));
+      f.m.material.opacity = 0.85 * (1 - p);
+    }
   }
   function split(o, ang, cc, big) {
     const nW = new T3.Vector3(-Math.sin(ang), Math.cos(ang), 0);
@@ -654,6 +763,7 @@ const Micro = (() => {
     h.rotation.set(0, 0, 0);
     h.rotateZ(ang - Math.PI / 2 + fl);
     h.rotateY(0.55 + Math.sin(time * 0.8) * 0.1);
+    h.scale.setScalar(1 + musouMix * 0.25 + rankMix * 0.06);
     kat.P.tick(time, real, hold.on ? 1 : 0);
   }
   // 奥義: 刀が回って光る
@@ -678,6 +788,18 @@ const Micro = (() => {
     lightBoost = Math.max(0, lightBoost - real * 4);
     hemi.intensity = 0.85 + lightBoost * 0.6 + outMix * 0.15;
     key.intensity = 0.95 + lightBoost * 0.4;
+    stepDying();
+    stepFlashes(dt);
+    rankMix += (rankTarget - rankMix) * Math.min(1, real * 2);
+    const mu = GM.T.musou > 0;
+    musouMix += ((mu ? 1 : 0) - musouMix) * Math.min(1, real * 3);
+    if (pal && !pal.rainbow) bgU.top.value.set(pal.bg[0]);
+    if (rankMix > 0.01 || musouMix > 0.01) {
+      if (rankRainbow || musouMix > 0.01) rankCol.setHSL((time * (mu ? 0.5 : 0.2)) % 1, 0.9, 0.6);
+      bgU.hi.value.copy(col(pal ? pal.light : '#ffffff')).lerp(rankCol, Math.max(rankMix * 0.7, musouMix));
+      bgU.top.value.lerp(rankCol, Math.max(rankMix * 0.25, musouMix * 0.45));
+      hemi.intensity += rankMix * 0.25 + musouMix * 0.35;
+    } else if (pal) bgU.hi.value.set(pal.light);
     // 菌（まだ形のない菌がいたら作る）
     if (objs.size < T.germs.length) for (const ge of T.germs) if (ge.alive && !objs.has(ge.id)) onSpawn(ge);
     for (const [id, o] of objs) {
@@ -702,14 +824,24 @@ const Micro = (() => {
       if (shape === 'rod' || shape === 'comma' || shape === 'slipper' || shape === 'spiral' || shape === 'chain') o.mesh.rotation.z = Math.max(-0.6, Math.min(0.6, Math.atan2(ge.vy, Math.abs(vx) + 0.01))) * o.dir * 0.8 + Math.sin(time * 3 + ge.ph * 9) * 0.08;
       else o.mesh.rotation.z = Math.sin(time * 1.3 + ge.ph * 6) * 0.15;
       o.mesh.rotation.y = Math.sin(time * 0.9 + ge.ph * 4) * 0.35;
+      // 刀が近づくと震えて縮こまる
+      const near = hold.on && Math.hypot(hold.tx - ge.x, hold.ty - ge.y) < ge.r + 1.4;
+      o.fear = Math.max(0, (o.fear || 0) + (near ? real * 6 : -real * 3));
+      if (o.fear > 0.01) { o.fear = Math.min(1, o.fear); o.mesh.rotation.z += (rnd() - 0.5) * 0.25 * o.fear; o.mesh.scale.multiplyScalar(1 - 0.08 * o.fear); }
+      if (o.isCore) { const k = 1 + 0.25 * Math.sin(time * 14); o.mesh.scale.setScalar(ge.r * k); o.aura.scale.setScalar(ge.r * 4.5 * k); }
       if (shape === 'knot' || shape === 'crystal') o.mesh.rotation.y += time * 0.6;
+      if (o.isCore) continue;
       // 光り方
       const m = o.mat;
       if (ge.v === 'rainbow') m.emissive.setHSL((time * 0.5) % 1, 1, 0.45);
       else if (ge.v === 'gold') m.emissive.copy(cGold).multiplyScalar(0.35 + 0.15 * Math.sin(time * 6));
       else if (ge.v === 'split') m.emissive.set('#3aff8a').multiplyScalar(0.15 + 0.15 * Math.sin(time * 5));
-      else if (ge.boss) m.emissive.set('#ff2040').multiplyScalar(GM.T.bossTimer < 8 ? 0.25 + 0.25 * Math.sin(time * 14) : 0.05);
+      else if (ge.boss) m.emissive.set('#ff2040').multiplyScalar(GM.T.bossTimer < 8 ? 0.25 + 0.25 * Math.sin(time * 14) : 0.05 + 0.12 * ge.phase * (0.6 + 0.4 * Math.sin(time * 6)));
+      else if (ge.v === 'bomb') m.emissive.set('#ff3a00').multiplyScalar(0.25 + 0.35 * Math.max(0, Math.sin(time * 9 + ge.ph * 6)));
+      else if (ge.v === 'lucky' || ge.crit) m.emissive.setHSL((time * 0.6 + ge.ph) % 1, 1, 0.4);
       else if (o.t.shape !== 'void') m.emissive.setRGB(0, 0, 0);
+      if (ge.frozen > 0) m.emissive.set('#7ad8ff').multiplyScalar(0.55);
+      if (ge.burn) m.emissive.set('#ff6a1a').multiplyScalar(0.35 + 0.25 * Math.sin(time * 22 + ge.ph * 9));
       if (o.flash > 0.01) m.emissive.lerp(cWhite, o.flash * 0.85);
       if (ge.v === 'ghost') { const hid = GM.ghostHidden(ge); m.opacity += ((hid ? 0.12 : 0.85) - m.opacity) * Math.min(1, real * 10); }
       if (o.aura) {
@@ -743,6 +875,9 @@ const Micro = (() => {
     R.autoClear = true;
   }
   let warpT = 0;
+  let rankMix = 0, rankTarget = 0, rankRainbow = false, musouMix = 0;
+  const rankCol = new (window.THREE ? window.THREE.Color : Object)();
+  function setRank(r, c, rainbow) { rankTarget = r >= 3 ? Math.min(1, (r - 2) / 5) : 0; rankRainbow = !!rainbow; if (!rainbow && rankCol.set) rankCol.set(c); }
   function warp() { warpT = 1; cam.punch = 0.4; }
   function reset() {
     for (const [id] of objs) remove(id);
@@ -751,6 +886,10 @@ const Micro = (() => {
     DP.length = 0;
     for (const d of dashes) { scene.remove(d.mesh); d.m.dispose(); }
     dashes.length = 0;
+    for (const x of dying) { dropLine(x.line); disposeObj(x.o); }
+    dying.length = 0;
+    for (const f of flashes) { scene.remove(f.m); f.m.material.dispose(); }
+    flashes.length = 0;
     biomeIdx = -1;
   }
   function bind() {
@@ -762,6 +901,8 @@ const Micro = (() => {
     G.on('gEscape', (ge) => remove(ge.id));
     G.on('gZanshin', (e) => onSlice({ g: e.g, ang: e.ang, stier: 2, killed: e.g.hp <= 0 }));
     G.on('gOugi', ougi);
+    G.on('gBoom', boomFx);
+    G.on('gIssen', releaseAll);
     G.on('dim', () => reset());
     G.on('load', () => reset());
   }
@@ -773,7 +914,8 @@ const Micro = (() => {
   return {
     get ok() { return ok; },
     init(r) { const res = init(r); if (res) bind(); return res; },
-    resize, setQuality, frame, toScreen, toWorld, germScreen, grab, drag, release, shake, punch, roll, flashLight, warp, emitDrops,
+    resize, setQuality, frame, toScreen, toWorld, germScreen, grab, drag, release, shake, punch, roll, flashLight, warp, emitDrops, setRank, releaseAll, hooks,
+    get holdInfo() { return { on: hold.on, x: hold.tx, y: hold.ty }; },
     get ppu() { return ppu; },
     get debug() { return { halves: halves.length, objs: objs.size, drops: DP.length, kids: scene ? scene.children.length : 0, clip: R && R.localClippingEnabled }; },
     biomeName: () => (pal ? pal.name : GD.BIOMES[0].name),

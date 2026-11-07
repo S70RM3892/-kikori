@@ -19,7 +19,7 @@ class FakeDate extends Date { static now() { return simNow; } }
 const sandboxMath = Object.create(Math);
 sandboxMath.random = rng;
 const ctx = vm.createContext({ console, Math: sandboxMath, Date: FakeDate, TextEncoder, TextDecoder, btoa, atob });
-for (const f of ['util.js', 'data.js', 'game.js']) {
+for (const f of ['util.js', 'data.js', 'datagen.js', 'game.js']) {
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'js', f), 'utf8'), ctx, { filename: f });
 }
 const G = vm.runInContext('G', ctx);

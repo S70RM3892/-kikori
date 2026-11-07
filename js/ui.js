@@ -278,8 +278,7 @@ const UI = (() => {
     h.classList.remove('wave');
     void h.offsetWidth;
     h.classList.add('wave');
-    const rb = $('#rank-box');
-    if (rb) { rb.classList.remove('slam'); void rb.offsetWidth; rb.classList.add('slam'); }
+    for (const rb of document.querySelectorAll('.rank-box')) { rb.classList.remove('slam'); void rb.offsetWidth; rb.classList.add('slam'); }
   }
   // BGM の拍に合わせて HUD が脈打つ
   function beat() {
@@ -439,11 +438,11 @@ const UI = (() => {
   function rebuild() { if (current && drawerOpen) { const b = $('#tab-body'); const y = b.scrollTop; current.build(b); current.update(); b.scrollTop = y; } }
 
   function setBadge(name, v) {
-    const b = document.querySelector(`[data-open="${name}"] .badge`);
-    if (!b) return;
     const txt = v === true ? '!' : v ? String(v) : '';
-    if (b.textContent !== txt) b.textContent = txt;
-    b.hidden = !txt;
+    for (const b of document.querySelectorAll(`[data-open="${name}"] .badge`)) {
+      if (b.textContent !== txt) b.textContent = txt;
+      b.hidden = !txt;
+    }
   }
   function updateBadges() {
     const s = S();
@@ -671,6 +670,34 @@ const UI = (() => {
 
   // --- ガチャタブ（オートガチャが主役。プレミアム・ショップ・セット・図鑑）
   const RLAB = (r) => D.RARITY[r].label || r;
+  // ページ送りつきの一覧: filters = [[名前, 絞り込み関数], ...]
+  const pageState = {};
+  function paged(root, key, items, per, filters, renderItem, gridCls = 'axe-grid') {
+    const wrap = el('div', 'paged');
+    const st = pageState[key] || (pageState[key] = { p: 0, f: 0 });
+    const chips = el('div', 'pg-chips');
+    const nav = el('div', 'pg-nav');
+    const grid = el('div', gridCls);
+    const draw = () => {
+      const list = filters ? items.filter(filters[st.f][1]) : items;
+      const total = Math.max(1, Math.ceil(list.length / per));
+      if (st.p >= total) st.p = total - 1;
+      grid.innerHTML = '';
+      for (const it of list.slice(st.p * per, st.p * per + per)) grid.appendChild(renderItem(it));
+      nav.innerHTML = `<button type="button" class="pg-b" data-d="-1" ${st.p <= 0 ? 'disabled' : ''}>◀</button><span>${st.p + 1} / ${total}ページ ・ ${list.length}件</span><button type="button" class="pg-b" data-d="1" ${st.p >= total - 1 ? 'disabled' : ''}>▶</button>`;
+      chips.querySelectorAll('button').forEach((b, i) => b.classList.toggle('on', i === st.f));
+    };
+    if (filters) {
+      filters.forEach(([nm], i) => { const b = el('button', 'pg-chip', esc(nm)); b.type = 'button'; b.addEventListener('click', () => { st.f = i; st.p = 0; draw(); }); chips.appendChild(b); });
+      wrap.appendChild(chips);
+    }
+    nav.addEventListener('click', (e) => { const b = e.target.closest('[data-d]'); if (!b) return; st.p += Number(b.dataset.d); draw(); Sfx.buy(); });
+    wrap.appendChild(grid);
+    wrap.appendChild(nav);
+    root.appendChild(wrap);
+    draw();
+    return wrap;
+  }
   // 斧の必殺技・刀の奥義（カットインはどちらも同じ形）
   const skOf = (a) => (a && (D.SKILLS[a.id] || (typeof GD !== 'undefined' && GD.OUGI[a.id]))) || null;
   const seedOf = (a) => (a.kind === 'katana' ? 100 + GD.KATANAS.indexOf(a) : D.AXES.indexOf(a));
@@ -723,38 +750,36 @@ const UI = (() => {
         shop.appendChild(b);
       }
       root.appendChild(shop);
-      // セット
+      // セット（シリーズ）: そろえた数が多い順
       const done = G.setsDone();
-      root.appendChild(el('div', 'sec-title', `🗂️ 斧のセット <b>${done.length}/${D.SETS.length}</b><span>そろえると永続ボーナス</span>`));
-      const sets = el('div', 'set-list');
-      for (const set of D.SETS) {
+      root.appendChild(el('div', 'sec-title', `🗂️ 斧のセット・シリーズ <b>${done.length}/${D.SETS.length}</b><span>そろえると永続ボーナス</span>`));
+      const setsSorted = D.SETS.slice().sort((a, b) => b.axes.filter((id) => s.axes[id]).length / b.axes.length - a.axes.filter((id) => s.axes[id]).length / a.axes.length);
+      paged(root, 'sets', setsSorted, 8, [['すべて', () => true], ['そろった', (x) => x.axes.every((id) => s.axes[id])], ['あと少し', (x) => { const h = x.axes.filter((id) => s.axes[id]).length; return h < x.axes.length && h >= x.axes.length * 0.5; }]], (set) => {
         const have = set.axes.filter((id) => s.axes[id]).length;
         const ok = have === set.axes.length;
         const row = el('div', `set-row${ok ? ' done' : ''}`);
-        row.innerHTML = `<div class="set-h"><b>${set.icon} ${esc(set.name)}</b><span>${have}/${set.axes.length}</span></div><div class="set-axes">${set.axes.map((id) => { const a = G.AX[id]; return `<span class="set-ax${s.axes[id] ? ' own' : ''} r-${a.r}" title="${esc(a.name)}">${FX.axeIcon(a, 30)}</span>`; }).join('')}</div><div class="set-b">${ok ? '✅ ' : ''}${esc(bonusText(set.bonus))}</div>`;
-        sets.appendChild(row);
-      }
-      root.appendChild(sets);
+        row.innerHTML = `<div class="set-h"><b>${set.icon} ${esc(set.name)}</b><span>${have}/${set.axes.length}</span></div><div class="set-axes">${set.axes.map((id) => { const a = G.AX[id]; return `<span class="set-ax${s.axes[id] ? ' own' : ''} r-${a.r}" title="${esc(a.name)}">${FX.itemIcon(a, 30)}</span>`; }).join('')}</div><div class="set-b">${ok ? '✅ ' : ''}${esc(bonusText(set.bonus))}</div>`;
+        return row;
+      }, 'set-list');
       // 図鑑
       const owned = Object.keys(s.axes).length;
       const st = G.stats();
       const fan = D.AXES.filter((a) => a.fantasy);
       const fanOwned = fan.filter((a) => s.axes[a.id]).length;
       root.appendChild(el('div', 'sec-title', `斧コレクション <b>${owned}/${D.AXES.length}</b><span>幻想 ${fanOwned}/${fan.length} ・ 所持ボーナス 全ダメージ +${fmt(Math.round((st.axeMult - 1) * 100))}%</span>`));
-      const grid = el('div', 'axe-grid');
       const order = D.RARITY_ORDER.slice().reverse();
       const axes = D.AXES.slice().sort((a, b) => order.indexOf(a.r) - order.indexOf(b.r) || (b.fantasy ? 1 : 0) - (a.fantasy ? 1 : 0));
-      for (const a of axes) {
+      const RI = G.RANK;
+      paged(root, 'axes', axes, 48, [['すべて', () => true], ['持っている', (a) => s.axes[a.id]], ['未入手', (a) => !s.axes[a.id]], ['SSR以上', (a) => RI[a.r] >= 3], ['MYTH以上', (a) => RI[a.r] >= 7], ['幻想', (a) => a.fantasy]], (a) => {
         const n = s.axes[a.id] || 0;
         const lv = G.lvOf(n);
         const b = el('button', `axe-card r-${a.r}${n ? ' owned' : ''}${s.equip === a.id ? ' eq' : ''}${a.fantasy ? ' fan' : ''}`);
         b.type = 'button';
-        b.innerHTML = `<span class="ac-r">${RLAB(a.r)}${a.fantasy ? '<i class="ac-fan">幻</i>' : ''}</span><div class="ac-icon">${FX.axeIcon(a, 50)}</div><div class="ac-name">${n ? esc(a.name) : '？？？'}</div><div class="ac-lv">${n ? `Lv${lv} <small>×${fmt(n)}</small>` : oneIn(D.RARITY[a.r].p)}</div>${s.equip === a.id ? '<span class="ac-eq">装備中</span>' : ''}`;
+        b.innerHTML = `<span class="ac-r">${RLAB(a.r)}${a.fantasy ? '<i class="ac-fan">幻</i>' : ''}</span><div class="ac-icon">${n ? FX.itemIcon(a, 50) : FX.axeIconSVG(Object.assign({}, a, { glow: null, blade: ['#3a3a4a', '#1a1a24'], handle: '#2a2a32' }), 50)}</div><div class="ac-name">${n ? esc(a.name) : '？？？'}</div><div class="ac-lv">${n ? `Lv${lv} <small>×${fmt(n)}</small>` : oneIn(D.RARITY[a.r].p)}</div>${s.equip === a.id ? '<span class="ac-eq">装備中</span>' : ''}`;
         if (n) b.addEventListener('click', () => axeDetail(a));
         else b.disabled = true;
-        grid.appendChild(b);
-      }
-      root.appendChild(grid);
+        return b;
+      });
       Object.assign(this, {
         pf: btns.querySelector('.pf'), p1: btns.querySelector('.p1'), p10: btns.querySelector('.p10'), pity: hero.querySelector('.gh-pity'), puLeft: hero.querySelector('.gh-pu-left'),
         aR: auto.querySelector('.ac-r'), aLuck: auto.querySelector('.ac-luck'), aTotal: auto.querySelector('.ac-total'), aBest: auto.querySelector('.ac-best'), aBoost: auto.querySelector('.ac-boost'),
@@ -1172,13 +1197,14 @@ const UI = (() => {
       const s = S();
       root.innerHTML = '';
       const n = Object.keys(s.ach).length;
-      root.appendChild(el('div', 'tab-head', `<div class="tab-stat">実績 <b>${n}/${D.ACH.length}</b></div><div class="tab-stat">ボーナス 全ダメージ <b>+${Math.round(n * D.CFG.ACH_BONUS * 100)}%</b></div>`));
-      const grid = el('div', 'ach-grid');
-      for (const a of D.ACH) {
+      root.appendChild(el('div', 'tab-head', `<div class="tab-stat">実績 <b>${n}/${D.ACH.length}</b></div><div class="tab-stat">ボーナス 両方の世界の全ダメージ <b>+${fmt(Math.round((G.stats().achMult - 1) * 100))}%</b></div>`));
+      const cat = (a) => a.cat || (a.germ ? '菌斬り' : '基本');
+      const CATS = ['基本', '菌斬り', '世界', '図鑑', '記録'];
+      const filt = [['すべて', () => true], ['未達成', (a) => !s.ach[a.id]]].concat(CATS.map((c) => [`${c} ${D.ACH.filter((a) => cat(a) === c && s.ach[a.id]).length}/${D.ACH.filter((a) => cat(a) === c).length}`, (a) => cat(a) === c]));
+      paged(root, 'ach', D.ACH, 60, filt, (a) => {
         const got = !!s.ach[a.id];
-        grid.appendChild(el('div', `ach${got ? ' got' : ''}`, `<span class="a-ico">${got ? a.icon : '🔒'}</span><b>${got ? esc(a.name) : '？？？'}</b><small>${esc(a.desc)}</small><em>💎${a.gems}</em>`));
-      }
-      root.appendChild(grid);
+        return el('div', `ach${got ? ' got' : ''}`, `<span class="a-ico">${got ? a.icon : '🔒'}</span><b>${got ? esc(a.name) : '？？？'}</b><small>${esc(a.desc)}</small><em>💎${a.gems}</em>`);
+      }, 'ach-grid');
       const st = s.stats;
       root.appendChild(el('div', 'sec-title', '記録'));
       root.appendChild(el('dl', 'records', [
@@ -1569,7 +1595,16 @@ const UI = (() => {
 
   // ------------------------------------------------------------- ゲームイベント
   function bindEvents() {
-    G.on('ach', (a) => { toast(a.icon, `実績解除: ${a.name}`, `${a.desc} ・ 💎+${a.gems}`, 'ach'); Sfx.ach(); });
+    let achBatch = [], achT = null;
+    const flushAch = () => {
+      achT = null;
+      const b = achBatch;
+      achBatch = [];
+      if (b.length <= 2) b.forEach((a) => toast(a.icon, `実績解除: ${a.name}`, `${a.desc} ・ 💎+${a.gems}`, 'ach'));
+      else toast('🏆', `実績 ×${b.length} 解除!!`, `${b.slice(0, 3).map((a) => a.name).join('・')}… ・ 💎+${b.reduce((x, a) => x + a.gems, 0)}`, 'ach');
+      Sfx.ach();
+    };
+    G.on('ach', (a) => { achBatch.push(a); if (!achT) achT = setTimeout(flushAch, 450); });
     G.on('missionReady', (m) => toast('📜', 'ミッション達成！', `${G.missionText(m)} → 受け取れ`, 'mission'));
     G.on('milestone', (d) => { banner(`${d.w.name} ×${d.mult}!`, `${d.count}人到達ボーナス`, 'ms'); });
     G.on('sqSpawn', (sq) => { if (sq.kind === 'squirrel') Sfx.squirrel(); else Sfx.goddess(); });
@@ -1700,7 +1735,7 @@ const UI = (() => {
   // 菌斬り次元の画面（germui.js）から使う道具
   const _ = {
     $, el, esc, fmt, S, modal, toast, banner, setText, setScale, setCls, holdButton, failShake, sparkAt, countUp, rebuild, TABS, TITLES, LEFT,
-    RLAB, oneIn, rareCard, cutIn, cutscene, kfeed, skOf, closeDrawer, openDrawer,
+    RLAB, oneIn, rareCard, cutIn, cutscene, kfeed, skOf, closeDrawer, openDrawer, paged,
     get overlayBusy() { return overlayBusy; }, set overlayBusy(v) { overlayBusy = v; },
     get drawerOpen() { return drawerOpen; },
   };

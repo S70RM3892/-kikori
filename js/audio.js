@@ -567,6 +567,86 @@ const Sfx = (() => {
     (toGerm ? [0, 1, 7, 13, 12] : [0, 4, 7, 12, 16]).forEach((st, i) => tone(note(st, 392), 0.5, 'triangle', 0.05, 0.6 + i * 0.07));
   }
 
+  // ------------------------------------------------------------- 菌斬り次元 v2（ドーパミン強化）
+  const LAD = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24, 26, 28, 31, 33, 36];
+  // 一閃で続けて倒すほど音階が上がる
+  function ladder(n) {
+    if (!ok() || throttle('ladder', 30)) return;
+    const st = LAD[Math.min(LAD.length - 1, Math.max(0, n - 1))];
+    tone(note(st, 784), 0.22, 'triangle', 0.08);
+    tone(note(st + 12, 784), 0.12, 'sine', 0.035, 0.01);
+  }
+  // 何体斬りかの掛け声のかわりのジングル
+  function announce(n) {
+    if (!ok() || throttle('announce', 90)) return;
+    const k = Math.min(8, n);
+    for (let i = 0; i < k; i++) tone(note([0, 4, 7, 12, 16, 19, 24, 28][i], 523), 0.12, 'square', 0.04, i * 0.035);
+    if (n >= 5) noise(0.5, 0.12, 'highpass', 5000, 0.7, 0.05);
+    if (n >= 8) [0, 4, 7, 11].forEach((st) => tone(note(st, 262), 0.9, 'sawtooth', 0.03, 0.1));
+  }
+  function boom(n = 1, big) {
+    if (!ok() || throttle('boom', 45)) return;
+    const f = Math.min(260, 90 + n * 14);
+    tone(f, big ? 1.1 : 0.45, 'sine', big ? 0.5 : 0.35, 0, 30);
+    noise(big ? 1.2 : 0.4, big ? 0.35 : 0.22, 'lowpass', 1400, 0.8, 0, 120);
+    if (n >= 3) tone(note(Math.min(24, n * 2), 392), 0.2, 'square', 0.03, 0.03);
+  }
+  function zap() {
+    if (!ok() || throttle('zap', 60)) return;
+    tone(1400, 0.16, 'square', 0.05, 0, 180);
+    noise(0.18, 0.12, 'bandpass', 3200, 2.5);
+    noise(0.08, 0.08, 'bandpass', 5000, 3, 0.06);
+  }
+  function freeze() {
+    if (!ok() || throttle('freeze', 80)) return;
+    tone(2400, 0.3, 'sine', 0.05);
+    tone(3620, 0.22, 'sine', 0.03, 0.03);
+    noise(0.2, 0.05, 'highpass', 7000, 0.7);
+  }
+  function shatter2() {
+    if (!ok() || throttle('shatter2', 60)) return;
+    noise(0.35, 0.2, 'highpass', 5000, 0.7);
+    [3000, 4500, 3800].forEach((f, i) => tone(f, 0.18, 'triangle', 0.035, i * 0.025));
+  }
+  function burn() {
+    if (!ok() || throttle('burn', 120)) return;
+    noise(0.25, 0.08, 'bandpass', 900, 1.2, 0, 400);
+  }
+  function musouStart() {
+    if (!ok()) return;
+    tone(90, 0.7, 'sawtooth', 0.12, 0, 1400);
+    noise(0.8, 0.18, 'bandpass', 300, 1, 0, 6000);
+    tone(70, 0.4, 'sine', 0.5, 0.65, 35);
+    [0, 4, 7, 12, 16].forEach((st) => tone(note(st, 262), 1.2, 'sawtooth', 0.035, 0.66));
+  }
+  function musouEnd() { if (!ok()) return; tone(900, 0.6, 'sawtooth', 0.05, 0, 120); noise(0.5, 0.08, 'lowpass', 2000, 0.8, 0, 200); }
+  function slotTick() { if (!ok() || throttle('stick', 55)) return; tone(1500 + Math.random() * 300, 0.03, 'square', 0.02); }
+  function slotStop(i) { if (!ok()) return; tone(520 + i * 120, 0.08, 'square', 0.06); noise(0.06, 0.1, 'bandpass', 1800, 2); }
+  function slotWin(cat) {
+    if (!ok()) return;
+    if (cat === 'none') { tone(220, 0.25, 'triangle', 0.06, 0, 160); return; }
+    if (cat === 'pair') { [0, 7].forEach((st, i) => tone(note(st, 659), 0.18, 'square', 0.05, i * 0.08)); return; }
+    const seq = cat === 'jackpot' ? [0, 4, 7, 12, 16, 19, 24, 28, 31, 36] : [0, 4, 7, 12, 16];
+    seq.forEach((st, i) => tone(note(st, 523), 0.22, 'square', 0.05, i * 0.06));
+    noise(cat === 'jackpot' ? 2 : 0.8, 0.12, 'highpass', 6000, 0.7, 0.1);
+    if (cat === 'jackpot') { [0, 4, 7, 12].forEach((st) => tone(note(st, 262), 2.2, 'sawtooth', 0.04, 0.4)); for (let i = 0; i < 12; i++) tone(1800 + Math.random() * 1600, 0.06, 'sine', 0.03, 0.5 + i * 0.09); }
+  }
+  function critter() { if (!ok()) return; [0, 7, 12, 16, 19].forEach((st, i) => tone(note(st, 1046), 0.14, 'sine', 0.04, i * 0.06)); }
+  function critterGet() { if (!ok()) return; [0, 4, 7, 12, 16, 19, 24].forEach((st, i) => tone(note(st, 523), 0.2, 'triangle', 0.06, i * 0.05)); noise(1, 0.1, 'highpass', 6000, 0.7, 0.1); }
+  function newStrain() { if (!ok() || throttle('nstr', 150)) return; [0, 4, 7, 12].forEach((st, i) => tone(note(st, 1046), 0.16, 'triangle', 0.05, i * 0.07)); }
+  function formIn() { if (!ok() || throttle('formin', 400)) return; noise(0.5, 0.1, 'bandpass', 300, 1.2, 0, 3000); tone(300, 0.3, 'triangle', 0.03, 0, 900); }
+  function formClear() { if (!ok()) return; [0, 4, 7, 12, 16, 19, 24].forEach((st, i) => tone(note(st, 659), 0.18, 'sine', 0.05, i * 0.04)); tone(note(24, 659), 0.9, 'triangle', 0.04, 0.3); }
+  function bossPhase() { if (!ok()) return; for (let i = 0; i < 3; i++) tone(i % 2 ? 660 : 880, 0.18, 'sawtooth', 0.06, i * 0.18); tone(55, 1, 'sawtooth', 0.12, 0, 35); }
+  function finish() {
+    if (!ok()) return;
+    tone(55, 2, 'sine', 0.6, 0, 22);
+    noise(1.6, 0.4, 'lowpass', 1200, 0.8, 0, 80);
+    noise(0.6, 0.25, 'highpass', 4000, 0.7, 0.02);
+    [0, 3, 7].forEach((st) => tone(note(st, 131), 0.6, 'sawtooth', 0.05, 0.05));
+    [0, 4, 7, 12, 16].forEach((st) => tone(note(st, 262), 2.4, 'sawtooth', 0.04, 0.6));
+  }
+  function weak() { if (!ok() || throttle('weak', 80)) return; tone(2600, 0.15, 'square', 0.05); tone(160, 0.35, 'sine', 0.35, 0, 50); noise(0.25, 0.2, 'bandpass', 1500, 1.4); }
+
   function setEnabled(v) { enabled = v; if (!v) { stopLoop(); musicStop(); } if (ctx && master) master.gain.value = v ? vol * 0.55 : 0; }
   function setVolume(v) { vol = v; if (master) master.gain.value = enabled ? vol * 0.55 : 0; }
   function setVibe(v) { vibe = !!v; }
@@ -586,5 +666,6 @@ const Sfx = (() => {
     prestige, goddess, gachaUp, showcase, equip, speed, comboFinish, axeHit, spawn, carry, multi,
     cutin, skillStart, skillHit, rollTick, musicLevel, beatPhase, musicOn, setBgm, rankUp, rankDown, twinkle, shatter,
     kWhoosh, kSlice, kSplit, sheath, deflect, cellBite, dnaTick, outbreak, outbreakEnd, gBoss, dimWarp, setMode,
+    ladder, announce, boom, zap, freeze, shatter2, burn, musouStart, musouEnd, slotTick, slotStop, slotWin, critter, critterGet, newStrain, formIn, formClear, bossPhase, finish, weak,
   };
 })();

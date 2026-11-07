@@ -80,6 +80,8 @@
     </div>
     <div class="skill-box ougi-box g-only" id="ougi-box" aria-hidden="true"><small>奥義</small><b id="ougi-n"></b><div class="sk-g"><i id="ougi-g"></i></div></div>
     <div class="out-bar g-only" id="out-bar"><span>☣️ OUTBREAK</span><div class="fbar"><i id="out-fill"></i></div></div>
+    <div class="rank-box g-rank g-only" id="grank-box" data-r="0" aria-hidden="true"><small>斬撃ランク</small><div class="rk-l" id="grank-l">E</div><div class="rk-w" id="grank-w"></div><div class="rk-g"><i id="grank-g"></i></div><div class="rk-m" id="grank-m"></div></div>
+    <div class="fever g-musou g-only" id="g-musou"><span id="g-musou-l">無双ゲージ</span><div class="fbar"><i id="g-musou-fill"></i></div></div>
 
     <div class="combo-box" id="combo-box" aria-hidden="true">
       <div class="combo-n" id="combo-n">0</div>
@@ -110,6 +112,7 @@
       <button type="button" class="w-btn" data-open="gcells"><em aria-hidden="true">🛡️</em><span>免疫</span><i class="badge" hidden></i></button>
       <button type="button" class="w-btn" data-open="gupg"><em aria-hidden="true">🗡️</em><span>研ぎ</span><i class="badge" hidden></i></button>
       <button type="button" class="w-btn" data-open="gkat"><em aria-hidden="true">⚔️</em><span>刀</span><i class="badge" hidden></i></button>
+      <button type="button" class="w-btn" data-open="dex"><em aria-hidden="true">📖</em><span>図鑑</span><i class="badge" hidden></i></button>
     </nav>
     <nav class="rail rail-right g-rail g-only" aria-label="菌斬り次元のその他のメニュー">
       <button type="button" class="w-btn" data-open="gmut"><em aria-hidden="true">🧬</em><span>変異</span><i class="badge" hidden></i></button>
@@ -121,6 +124,7 @@
       <button type="button" class="w-btn" data-open="quests"><em aria-hidden="true">📜</em><span>任務</span><i class="badge" hidden></i></button>
       <button type="button" class="w-btn" data-open="ach"><em aria-hidden="true">🏆</em><span>実績</span><i class="badge" hidden></i></button>
       <button type="button" class="w-btn" data-open="prestige"><em aria-hidden="true">🌀</em><span>転生</span><i class="badge" hidden></i></button>
+      <button type="button" class="w-btn" data-open="dex"><em aria-hidden="true">📖</em><span>図鑑</span><i class="badge" hidden></i></button>
     </nav>
 
     <button type="button" class="roll-strip" id="roll-strip" aria-label="オートガチャ（タップでガチャを開く）"><span class="rs-l">🎰 <b id="rs-rate">2.0</b><small>回/秒</small> 🍀<b id="rs-luck">×1.00</b> <small>GLv</small><b id="rs-lv">1</b></span><canvas class="rs-reel" id="rs-reel" aria-hidden="true"></canvas></button>
@@ -154,7 +158,9 @@
 <script>window.THREE || document.write('<script src="vendor/three.min.js"><\/script>');</script>
 <script src="js/util.js"></script>
 <script src="js/data.js"></script>
+<script src="js/datagen.js"></script>
 <script src="js/germdata.js"></script>
+<script src="js/germgen.js"></script>
 <script src="js/game.js"></script>
 <script src="js/germ.js"></script>
 <script src="js/audio.js"></script>

@@ -33,6 +33,10 @@ const G = (() => {
   }
   const germOpen = () => HAS_GD && (S.stats.prestiges || 0) >= GD.CFG.UNLOCK_PRESTIGE;
   const katKinds = () => (S.germ && S.germ.kat ? Object.keys(S.germ.kat).length : 0);
+  // 実績の重み（手作りの実績は1、自動で増やした実績は0.1〜0.3）
+  const ACHW = {};
+  D.ACH.forEach((a) => (ACHW[a.id] = a.w == null ? 1 : a.w));
+  function achWeight() { let w = 0; for (const id in S.ach) w += ACHW[id] == null ? 1 : ACHW[id]; return w; }
   const COMBO_MS = [50, 100, 200, 300, 500, 777, 1000, 2000, 3000, 5000, 10000];
 
   function fresh() {
@@ -54,7 +58,7 @@ const G = (() => {
         ...(HAS_GD ? GD.freshStats() : {}),
       },
       daily: { last: '' },
-      dim: 'forest', germ: HAS_GD ? GD.freshGerm() : {},
+      dim: 'forest', germ: HAS_GD ? GD.freshGerm() : {}, dexClaim: 0,
       settings: { sound: true, bgm: true, vol: 0.7, vibe: true, fx: 2, shake: true, flash: true, num: 'jp', night: true, buyAmt: 1, speed: 1 },
       study: null,
       tut: 0,
@@ -123,7 +127,7 @@ const G = (() => {
     const gl = (S.gachaLv || 1) - 1;
     st.rollBase = (C.ROLL_BASE + C.ROLL_STEP * lv('rollspd') + C.GLV_ROLL * gl) * (1 + (sp.roll || 0)) * mutv('m_roll');
     st.luckBase = (1 + C.LUCK_STEP * lv('luck') + C.GLV_LUCK * gl) * (1 + (sp.luck || 0)) * mutv('m_luck');
-    st.achMult = 1 + Object.keys(S.ach).length * C.ACH_BONUS;
+    st.achMult = 1 + achWeight() * C.ACH_BONUS;
     st.spiritMult = 1 + S.spirits * C.SPIRIT_BONUS * mutv('m_spirit');
     st.axeMult = 1 + pas;
     st.levelMult = 1 + C.LEVEL_BONUS * ((S.lvl || 1) - 1);

@@ -55,6 +55,9 @@ const FX = (() => {
   // 菌斬り次元にいるときは、3Dの描画と手元の刀を micro.js に切り替える
   const gdim = () => G.S.dim === 'germ' && typeof Micro !== 'undefined' && Micro.ok;
   const W3 = () => (gdim() ? Micro : World);
+  // いまいる世界の斬撃ランク・熱狂（森はフィーバー、菌斬り次元は無双）
+  const curRank = () => (gdim() ? GM.T.rank : G.T.rank);
+  const feverNow = () => (gdim() ? GM.T.musou > 0 : G.T.fever > 0);
   const ROUL = [2, 3, 5, 10, 100];
 
   // ------------------------------------------------------------- 準備
@@ -214,10 +217,12 @@ const FX = (() => {
   function release() { held = null; W3().release(); }
   // 刀の軌跡: 細く鋭い白い芯＋刀の光の色。連斬が伸びるほど太く、大発生中は毒々しい虹
   function drawKatanaTrail(c, now) {
-    const st = GM.stats(), eq = st.eq;
-    const glowRGB = eq && eq.glow && eq.glow !== 'rainbow' ? hexRGB(eq.glow) : '170,220,255';
-    const rb = (eq && eq.glow === 'rainbow') || GM.T.outbreak > 0;
-    const heat = Math.min(1, GM.T.combo / 60);
+    const st = GM.stats(), eq = st.eq, rk = GM.T.rank, mu = GM.T.musou > 0;
+    const RK = ['170,220,255', '170,220,255', '170,255,220', '255,225,120', '255,170,60', '255,80,150', '200,120,255'];
+    const glowRGB = rk >= 2 && rk < 7 ? RK[rk] : eq && eq.glow && eq.glow !== 'rainbow' ? hexRGB(eq.glow) : '170,220,255';
+    const rb = (eq && eq.glow === 'rainbow') || GM.T.outbreak > 0 || mu || rk >= 7;
+    const heat = Math.min(1, GM.T.combo / 60) + (mu ? 0.8 : 0) + rk * 0.08;
+    if (held && held.sp > 4 && quality > 0 && Math.random() < 0.7) spawn({ t: 'spark', x: held.x, y: held.y, vx: (Math.random() - 0.5) * 260, vy: (Math.random() - 0.5) * 260, life: 0.25, max: 0.25, s: 2.2, col: rb ? `hsl(${(clock * 500) % 360},100%,70%)` : `rgb(${glowRGB})` });
     c.save();
     c.lineCap = 'round';
     c.globalCompositeOperation = 'lighter';
@@ -769,19 +774,19 @@ const FX = (() => {
   // ------------------------------------------------------------- 画面全体: スタイルランクの色で縁が光り、拍で脈打つ
   function rankRGB(r) {
     const R = D.STYLE.RANKS[r];
-    return R.rainbow || G.T.fever > 0 ? hslRGB((clock * 90) % 360) : hexRGB(R.col);
+    return R.rainbow || feverNow() ? hslRGB((clock * 90) % 360) : hexRGB(R.col);
   }
   function drawVignette(c, real) {
     vPulse = Math.max(0, vPulse - real * 2.2);
-    const T = G.T, r = T.rank;
-    const base = [0, 0, 0.05, 0.09, 0.13, 0.17, 0.21, 0.25][r] + (T.fever > 0 ? 0.1 : 0) + (T.golden > 0 ? 0.08 : 0);
+    const T = G.T, r = curRank(), fev = feverNow(), gold = !gdim() && T.golden > 0;
+    const base = [0, 0, 0.05, 0.09, 0.13, 0.17, 0.21, 0.25][r] + (fev ? 0.12 : 0) + (gold ? 0.08 : 0);
     const a = Math.min(0.5, (base + vPulse) * (calm ? 0.4 : 1));
     // 高ランクでは画面の下から火の粉が昇る
     if (r >= 4 && !calm && !rmotion && quality > 0 && !blocked() && Math.random() < (r - 3) * 7 * real * (quality === 2 ? 1 : 0.5)) {
-      spawn({ t: 'ember', x: Math.random() * OW, y: OH + 10, vx: (Math.random() - 0.5) * 30, vy: -(140 + Math.random() * 160 + r * 20), life: 1.6 + Math.random(), max: 2.6, s: 1.6 + Math.random() * 2.2, col: r >= 7 || T.fever > 0 ? hslRGB(Math.random() * 360) : hexRGB(D.STYLE.RANKS[r].col), ph: Math.random() * 6, g: -40 });
+      spawn({ t: 'ember', x: Math.random() * OW, y: OH + 10, vx: (Math.random() - 0.5) * 30, vy: -(140 + Math.random() * 160 + r * 20), life: 1.6 + Math.random(), max: 2.6, s: 1.6 + Math.random() * 2.2, col: r >= 7 || fev ? hslRGB(Math.random() * 360) : hexRGB(D.STYLE.RANKS[r].col), ph: Math.random() * 6, g: -40 });
     }
     if (a < 0.02) return;
-    const col = T.golden > 0 && r < 5 ? '255,200,60' : rankRGB(r);
+    const col = gold && r < 5 ? '255,200,60' : rankRGB(r);
     const w = Math.min(OW, OH) * (0.1 + a * 0.22);
     c.save();
     const edge = (x0, y0, x1, y1, rx, ry, rw, rh) => {
@@ -802,10 +807,10 @@ const FX = (() => {
     const bp = Sfx.beatPhase();
     if (bp < 0) { lastBeat = 1; return; }
     if (bp < lastBeat) {
-      const r = G.T.rank, fev = G.T.fever > 0;
+      const r = curRank(), fev = feverNow();
       if ((r >= 3 || fev) && !calm && !blocked()) {
         vPulse = Math.max(vPulse, 0.06 + r * 0.025 + (fev ? 0.08 : 0));
-        if (!rmotion) World.punch(0.006 + r * 0.0025 + (fev ? 0.008 : 0));
+        if (!rmotion) W3().punch(0.006 + r * 0.0025 + (fev ? 0.008 : 0));
         if (r >= 5 || fev) UI.beat();
       }
     }
@@ -814,21 +819,21 @@ const FX = (() => {
   // スタイルランクが変わったとき
   function onRank(d) {
     const R = D.STYLE.RANKS[d.rank];
-    World.setRank(d.rank, R.col, R.rainbow);
-    Sfx.musicLevel(calm || !G.S.settings.bgm ? 0 : d.rank);
+    W3().setRank(d.rank, R.col, R.rainbow);
+    Sfx.musicLevel(calm || !G.S.settings.bgm ? 0 : gdim() ? Math.max(2, d.rank) : d.rank);
     if (!d.up) { if (d.prev >= 3) Sfx.rankDown(); return; }
     if (blocked()) return;
     Sfx.rankUp(d.rank);
     vPulse = Math.max(vPulse, 0.25 + d.rank * 0.04);
     if (d.rank < 3) return;
-    const np = notchPoint();
+    const np = gdim() ? { y: OH * 0.56 } : notchPoint();
     const cx = OW / 2, cy = Math.min(OH * 0.42, np.y - 140);
     floatText(cx, cy, R.id, { size: 84 + d.rank * 12, fill: R.col, stroke: '#1a0a00', rainbow: !!R.rainbow, pop: 2.8, vy: -14, life: 0.95, rot: -0.08 });
     floatText(cx, cy + 58 + d.rank * 4, R.word, { size: 22 + d.rank * 2, fill: '#ffffff', stroke: '#1a0a00', pop: 2.2, vy: -14, life: 0.95 });
     spawn({ t: 'wave', x: cx, y: cy, life: 0.6, max: 0.6, col: rankRGB(d.rank) });
     if (d.rank >= 5) {
       focusLines(cx, cy, 0.5, rankRGB(d.rank), 0.8);
-      World.roll((Math.random() < 0.5 ? -1 : 1) * 0.06);
+      W3().roll((Math.random() < 0.5 ? -1 : 1) * 0.06);
       addFlash(0.16, rankRGB(d.rank));
       UI.shakeHud();
     }
@@ -1359,6 +1364,9 @@ const FX = (() => {
       if (prev) { const i = texts.indexOf(prev); if (i >= 0) texts.splice(i, 1); }
       merged.multi = { t: floatText(np.x, np.y - 150, `${m}本斬り${'!'.repeat(Math.min(4, m - 1))}`, { size: 26 + m * 6, fill: m >= 4 ? '#ffffff' : '#ffe14a', stroke: '#2a0a00', rainbow: m >= 4, rot: -0.1, pop: 2.4, vy: -24, life: 1.0 }), at: clock };
       Sfx.multi(m);
+      Sfx.ladder(m);
+      Sfx.announce(m);
+      floatText(OW / 2, OH * 0.28, ['', '', 'DOUBLE!', 'TRIPLE!!', 'QUADRA!!', 'PENTA KILL!!!'][Math.min(5, m)], { size: 30 + m * 7, fill: m >= 4 ? '#ffffff' : '#ffe14a', stroke: '#2a0010', rainbow: m >= 4, rot: -0.06, pop: 2.6, vy: -18, life: 0.8 });
       Sfx.vibrate(10 + m * 8);
       if (m >= 3) { focusLines(np.x, np.y, 0.35 + m * 0.05, '255,240,180', Math.min(1, m / 5)); spawn({ t: 'wave', x: np.x, y: np.y, life: 0.5, max: 0.5, col: '255,220,120' }); }
       if (m >= 5) { UI.banner('一閃 5本斬り!!!', '一振りで森ごと伐り拓いた', 'combo'); confetti(70); }
@@ -1434,7 +1442,9 @@ const FX = (() => {
     G.on('milestone', () => { Sfx.milestone(); confetti(30); });
     G.on('prestige', () => { Sfx.prestige(); confetti(160); addFlash(0.6); });
     G.on('load', () => { World.reset(); parts.length = 0; texts.length = 0; roulettes.length = 0; twinkles.length = 0; World.setRank(0, '#ffffff', false); Sfx.musicLevel(0); });
-    G.on('rank', onRank);
+    G.on('rank', (d) => { if (!gdim()) onRank(d); });
+    G.on('gRank', (d) => { if (gdim()) onRank(d); });
+    G.on('dim', () => { const r = curRank(), R = D.STYLE.RANKS[r]; W3().setRank(r, R.col, R.rainbow); });
     G.on('skill', onSkill);
     G.on('autoRoll', onRolls);
     G.on('golden', (d) => {
@@ -1498,6 +1508,27 @@ const FX = (() => {
     if (th) return `<img class="axe-img${a.glow === 'rainbow' ? ' rainbow-glow' : ''}" src="${th.url}" width="${size}" height="${size}" alt="" draggable="false">`;
     return axeIconSVG(a, size);
   }
+  // 刀の小さな絵（SVG）
+  function katanaSVG(k, size = 48) {
+    const id = 'kg-' + k.id + '-' + size;
+    const glow = k.glow && k.glow !== 'rainbow' ? `filter:drop-shadow(0 0 4px ${k.glow})` : '';
+    const ts = (k.k && k.k.tsuba) || 'round';
+    const tsuba = ts === 'square' ? '<rect x="11" y="41" width="13" height="11" rx="1" fill="#2a2a32" stroke="#000" stroke-width="1.5" transform="rotate(45 17.5 46.5)"/>' : ts === 'none' ? '' : `<ellipse cx="17.5" cy="46.5" rx="7.5" ry="7.5" fill="${ts === 'flower' || ts === 'star' ? '#d8b040' : '#2a2a32'}" stroke="#000" stroke-width="1.5"/>`;
+    return `<svg class="axe-svg${k.glow === 'rainbow' ? ' rainbow-glow' : ''}" viewBox="0 0 64 64" width="${size}" height="${size}" style="${glow}" aria-hidden="true">` +
+      `<defs><linearGradient id="${id}" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="${k.blade[1]}"/><stop offset="1" stop-color="${k.blade[0]}"/></linearGradient></defs>` +
+      `<path d="M7 59 L15 51" stroke="${k.handle || '#222'}" stroke-width="7" stroke-linecap="round"/>` +
+      `<path d="M7 59 L15 51" stroke="#fff" stroke-opacity=".35" stroke-width="7" stroke-dasharray="2 3"/>` +
+      tsuba +
+      `<path d="M19 44 C 30 33, 44 19, 58 5 C 52 16, 36 32, 22 47 Z" fill="url(#${id})" stroke="#140c18" stroke-width="1.6" stroke-linejoin="round"/>` +
+      `<path d="M21 45 C 32 34, 45 21, 56 8" stroke="#fff" stroke-opacity=".8" stroke-width="1.4" fill="none"/>` +
+      `</svg>`;
+  }
+  // 一覧用の軽い絵: 3Dの絵を作ったことがあればそれ、なければSVG
+  function itemIcon(a, size = 48) {
+    const c = gl && typeof Axe3D !== 'undefined' ? Axe3D.cached(a.id) : null;
+    if (c) return `<img class="axe-img${a.glow === 'rainbow' ? ' rainbow-glow' : ''}" src="${c.url}" width="${size}" height="${size}" alt="" draggable="false" loading="lazy">`;
+    return a.kind === 'katana' ? katanaSVG(a, size) : axeIconSVG(a, size);
+  }
   function axeIconSVG(a, size = 48) {
     const P = D.AXE_PATHS;
     const id = 'ag-' + a.id + '-' + size;
@@ -1514,7 +1545,7 @@ const FX = (() => {
 
   return {
     init, resize, frame, setQuality, floatText, burst, confetti, coins, addShake, addFlash, spawn,
-    grab, drag, release, trunkInfo, unit, sceneCenter, axeIconSVG, axeIcon, focusLines,
+    grab, drag, release, trunkInfo, unit, sceneCenter, axeIconSVG, axeIcon, itemIcon, katanaSVG, focusLines,
     biomeName: () => World.palette(G.biomeIndex(G.S.stage)).name,
     get gl() { return gl; },
     // 菌斬り次元の演出（germfx.js）から使う道具

@@ -1062,7 +1062,10 @@ const Axe3D = (() => {
       if (gc) { og.shadowColor = gc; og.shadowBlur = px * 0.07; }
       og.drawImage(big, 0, 0, px, px);
       const res = { url: out.toDataURL('image/png'), canvas: out };
-      if (!opts) thumbs.set(def.id, res);
+      if (!opts) {
+        thumbs.set(def.id, res);
+        if (thumbs.size > 260) thumbs.delete(thumbs.keys().next().value);
+      }
       return res;
     } catch (e) {
       console.warn('斧の画像を作れない', e);
@@ -1075,7 +1078,11 @@ const Axe3D = (() => {
   let warmList = null;
   function warmStep() {
     if (!renderer) return false;
-    if (!warmList) warmList = D.AXES.slice().concat(typeof GD !== 'undefined' ? GD.KATANAS : []);
+    if (!warmList) {
+      const S = typeof G !== 'undefined' ? G.S : null;
+      const hi = (a) => (RANKS[a.r] || 0) >= 3;
+      warmList = D.AXES.filter((a) => hi(a) && S && S.axes[a.id]).concat(typeof GD !== 'undefined' && S && S.germ ? GD.KATANAS.filter((k) => hi(k) && S.germ.kat && S.germ.kat[k.id]) : []).slice(0, 120);
+    }
     while (warmList.length) {
       const a = warmList.shift();
       if (!thumbs.has(a.id)) { thumb(a); return true; }

@@ -1523,9 +1523,9 @@ body.night .ci-motif { display: none; }
    菌斬り次元（転生で開く、刀で菌を斬るもう一つの世界）
    ===================================================================== */
 body:not(.dim-germ) .g-only { display: none !important; }
-body.dim-germ .tree-box, body.dim-germ .combo-box, body.dim-germ .rank-box, body.dim-germ #skill-box,
+body.dim-germ .tree-box, body.dim-germ #combo-box, body.dim-germ #rank-box, body.dim-germ #skill-box,
 body.dim-germ #dock, body.dim-germ .f-rail, body.dim-germ #btn-boss, body.dim-germ #critter, body.dim-germ #cur-wood,
-body.dim-germ .fever, body.dim-germ #hint { display: none !important; }
+body.dim-germ #fever, body.dim-germ #hint { display: none !important; }
 
 .cur-dna { border-radius: 16px; padding: 5px 14px 5px 8px; max-width: 360px; border-color: rgba(90, 255, 176, 0.45); }
 .cur-dna .ico { font-size: 28px; }
@@ -1571,7 +1571,7 @@ body.dim-germ .fever, body.dim-germ #hint { display: none !important; }
 .ougi-box .sk-g i { background: linear-gradient(90deg, #5affb0, #c06aff); }
 
 /* 大発生 */
-.out-bar { position: absolute; left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(var(--bot) + 100px); max-width: 680px; margin: 0 auto; display: flex; align-items: center; gap: 8px; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+.out-bar { position: absolute; left: 22%; right: 22%; top: calc(var(--top) + 170px); max-width: 420px; margin: 0 auto; display: flex; align-items: center; gap: 8px; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
 .out-bar.show { opacity: 1; }
 .out-bar span { font-family: var(--font-d); font-size: 12px; color: #9affb8; text-shadow: 0 2px 0 #000; white-space: nowrap; animation: pulse 0.4s infinite; }
 .out-bar .fbar i { background: linear-gradient(90deg, #2aff6a, #d8ff3a, #2aff6a); animation: hueSpin 1.4s linear infinite; }
@@ -1618,3 +1618,36 @@ body.outbreak #app::after { content: ''; position: fixed; inset: 0; pointer-even
 .tab-note { margin: 4px 2px 8px; }
 .mut-row .r-desc { color: #d8c8ff; }
 .dim-box .pb-t { color: #9aff9a; }
+
+/* 菌斬り次元 v2: 無双ゲージ・斬撃ランク */
+.g-musou span { color: #ffd0f0; }
+.g-musou .fbar i { background: linear-gradient(90deg, #ff6ad5, #ffd23a); }
+.g-musou.near .fbar i, .g-musou.on .fbar i { background: linear-gradient(90deg, #ff5ab0, #ffd23a, #7aff6a, #4fe3ff, #c49bff); animation: hueSpin 0.8s linear infinite; }
+.g-musou.on span { color: #fff; animation: pulse 0.35s infinite; }
+@media (min-width: 900px) { .out-bar { top: calc(var(--top) + 96px); } }
+body.musou #app::before { content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 6; border: 6px solid transparent; border-image: linear-gradient(90deg, #ff5ab0, #ffd23a, #7aff6a, #4fe3ff, #c49bff, #ff5ab0) 1; box-shadow: inset 0 0 90px rgba(255, 120, 220, 0.45); animation: hueSpin 0.8s linear infinite, outPulse 0.25s ease-in-out infinite alternate; }
+
+/* ページ送り・図鑑 */
+.paged { margin-bottom: 10px; }
+.pg-chips { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 8px; scrollbar-width: none; }
+.pg-chip { flex: none; padding: 5px 10px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.18); background: rgba(255, 255, 255, 0.06); color: inherit; font-size: 11px; font-weight: 800; cursor: pointer; white-space: nowrap; }
+.pg-chip.on { background: linear-gradient(#ffd23a, #ff9a2a); color: #2a1400; border-color: #ffd23a; }
+.pg-nav { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 8px; font-size: 12px; font-weight: 800; color: var(--muted); }
+.pg-b { width: 40px; height: 32px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.2); background: rgba(255, 255, 255, 0.08); color: #fff; font-size: 14px; cursor: pointer; }
+.pg-b:disabled { opacity: 0.3; }
+.dex-hero { display: flex; gap: 14px; align-items: center; padding: 12px; border-radius: 16px; background: linear-gradient(135deg, rgba(60, 30, 90, 0.9), rgba(20, 60, 50, 0.9)); border: 2px solid rgba(255, 210, 58, 0.4); margin-bottom: 10px; }
+.dx-ring { flex: none; width: 96px; height: 96px; border-radius: 50%; display: grid; place-content: center; text-align: center; background: radial-gradient(closest-side, #1a1028 76%, transparent 78%), conic-gradient(#ffd23a calc(var(--p) * 1%), rgba(255, 255, 255, 0.12) 0); }
+.dx-ring b { font-family: var(--font-d); font-weight: 400; font-size: 20px; color: #ffe14a; }
+.dx-ring small { font-size: 10px; color: var(--muted); }
+.dx-t b { font-family: var(--font-d); font-weight: 400; font-size: 17px; }
+.dx-t p { font-size: 11.5px; margin: 4px 0 8px; color: #e8e0f0; }
+.dex-cats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; }
+.dx-cat { padding: 6px 8px; border-radius: 10px; background: rgba(255, 255, 255, 0.05); font-size: 11px; display: grid; grid-template-columns: 1fr auto; gap: 2px 6px; }
+.dx-cat b { font-size: 11px; color: #ffe14a; }
+.dx-bar { grid-column: 1 / -1; height: 5px; border-radius: 3px; background: rgba(0, 0, 0, 0.5); overflow: hidden; }
+.dx-bar i { display: block; height: 100%; background: linear-gradient(90deg, #7affb8, #ffd23a); transform-origin: left; }
+.dex-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 6px; }
+.dex-cell { display: flex; flex-direction: column; align-items: center; padding: 6px 2px; border-radius: 10px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); text-align: center; }
+.dex-cell.known { background: rgba(122, 255, 184, 0.08); border-color: rgba(122, 255, 184, 0.3); }
+.dex-cell small { font-size: 9.5px; line-height: 1.2; margin-top: 2px; color: #e8e0f0; }
+.dex-cell em { font-style: normal; font-size: 9px; color: var(--muted); }

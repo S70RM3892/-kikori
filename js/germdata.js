@@ -115,7 +115,7 @@ const GD = (() => {
     { id: 'outbreak', cat: 'eco', icon: '☣️', name: 'アウトブレイク', desc: '大発生の時間 +1秒・頻度 +5%', base: 800, growth: 1.5, max: 20 },
     { id: 'immune', cat: 'eco', icon: '🛡️', name: '免疫強化', desc: '免疫細胞の攻撃 ×1.2（重ねがけ）', base: 1000, growth: 3, max: 0 },
     { id: 'boss', cat: 'eco', icon: '👑', name: '病原体特効', desc: 'ボスへのダメージ +25%・制限時間 +1秒', base: 1500, growth: 1.55, max: 20 },
-    { id: 'krollspd', cat: 'gacha', icon: '🎰', name: '刀ガチャ高速回転', desc: '刀ガチャ +0.2回/秒', base: 3000, growth: 30, max: 10 },
+    { id: 'krollspd', cat: 'gacha', icon: '🎰', name: '刀ガチャ高速回転', desc: '刀ガチャ +0.15回/秒', base: 3000, growth: 30, max: 10 },
     { id: 'kluck', cat: 'gacha', icon: '🍀', name: '刀ガチャの幸運', desc: '刀ガチャの幸運 +4%', base: 9000, growth: 40, max: 10 },
   ];
   const UPG_CATS = [['blade', '刀の技'], ['eco', '研究'], ['gacha', '刀ガチャ']];
