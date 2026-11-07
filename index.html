@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>ドパドパ木こり</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="木を伐って伐って伐りまくる、ドーパミン全開の木こりインクリメンタルゲーム。">
+<meta name="theme-color" content="#120d0a">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=M+PLUS+Rounded+1c:wght@500;700;800&display=swap">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+  <header id="hud">
+    <div class="hud-main">
+      <div class="cur cur-wood" id="cur-wood" title="木材">
+        <span class="ico" aria-hidden="true">🪵</span>
+        <div class="cw-txt"><b id="wood">0</b><small id="wood-rate">+0/秒</small></div>
+      </div>
+      <div class="logo" aria-hidden="true">ドパドパ<span>木こり</span></div>
+    </div>
+    <div class="hud-side">
+      <div class="cur cur-gem" id="cur-gem" title="ジェム"><span class="ico" aria-hidden="true">💎</span><b id="gems">0</b></div>
+      <div class="cur cur-ticket" id="cur-ticket" title="ガチャチケット" hidden><span class="ico" aria-hidden="true">🎫</span><b id="tickets">0</b></div>
+      <div class="cur cur-spirit" id="cur-spirit" title="森の精霊" hidden><span class="ico" aria-hidden="true">🧚</span><b id="spirits">0</b></div>
+    </div>
+    <div class="hud-btns">
+      <button type="button" id="btn-study" class="icon-btn" aria-label="勉強ブースト" title="勉強ブースト">📚</button>
+      <button type="button" id="btn-sound" class="icon-btn" aria-label="サウンド切り替え" title="サウンド">🔊</button>
+      <button type="button" id="btn-settings" class="icon-btn" aria-label="設定" title="設定">⚙️</button>
+    </div>
+  </header>
+
+  <main id="scene-wrap" aria-label="伐採エリア。タップで木を伐る（スペースキーでも可）">
+    <canvas id="scene"></canvas>
+    <div id="scene-ui">
+      <div id="buffs" aria-live="polite"></div>
+      <button type="button" id="btn-boss" hidden>⚔️ ボスに再挑戦</button>
+      <button type="button" id="critter" class="critter" hidden></button>
+      <div id="hint" hidden></div>
+    </div>
+  </main>
+
+  <section id="panel">
+    <nav id="tabs" role="tablist" aria-label="メニュー">
+      <button type="button" role="tab" data-tab="workers" class="tab on"><em aria-hidden="true">🪓</em><span>木こり</span><i class="badge" hidden></i></button>
+      <button type="button" role="tab" data-tab="upgrades" class="tab"><em aria-hidden="true">⚡</em><span>強化</span><i class="badge" hidden></i></button>
+      <button type="button" role="tab" data-tab="gacha" class="tab"><em aria-hidden="true">🎰</em><span>ガチャ</span><i class="badge" hidden></i></button>
+      <button type="button" role="tab" data-tab="quests" class="tab"><em aria-hidden="true">📜</em><span>任務</span><i class="badge" hidden></i></button>
+      <button type="button" role="tab" data-tab="ach" class="tab"><em aria-hidden="true">🏆</em><span>実績</span><i class="badge" hidden></i></button>
+      <button type="button" role="tab" data-tab="prestige" class="tab"><em aria-hidden="true">🌀</em><span>転生</span><i class="badge" hidden></i></button>
+    </nav>
+    <div id="tab-body" role="tabpanel"></div>
+  </section>
+</div>
+
+<canvas id="fx" aria-hidden="true"></canvas>
+<div id="banners" aria-live="polite"></div>
+<div id="toasts" aria-live="polite"></div>
+<div id="modal-root"></div>
+<div id="night-tint" hidden></div>
+
+<script src="js/util.js"></script>
+<script src="js/data.js"></script>
+<script src="js/game.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/fx.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
