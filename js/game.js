@@ -18,6 +18,7 @@ const G = (() => {
   function fresh() {
     return {
       v: 1,
+      lvl: 1, xp: 0, freePullAt: 0,
       wood: 0, gems: 0, tickets: 10, chests: 0, spirits: 0,
       stage: 1, maxStage: 1, kills: 0, farming: false,
       workers: {}, upg: {}, axes: {}, equip: null, pity: 0,
@@ -28,6 +29,7 @@ const G = (() => {
         missionsDone: 0, loginDays: 0, studies: 0, sleeps: 0, goddess: 0, hires: 0, bestStage: 1,
         gotSSR: 0, gotUR: 0, gotLR: 0, playTime: 0, gemsAll: 0, bestSpirits: 0, bestBoss: 0,
         justs: 0, maxChain: 0, greats: 0, maxSpeeds: 0, echoes: 0, thunders: 0, blasts: 0,
+        goldens: 0, roulettes: 0, bestRoulette: 0, bestStreak: 0, rouletteWood: 0,
       },
       daily: { last: '' },
       settings: { sound: true, vol: 0.7, vibe: true, fx: 2, shake: true, flash: true, num: 'jp', night: true, buyAmt: 1 },
@@ -46,6 +48,7 @@ const G = (() => {
     incomeEMA: 0, incomeAcc: 0, incomeT: 0, dpsAcc: 0,
     checkT: 0, dirty: true, st: null,
     justChain: 0, blastCount: 0, pending: [],
+    treeStreak: 0, golden: 0, goldenMax: 1,
   };
 
   // ------------------------------------------------------------- イベント
@@ -93,7 +96,8 @@ const G = (() => {
     st.achMult = 1 + Object.keys(S.ach).length * C.ACH_BONUS;
     st.spiritMult = 1 + S.spirits * C.SPIRIT_BONUS;
     st.axeMult = 1 + pas;
-    st.global = st.achMult * st.spiritMult * st.axeMult * (1 + (sp.all || 0));
+    st.levelMult = 1 + C.LEVEL_BONUS * ((S.lvl || 1) - 1);
+    st.global = st.achMult * st.spiritMult * st.axeMult * st.levelMult * (1 + (sp.all || 0));
     const guild = Math.pow(1.3, lv('guild'));
     st.wdps = {};
     let dps = 0;
@@ -208,6 +212,24 @@ const G = (() => {
     S.stats.woodAll = Math.min(Number.MAX_VALUE, S.stats.woodAll + x);
     if (!lump) T.incomeAcc += x;
   }
+  // ------------------------------------------------------------- 伐採レベル（経験値）
+  const xpNeed = (l) => Math.floor(25 * Math.pow(l, 1.55) + 25);
+  function gainXp(n) {
+    if (!(n > 0)) return;
+    S.xp += n;
+    while (S.xp >= xpNeed(S.lvl)) {
+      S.xp -= xpNeed(S.lvl);
+      S.lvl++;
+      const gems = 5 + Math.floor(S.lvl / 3);
+      const tickets = S.lvl % 5 === 0 ? 1 : 0;
+      const chests = S.lvl % 10 === 0 ? 2 : 0;
+      gainGems(gems);
+      S.tickets += tickets;
+      S.chests += chests;
+      dirty();
+      emit('levelUp', { lvl: S.lvl, gems, tickets, chests });
+    }
+  }
   function gainGems(g) {
     if (!(g > 0)) return;
     S.gems += g;
@@ -265,7 +287,25 @@ const G = (() => {
     if (tr.rar.id === 'gold') S.stats.gold++;
     if (tr.rar.id === 'rainbow') S.stats.rainbow++;
     T.respawn = T.time - tr.born < 0.6 ? C.RESPAWN_FAST : C.RESPAWN;
-    emit('fell', { tree: tr, reward, gems, chest });
+    gainXp(tr.boss ? 40 : 3 * ({ normal: 1, silver: 2, gold: 4, rainbow: 10 }[tr.rar.id] || 1));
+    // 連続伐採（コンボが切れないまま何本倒せるか）
+    T.treeStreak = T.combo > 0 ? T.treeStreak + 1 : 1;
+    if (T.treeStreak > S.stats.bestStreak) S.stats.bestStreak = T.treeStreak;
+    emit('fell', { tree: tr, reward, gems, chest, streak: T.treeStreak });
+    const sm = D.STREAK_MS.find((x) => x[0] === T.treeStreak);
+    if (sm) {
+      gainGems(sm[1]);
+      S.chests += sm[2];
+      emit('streak', { n: sm[0], gems: sm[1], chests: sm[2] });
+    }
+    // 倒した瞬間のボーナスルーレット（×2〜×100）。結果は少し後に入る
+    const rc = C.ROULETTE_CHANCE * (tr.boss ? 3 : tr.rar.id !== 'normal' ? 2 : 1);
+    if (Math.random() < rc) {
+      const r = U.weighted(D.ROULETTE);
+      const bonus = reward * (r.m - 1);
+      T.pending.push({ t: T.time + C.ROULETTE_DELAY, kind: 'roulette', wood: bonus, m: r.m });
+      emit('roulette', { m: r.m, wood: bonus, delay: C.ROULETTE_DELAY });
+    }
     if (tr.boss) {
       S.stats.bosses++;
       T.bossTimer = 0;
@@ -372,6 +412,21 @@ const G = (() => {
       if (T.feverGauge >= C.FEVER_NEED) startFever();
     }
     if (tier === 4) gainGems(10);
+    gainXp(isTap ? 0.5 : 1 + (just ? 1 : 0) + (stier >= 3 ? 1 : 0));
+    // ゴールデンタイム: 低確率で突入し、その間は斬るたびに木材が噴き出す
+    let gold = 0;
+    if (alive && !isTap) {
+      if (T.golden <= 0 && Math.random() < C.GOLDEN_CHANCE) {
+        T.golden = C.GOLDEN_TIME;
+        T.goldenMax = C.GOLDEN_TIME;
+        S.stats.goldens++;
+        emit('golden', { time: C.GOLDEN_TIME });
+      }
+      if (T.golden > 0) {
+        gold = hpFor(T.tree.stage) * rewardRate(T.tree.stage) * st.reward * C.GOLDEN_RATE * (1 + Math.max(0, stier) * 0.25);
+        gainWood(gold);
+      }
+    }
     // 追撃（強化で解放）: 残像・落雷・爆裂
     const procs = [];
     if (alive && !isTap) {
@@ -387,7 +442,7 @@ const G = (() => {
       }
     }
     const ev = {
-      dmg, tier, stier, just, chain: T.justChain, combo: T.combo, x: o.x, y: o.y, dir: o.dir || 1, alive, speed: o.speed || 0,
+      dmg, tier, stier, just, chain: T.justChain, combo: T.combo, x: o.x, y: o.y, dir: o.dir || 1, alive, speed: o.speed || 0, gold,
       kind: isTap ? 'tap' : 'swing', procs: procs.map((p) => p.kind), blastIn: st.blastEvery ? st.blastEvery - T.blastCount : 0,
     };
     emit('swing', ev);
@@ -467,13 +522,17 @@ const G = (() => {
     }
     return 'N';
   }
+  const freeLeft = () => Math.max(0, ((S.freePullAt || 0) - Date.now()) / 1000);
   function canPull(n) {
     return S.tickets >= n || S.gems >= (n === 10 ? C.GACHA_10 : C.GACHA_1);
   }
-  function pull(n) {
+  function pull(n, opts = {}) {
     if (S.study) return { error: 'study' };
     const cost = n === 10 ? C.GACHA_10 : C.GACHA_1;
-    if (S.tickets >= n) S.tickets -= n;
+    if (opts.free) {
+      if (n !== 1 || freeLeft() > 0) return { error: 'free' };
+      S.freePullAt = Date.now() + C.FREE_PULL_MIN * 60000;
+    } else if (S.tickets >= n) S.tickets -= n;
     else if (S.gems >= cost) S.gems -= cost;
     else return { error: 'gems' };
     const st = stats();
@@ -661,6 +720,7 @@ const G = (() => {
     if (perk(1)) S.workers.w1 = 10;
     T.combo = 0; T.fever = 0; T.feverGauge = 0; T.bossTimer = 0; T.pendingBoss = false; T.farmKills = 0;
     T.incomeEMA = 0;
+    T.pending = []; T.golden = 0; T.treeStreak = 0; T.justChain = 0; T.blastCount = 0;
     dirty();
     spawnTree();
     emit('prestige', { gain: g });
@@ -734,7 +794,11 @@ const G = (() => {
 
     if (T.combo > 0) {
       T.comboTimer -= dt;
-      if (T.comboTimer <= 0) { emit('comboEnd', T.combo); T.combo = 0; T.justChain = 0; T.blastCount = 0; }
+      if (T.comboTimer <= 0) { emit('comboEnd', T.combo); T.combo = 0; T.justChain = 0; T.blastCount = 0; T.treeStreak = 0; }
+    }
+    if (T.golden > 0) {
+      T.golden -= dt;
+      if (T.golden <= 0) { T.golden = 0; emit('goldenEnd'); }
     }
     if (T.fever > 0) {
       T.fever -= dt;
@@ -748,6 +812,14 @@ const G = (() => {
         const p = T.pending[i];
         if (T.time < p.t) continue;
         T.pending.splice(i--, 1);
+        if (p.kind === 'roulette') {
+          gainWood(p.wood, true);
+          S.stats.roulettes++;
+          S.stats.rouletteWood += p.wood;
+          if (p.m > S.stats.bestRoulette) S.stats.bestRoulette = p.m;
+          emit('rouletteWin', p);
+          continue;
+        }
         const alive = !!(T.tree && T.tree.alive);
         if (p.kind === 'echo') S.stats.echoes++;
         else if (p.kind === 'thunder') S.stats.thunders++;
@@ -784,7 +856,7 @@ const G = (() => {
       if (T.squirrelTimer <= 0) {
         T.squirrel = {
           kind: Math.random() < C.GODDESS_RATE ? 'goddess' : 'squirrel',
-          life: C.SQUIRREL_LIFE, x: U.rand(0.12, 0.88), y: U.rand(0.34, 0.72),
+          life: C.SQUIRREL_LIFE, x: U.rand(0.26, 0.74), y: U.rand(0.3, 0.62), // 端のウィジェットと下のドックを避ける
         };
         emit('sqSpawn', T.squirrel);
       }
@@ -856,7 +928,7 @@ const G = (() => {
   }
   function reset() {
     T.tree = null; T.combo = 0; T.fever = 0; T.feverGauge = 0; T.bossTimer = 0; T.pendingBoss = false;
-    T.justChain = 0; T.blastCount = 0; T.pending = [];
+    T.justChain = 0; T.blastCount = 0; T.pending = []; T.golden = 0; T.treeStreak = 0;
     T.squirrel = null; T.squirrelTimer = 25; T.farmKills = 0; T.incomeEMA = 0;
     dirty();
     ensureMissions();
@@ -889,7 +961,7 @@ const G = (() => {
     get S() { return S; },
     T, on, emit, stats, dirty, tick, tap, swing, speedTier, startFever,
     unitDps, previewUpgrade, buyWorker, buyAmount, workerCost, maxAffordable, buyUpgrade, upgCost, upgMaxed,
-    pull, canPull, equip, openChest, claimMission, missionProgress, missionText,
+    pull, canPull, freeLeft, xpNeed, gainXp, equip, openChest, claimMission, missionProgress, missionText,
     catchSquirrel, goddessAnswer, challengeBoss, prestige, spiritGain, startStage, perk,
     startStudy, abortStudy, finishStudy, studyLeft, applyOffline, checkDaily,
     save, serialize, loadFrom, init, exportSave, importSave, hardReset,

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>ドパドパ木こり</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<meta name="description" content="木を伐って伐って伐りまくる、ドーパミン全開の木こりインクリメンタルゲーム。">
+<meta name="description" content="斧をドラッグして3Dの木をスパッと斬りまくる、ドーパミン全開の木こりインクリメンタルゲーム。">
 <meta name="theme-color" content="#120d0a">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -14,47 +14,78 @@
 </head>
 <body>
 <div id="app">
-  <header id="hud">
-    <div class="hud-main">
-      <div class="cur cur-wood" id="cur-wood" title="木材">
-        <span class="ico" aria-hidden="true">🪵</span>
-        <div class="cw-txt"><b id="wood">0</b><small id="wood-rate">+0/秒</small></div>
-      </div>
-      <div class="logo" aria-hidden="true">ドパドパ<span>木こり</span></div>
-    </div>
-    <div class="hud-side">
-      <div class="cur cur-gem" id="cur-gem" title="ジェム"><span class="ico" aria-hidden="true">💎</span><b id="gems">0</b></div>
-      <div class="cur cur-ticket" id="cur-ticket" title="ガチャチケット" hidden><span class="ico" aria-hidden="true">🎫</span><b id="tickets">0</b></div>
-      <div class="cur cur-spirit" id="cur-spirit" title="森の精霊" hidden><span class="ico" aria-hidden="true">🧚</span><b id="spirits">0</b></div>
-    </div>
-    <div class="hud-btns">
-      <button type="button" id="btn-study" class="icon-btn" aria-label="勉強ブースト" title="勉強ブースト">📚</button>
-      <button type="button" id="btn-sound" class="icon-btn" aria-label="サウンド切り替え" title="サウンド">🔊</button>
-      <button type="button" id="btn-settings" class="icon-btn" aria-label="設定" title="設定">⚙️</button>
-    </div>
-  </header>
-
   <main id="scene-wrap" aria-label="伐採エリア。斧をドラッグして幹を左右に横切ると伐れる（スペースキーで軽い一振り）">
-    <canvas id="scene"></canvas>
-    <div id="scene-ui">
-      <div id="buffs" aria-live="polite"></div>
-      <button type="button" id="btn-boss" hidden>⚔️ ボスに再挑戦</button>
-      <button type="button" id="critter" class="critter" hidden></button>
-      <div id="hint" hidden></div>
-    </div>
+    <canvas id="gl"></canvas>
   </main>
 
-  <section id="panel">
-    <nav id="tabs" role="tablist" aria-label="メニュー">
-      <button type="button" role="tab" data-tab="workers" class="tab on"><em aria-hidden="true">🪓</em><span>木こり</span><i class="badge" hidden></i></button>
-      <button type="button" role="tab" data-tab="upgrades" class="tab"><em aria-hidden="true">⚡</em><span>強化</span><i class="badge" hidden></i></button>
-      <button type="button" role="tab" data-tab="gacha" class="tab"><em aria-hidden="true">🎰</em><span>ガチャ</span><i class="badge" hidden></i></button>
-      <button type="button" role="tab" data-tab="quests" class="tab"><em aria-hidden="true">📜</em><span>任務</span><i class="badge" hidden></i></button>
-      <button type="button" role="tab" data-tab="ach" class="tab"><em aria-hidden="true">🏆</em><span>実績</span><i class="badge" hidden></i></button>
-      <button type="button" role="tab" data-tab="prestige" class="tab"><em aria-hidden="true">🌀</em><span>転生</span><i class="badge" hidden></i></button>
+  <div id="hud">
+    <header class="hud-top">
+      <div class="hud-left">
+        <div class="cur cur-wood" id="cur-wood" title="木材">
+          <span class="ico" aria-hidden="true">🪵</span>
+          <div class="cw-txt"><b id="wood">0</b><small id="wood-rate">+0/秒</small></div>
+        </div>
+        <div class="lvl" title="伐採レベル（1上がるごとに全ダメージ+2%）">
+          <b>Lv<span id="lvl-n">1</span></b>
+          <div class="bar"><i id="lvl-bar"></i></div>
+          <small id="lvl-xp">0/50</small>
+        </div>
+      </div>
+      <div class="hud-right">
+        <div class="hud-btns">
+          <button type="button" id="btn-study" class="icon-btn" aria-label="勉強ブースト" title="勉強ブースト">📚</button>
+          <button type="button" id="btn-sound" class="icon-btn" aria-label="サウンド切り替え" title="サウンド">🔊</button>
+          <button type="button" id="btn-settings" class="icon-btn" aria-label="設定" title="設定">⚙️</button>
+        </div>
+        <div class="cur-row">
+          <div class="cur cur-gem" id="cur-gem" title="ジェム"><span class="ico" aria-hidden="true">💎</span><b id="gems">0</b></div>
+          <div class="cur cur-ticket" id="cur-ticket" title="ガチャチケット" hidden><span class="ico" aria-hidden="true">🎫</span><b id="tickets">0</b></div>
+          <div class="cur cur-spirit" id="cur-spirit" title="森の精霊" hidden><span class="ico" aria-hidden="true">🧚</span><b id="spirits">0</b></div>
+        </div>
+      </div>
+    </header>
+
+    <div class="tree-box" id="tree-box">
+      <div class="stage-line"><small>STAGE</small><b id="stage-n">1</b><span id="biome">はじまりの森</span><span class="pips" id="pips"></span></div>
+      <div class="tree-name" id="tree-name"></div>
+      <div class="hp"><i class="hp-trail" id="hp-trail"></i><i class="hp-fill" id="hp-fill"></i><span id="hp-txt"></span></div>
+      <div class="boss-timer" id="boss-timer"></div>
+    </div>
+
+    <div class="combo-box" id="combo-box" aria-hidden="true">
+      <div class="combo-n" id="combo-n">0</div>
+      <div class="combo-l">COMBO</div>
+      <div class="combo-win"><i id="combo-win"></i></div>
+      <div class="mult"><small>斬撃倍率</small><b id="mult">×1.00</b><div class="heat"><i id="heat"></i></div></div>
+      <div class="chain" id="chain"></div>
+    </div>
+
+    <div id="buffs" aria-live="polite"></div>
+
+    <nav class="rail rail-left" aria-label="強化メニュー">
+      <button type="button" class="w-btn" data-open="workers"><em aria-hidden="true">🪓</em><span>木こり</span><i class="badge" hidden></i></button>
+      <button type="button" class="w-btn" data-open="upgrades"><em aria-hidden="true">⚡</em><span>強化</span><i class="badge" hidden></i></button>
+      <button type="button" class="w-btn" data-open="gacha"><em aria-hidden="true">🎰</em><span>ガチャ</span><i class="badge" hidden></i></button>
     </nav>
-    <div id="tab-body" role="tabpanel"></div>
-  </section>
+    <nav class="rail rail-right" aria-label="その他のメニュー">
+      <button type="button" class="w-btn" data-open="quests"><em aria-hidden="true">📜</em><span>任務</span><i class="badge" hidden></i></button>
+      <button type="button" class="w-btn" data-open="ach"><em aria-hidden="true">🏆</em><span>実績</span><i class="badge" hidden></i></button>
+      <button type="button" class="w-btn" data-open="prestige"><em aria-hidden="true">🌀</em><span>転生</span><i class="badge" hidden></i></button>
+    </nav>
+
+    <div class="fever" id="fever"><span id="fever-l">FEVER</span><div class="fbar"><i id="fever-fill"></i></div></div>
+    <div class="dock" id="dock" aria-label="すぐ買える強化"></div>
+
+    <button type="button" id="btn-boss" hidden>⚔️ ボスに再挑戦</button>
+    <button type="button" id="critter" class="critter" hidden></button>
+    <div id="hint" hidden></div>
+  </div>
+
+  <aside class="drawer" id="drawer" hidden aria-label="メニュー">
+    <header class="drawer-head"><b id="drawer-title"></b><button type="button" id="drawer-close" aria-label="閉じる">✕</button></header>
+    <div id="tab-body"></div>
+  </aside>
+  <div id="drawer-back" hidden></div>
 </div>
 
 <canvas id="fx" aria-hidden="true"></canvas>
@@ -63,10 +94,13 @@
 <div id="modal-root"></div>
 <div id="night-tint" hidden></div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>window.THREE || document.write('<script src="vendor/three.min.js"><\/script>');</script>
 <script src="js/util.js"></script>
 <script src="js/data.js"></script>
 <script src="js/game.js"></script>
 <script src="js/audio.js"></script>
+<script src="js/world.js"></script>
 <script src="js/fx.js"></script>
 <script src="js/input.js"></script>
 <script src="js/ui.js"></script>

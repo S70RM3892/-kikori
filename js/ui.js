@@ -26,10 +26,12 @@ const UI = (() => {
 
   // ------------------------------------------------------------- 初期化
   function init() {
-    $('#tabs').addEventListener('click', (e) => {
-      const b = e.target.closest('[data-tab]');
-      if (b) switchTab(b.dataset.tab);
-    });
+    document.querySelectorAll('[data-open]').forEach((b) => b.addEventListener('click', () => openDrawer(b.dataset.open)));
+    $('#drawer-close').addEventListener('click', closeDrawer);
+    $('#drawer-back').addEventListener('click', closeDrawer);
+    window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && drawerOpen && !modalCur) closeDrawer(); });
+    buildDock();
+    buildPips();
     $('#btn-sound').addEventListener('click', () => {
       const st = S().settings;
       st.sound = !st.sound;
@@ -56,7 +58,6 @@ const UI = (() => {
 
     bindEvents();
     applySettings();
-    switchTab('workers');
     disp.wood = S().wood;
     disp.gems = S().gems;
   }
@@ -113,17 +114,231 @@ const UI = (() => {
     const sp = $('#cur-spirit');
     sp.hidden = s.spirits <= 0;
     $('#spirits').textContent = fmt(s.spirits);
+    updateLiveHud(dt);
+  }
+
+  // 毎フレーム更新する HUD（変化したときだけ DOM に書く）
+  const last = {};
+  function setText(id, v) { if (last[id] !== v) { last[id] = v; const e = document.getElementById(id); if (e) e.textContent = v; } }
+  function setScale(id, f) { const k = 's' + id, v = Math.round(U.clamp(f, 0, 1) * 1000); if (last[k] !== v) { last[k] = v; const e = document.getElementById(id); if (e) e.style.transform = `scaleX(${v / 1000})`; } }
+  function setCls(id, cls, on) { const k = 'c' + id + cls; if (last[k] !== on) { last[k] = on; const e = document.getElementById(id); if (e) e.classList.toggle(cls, on); } }
+  let hpTrail = 1, comboFade = 0, comboShown = 0;
+  function buildPips() {
+    $('#pips').innerHTML = Array.from({ length: D.CFG.TREES_PER_STAGE }, () => '<i></i>').join('');
+  }
+  function updateLiveHud(dt) {
+    const s = S(), T = G.T, st = G.stats();
+    // 伐採レベル
+    const need = G.xpNeed(s.lvl);
+    setText('lvl-n', String(s.lvl));
+    setText('lvl-xp', `${Math.floor(s.xp)}/${need}`);
+    setScale('lvl-bar', s.xp / need);
+    // ステージ
+    setText('stage-n', String(s.stage));
+    setText('biome', FX.biomeName());
+    const pipsMode = s.farming ? 'farm' : G.isBossStage(s.stage) ? 'boss' : 'kills';
+    setCls('pips', 'farm', pipsMode === 'farm');
+    setCls('pips', 'boss', pipsMode === 'boss');
+    if (last.kills !== s.kills || last.pm !== pipsMode) {
+      last.kills = s.kills; last.pm = pipsMode;
+      $('#pips').querySelectorAll('i').forEach((e, i) => e.classList.toggle('on', i < s.kills));
+    }
+    // 木の名前・HP
+    const tree = T.tree;
+    if (tree) {
+      const p = World.palette(G.biomeIndex(tree.stage));
+      let name = tree.boss ? `BOSS ${p.boss}` : `${tree.rar.name}${p.tree}`;
+      if (tree.rar.id !== 'normal') name = `✦ ${name} ✦`;
+      setText('tree-name', name);
+      setCls('tree-box', 'boss', !!tree.boss);
+      setCls('tree-box', 'rare', tree.rar.id !== 'normal');
+      const frac = tree.alive ? tree.hp / tree.maxHp : 0;
+      hpTrail = frac > hpTrail ? frac : Math.max(frac, hpTrail - dt * 0.9);
+      setScale('hp-fill', frac);
+      setScale('hp-trail', hpTrail);
+      setText('hp-txt', `${fmt(Math.ceil(tree.hp))} / ${fmt(tree.maxHp)}`);
+      const bt = tree.boss && tree.alive;
+      setCls('boss-timer', 'show', bt);
+      if (bt) {
+        setText('boss-timer', `⏱ ${T.bossTimer.toFixed(1)}`);
+        setCls('boss-timer', 'urgent', T.bossTimer < 10);
+        if (T.bossTimer < 10 && Math.floor(T.bossTimer) !== Math.floor(T.bossTimer + dt)) Sfx.tick();
+      }
+    }
+    // コンボと倍率メーター
+    if (T.combo > 1) { comboFade = 1; comboShown = T.combo; } else comboFade = Math.max(0, comboFade - dt * 2);
+    const cb = $('#combo-box');
+    if (cb) {
+      cb.style.opacity = comboFade.toFixed(2);
+      setText('combo-n', String(comboShown));
+      const n = comboShown;
+      const tierC = n >= 500 ? 't5' : n >= 200 ? 't4' : n >= 100 ? 't3' : n >= 50 ? 't2' : 't1';
+      if (last.ctier !== tierC) { last.ctier = tierC; cb.dataset.tier = tierC; }
+      const pop = FX.comboPop;
+      $('#combo-n').style.transform = `scale(${(1 + pop * 0.32).toFixed(3)})`;
+      const chain = T.justChain;
+      const mult = G.comboMult() * (T.fever > 0 ? st.feverMult : 1) * G.buffMult('tap') * (chain > 0 ? st.justMult * (1 + 0.1 * Math.min(chain - 1, st.chainCap)) : 1);
+      setText('mult', `×${mult < 100 ? mult.toFixed(2) : fmt(mult)}`);
+      setScale('heat', Math.log10(Math.max(1, mult)) / 3);
+      const heat = mult >= 100 ? 'h4' : mult >= 20 ? 'h3' : mult >= 5 ? 'h2' : 'h1';
+      if (last.heat !== heat) { last.heat = heat; cb.dataset.heat = heat; }
+      setText('chain', chain >= 2 ? `JUST ×${chain}` : '');
+      setScale('combo-win', T.combo > 0 ? T.comboTimer / (T.comboWin || 1) : 0);
+    }
+    // フィーバー・ゴールデン
+    if (T.fever > 0) {
+      setText('fever-l', `FEVER!! ×${st.feverMult}`);
+      setScale('fever-fill', T.fever / (T.feverMax || 1));
+    } else {
+      setText('fever-l', 'FEVER');
+      setScale('fever-fill', T.feverGauge / D.CFG.FEVER_NEED);
+    }
+    setCls('fever', 'on', T.fever > 0);
+    setCls('fever', 'near', T.fever <= 0 && T.feverGauge / D.CFG.FEVER_NEED > 0.8);
+    setCls('hud', 'golden', T.golden > 0);
+    setCls('hud', 'fevering', T.fever > 0);
+  }
+  function shakeHud() {
+    const h = $('#hud');
+    h.classList.remove('shake');
+    void h.offsetWidth;
+    h.classList.add('shake');
+  }
+
+  // ------------------------------------------------------------- 端のウィジェット → 引き出し
+  const LEFT = ['workers', 'upgrades', 'gacha'];
+  const TITLES = { workers: '🪓 木こり', upgrades: '⚡ 強化', gacha: '🎰 斧ガチャ', quests: '📜 任務・宝箱', ach: '🏆 実績', prestige: '🌀 転生' };
+  let drawerOpen = null;
+  const wide = () => window.innerWidth >= 1000;
+  function openDrawer(name) {
+    if (drawerOpen === name) { closeDrawer(); return; }
+    drawerOpen = name;
+    const d = $('#drawer');
+    d.classList.toggle('right', LEFT.indexOf(name) < 0);
+    $('#drawer-title').textContent = TITLES[name];
+    d.hidden = false;
+    requestAnimationFrame(() => d.classList.add('open'));
+    $('#drawer-back').hidden = wide();
+    document.querySelectorAll('[data-open]').forEach((b) => b.classList.toggle('on', b.dataset.open === name));
+    switchTab(name);
+    Sfx.buy();
+  }
+  function closeDrawer() {
+    if (!drawerOpen) return;
+    drawerOpen = null;
+    current = null;
+    const d = $('#drawer');
+    d.classList.remove('open');
+    $('#drawer-back').hidden = true;
+    document.querySelectorAll('[data-open]').forEach((b) => b.classList.remove('on'));
+    setTimeout(() => { if (!drawerOpen) d.hidden = true; }, 230);
+  }
+
+  // ------------------------------------------------------------- 下のクイック購入ドック
+  const dock = [];
+  function buildDock() {
+    const root = $('#dock');
+    root.innerHTML = '';
+    for (let i = 0; i < 4; i++) {
+      const b = el('button', 'dk');
+      b.type = 'button';
+      b.innerHTML = '<i class="dk-fill"></i><span class="dk-ico"></span><b class="dk-name"></b><span class="dk-cost"></span><em class="dk-tag"></em>';
+      root.appendChild(b);
+      const slot = { b, ico: b.querySelector('.dk-ico'), name: b.querySelector('.dk-name'), cost: b.querySelector('.dk-cost'), tag: b.querySelector('.dk-tag'), fill: b.querySelector('.dk-fill'), act: null, key: '' };
+      holdButton(b, () => {
+        if (!slot.act) return false;
+        const ok = slot.act();
+        if (ok === true) { sparkAt(b, '#9dff4a'); b.classList.remove('bought'); void b.offsetWidth; b.classList.add('bought'); updateDock(); }
+        else if (ok === false) failShake(b);
+        return ok === true && slot.repeat;
+      });
+      dock.push(slot);
+    }
+  }
+  function dockSet(slot, o) {
+    slot.act = o.act;
+    slot.repeat = !!o.repeat;
+    const key = o.ico + '|' + o.name + '|' + o.cost + '|' + (o.tag || '') + '|' + o.can + '|' + (o.kind || '');
+    if (slot.key !== key) {
+      slot.key = key;
+      slot.ico.textContent = o.ico;
+      slot.name.textContent = o.name;
+      slot.cost.textContent = o.cost;
+      slot.tag.textContent = o.tag || '';
+      slot.tag.hidden = !o.tag;
+      slot.b.classList.toggle('can', !!o.can);
+      slot.b.dataset.kind = o.kind || '';
+    }
+    slot.fill.style.transform = `scaleX(${U.clamp(o.fill === undefined ? (o.can ? 1 : 0) : o.fill, 0, 1).toFixed(3)})`;
+  }
+  function bestWorker() {
+    const s = S();
+    let best = null, bestV = -1, cheap = null;
+    for (const w of visibleWorkers()) {
+      const n = s.workers[w.id] || 0;
+      const c = G.workerCost(w, n, 1);
+      if (!cheap || c < cheap.c) cheap = { w, c };
+      if (c <= s.wood) { const v = G.unitDps(w) / c; if (v > bestV) { bestV = v; best = { w, c }; } }
+    }
+    return best || cheap;
+  }
+  function bestUpgrade(slash) {
+    const s = S();
+    let pick = null;
+    for (const u of D.UPGRADES) {
+      if ((u.cat === 'slash') !== slash || G.upgMaxed(u)) continue;
+      if (!slash && (u.id === 'night' || u.id === 'squirrel')) continue;
+      const c = G.upgCost(u);
+      const l = s.upg[u.id] || 0;
+      const fxNext = (D.SLASH_FX[u.id] || []).find((x) => x[0] === l + 1);
+      const score = c / (fxNext ? 3 : 1);
+      if (!pick || score < pick.score) pick = { u, c, l, fxNext, score };
+    }
+    return pick;
+  }
+  function updateDock() {
+    const s = S();
+    // 1) 木こり
+    const bw = bestWorker();
+    if (bw) {
+      const n = s.workers[bw.w.id] || 0;
+      const nm = G.nextMilestone(n);
+      dockSet(dock[0], {
+        kind: 'worker', ico: bw.w.icon, name: `${bw.w.name}`, cost: '🪵' + fmt(bw.c), can: bw.c <= s.wood, fill: s.wood / bw.c, repeat: true,
+        tag: nm && nm.at - n <= 3 ? `あと${nm.at - n}人で×${nm.mult}` : `${n}人`,
+        act: () => { const ok = G.buyWorker(bw.w.id, 1); if (ok) { Sfx.buy(); if (S().tut === 1) S().tut = 2; } return ok; },
+      });
+    }
+    // 2) 斬撃強化  3) その他の強化
+    [[1, true], [2, false]].forEach(([i, slash]) => {
+      const bu = bestUpgrade(slash);
+      if (!bu) { dockSet(dock[i], { ico: '✅', name: 'MAX', cost: '', can: false, act: null }); return; }
+      dockSet(dock[i], {
+        kind: slash ? 'slash' : 'upg', ico: bu.u.icon, name: `${bu.u.name} Lv${bu.l + 1}`, cost: '🪵' + fmt(bu.c), can: bu.c <= s.wood, fill: s.wood / bu.c, repeat: true,
+        tag: bu.fxNext ? `✨${bu.fxNext[1]}` : '',
+        act: () => { const ok = G.buyUpgrade(bu.u.id); if (ok) Sfx.buy(); return ok; },
+      });
+    });
+    // 4) 受け取り系（ミッション → 無料ガチャ → 宝箱 → 無料ガチャの残り時間）
+    const mi = s.missions.findIndex((m) => G.missionProgress(m) >= m.target);
+    const free = G.freeLeft();
+    if (mi >= 0) {
+      const m = s.missions[mi];
+      dockSet(dock[3], { kind: 'claim', ico: '📜', name: 'ミッション達成', cost: `💎${m.gems}`, can: true, tag: '受け取る',
+        act: () => { const r = dock[3].b.getBoundingClientRect(); if (G.claimMission(mi)) { FX.coins(r.left + r.width / 2, r.top, 8, 'gem'); Sfx.milestone(); return true; } return false; } });
+    } else if (free <= 0) {
+      dockSet(dock[3], { kind: 'free', ico: '🎰', name: '無料ガチャ', cost: 'FREE', can: true, tag: '今すぐ', act: () => { doPull(1, true); return true; } });
+    } else if (s.chests > 0) {
+      dockSet(dock[3], { kind: 'chest', ico: '📦', name: `宝箱 ×${s.chests}`, cost: '開ける', can: true, act: () => { openChests(S().chests); return true; } });
+    } else {
+      dockSet(dock[3], { kind: 'wait', ico: '🎰', name: '無料ガチャまで', cost: U.fmtClock(free), can: false, fill: 1 - free / (D.CFG.FREE_PULL_MIN * 60), act: () => { openDrawer('gacha'); return null; } });
+    }
   }
 
   // ------------------------------------------------------------- タブ
   const TABS = {};
   function switchTab(name) {
     tab = name;
-    document.querySelectorAll('#tabs [data-tab]').forEach((b) => {
-      const on = b.dataset.tab === name;
-      b.classList.toggle('on', on);
-      b.setAttribute('aria-selected', String(on));
-    });
     const body = $('#tab-body');
     body.scrollTop = 0;
     current = TABS[name];
@@ -131,10 +346,10 @@ const UI = (() => {
     current.update();
     if (name === 'ach') S().achSeen = Object.keys(S().ach).length;
   }
-  function rebuild() { if (current) { const b = $('#tab-body'); const y = b.scrollTop; current.build(b); current.update(); b.scrollTop = y; } }
+  function rebuild() { if (current && drawerOpen) { const b = $('#tab-body'); const y = b.scrollTop; current.build(b); current.update(); b.scrollTop = y; } }
 
   function setBadge(name, v) {
-    const b = document.querySelector(`#tabs [data-tab="${name}"] .badge`);
+    const b = document.querySelector(`[data-open="${name}"] .badge`);
     if (!b) return;
     const txt = v === true ? '!' : v ? String(v) : '';
     if (b.textContent !== txt) b.textContent = txt;
@@ -148,7 +363,7 @@ const UI = (() => {
     let u = 0;
     for (const x of D.UPGRADES) if (!G.upgMaxed(x) && G.upgCost(x) <= s.wood) u++;
     setBadge('upgrades', u);
-    setBadge('gacha', s.tickets >= 10 ? 'FREE' : G.canPull(1) ? true : 0);
+    setBadge('gacha', s.tickets >= 10 || G.freeLeft() <= 0 ? 'FREE' : G.canPull(1) ? true : 0);
     const ready = s.missions.filter((m) => G.missionProgress(m) >= m.target).length;
     setBadge('quests', ready + (s.chests > 0 ? s.chests : 0));
     setBadge('ach', Math.max(0, Object.keys(s.ach).length - (s.achSeen || 0)));
@@ -369,9 +584,11 @@ const UI = (() => {
       hero.innerHTML = `<div class="gh-title">斧ガチャ</div><div class="gh-sub">LR 0.1% ・ UR 0.9% ・ SSR 4.5% ・ SR 14.5%</div><div class="gh-pity"></div>`;
       root.appendChild(hero);
       const btns = el('div', 'gacha-btns');
-      btns.innerHTML = `<button type="button" class="pull p1"><span class="pl">1回</span><b class="pc"></b></button>` +
+      btns.innerHTML = `<button type="button" class="pull pf"><span class="pl">無料1回</span><b class="pc"></b><small>${D.CFG.FREE_PULL_MIN}分ごと</small></button>` +
+        `<button type="button" class="pull p1"><span class="pl">1回</span><b class="pc"></b></button>` +
         `<button type="button" class="pull p10"><span class="pl">10連</span><b class="pc"></b><small>SR以上 1枠確定</small></button>`;
       root.appendChild(btns);
+      btns.querySelector('.pf').addEventListener('click', () => doPull(1, true));
       btns.querySelector('.p1').addEventListener('click', () => doPull(1));
       btns.querySelector('.p10').addEventListener('click', () => doPull(10));
       root.appendChild(el('details', 'rates', `<summary>排出率と仕組み</summary><table><tr><th>レア</th><th>確率</th><th>装備タップ倍率</th><th>所持ボーナス/Lv</th></tr>${D.RARITY_ORDER.slice().reverse().map((k) => { const r = D.RARITY[k]; return `<tr><td><span class="rb r-${k}">${k}</span></td><td>${(r.rate * 100).toFixed(1)}%</td><td>×${r.tap}</td><td>+${Math.round(r.pas * 100)}%</td></tr>`; }).join('')}</table><p>同じ斧が出ると Lv アップ（最大 Lv${D.CFG.AXE_MAX_LV}）。最大 Lv 後の重複はジェムに変換。${G.stats().pity}回引いて SSR 以上が出なければ次は SSR 確定（天井）。チケット🎫は1枚で1回分。</p>`));
@@ -391,6 +608,7 @@ const UI = (() => {
         grid.appendChild(b);
       }
       root.appendChild(grid);
+      this.pf = btns.querySelector('.pf');
       this.p1 = btns.querySelector('.p1');
       this.p10 = btns.querySelector('.p10');
       this.pity = hero.querySelector('.gh-pity');
@@ -405,6 +623,10 @@ const UI = (() => {
       };
       set(this.p1, 1, D.CFG.GACHA_1);
       set(this.p10, 10, D.CFG.GACHA_10);
+      const fl = G.freeLeft();
+      this.pf.querySelector('.pc').textContent = fl <= 0 ? 'FREE!' : U.fmtClock(fl);
+      this.pf.classList.toggle('can', fl <= 0);
+      this.pf.classList.toggle('free', fl <= 0);
       const left = G.stats().pity - s.pity;
       this.pity.innerHTML = `SSR以上確定まで あと <b>${Math.max(1, left)}</b> 回`;
     },
@@ -430,18 +652,21 @@ const UI = (() => {
       ],
     });
   }
-  function doPull(n) {
+  function doPull(n, free) {
     if (overlayBusy) return;
-    const r = G.pull(n);
+    const r = G.pull(n, { free: !!free });
     if (r.error) {
       if (r.error === 'gems') toast('💎', 'ジェムが足りない', 'ボス・ミッション・実績・宝箱で集めよう');
+      if (r.error === 'free') toast('🎰', 'まだ無料ガチャは引けない', `あと ${U.fmtClock(G.freeLeft())}`);
       Sfx.error();
       return;
     }
     if (S().tut === 2) S().tut = 3;
-    gachaShow(r.res, n);
+    gachaShow(r.res, n, free);
   }
-  function gachaShow(res, n) {
+  let r0Free = false;
+  function gachaShow(res, n, free) {
+    r0Free = !!free;
     overlayBusy = true;
     const rank = (r) => G.RANK[r];
     const top = res.reduce((m, o) => (rank(o.r) > rank(m) ? o.r : m), 'N');
@@ -483,6 +708,7 @@ const UI = (() => {
       const close = () => { ov.remove(); overlayBusy = false; if (tab === 'gacha') rebuild(); };
       ok.addEventListener('click', close);
       again.disabled = !G.canPull(n);
+      if (r0Free) { again.textContent = `もう1回（💎${D.CFG.GACHA_1}）`; }
       again.addEventListener('click', () => { close(); doPull(n); });
       if (rank(top) >= 3) FX.confetti(rank(top) >= 4 ? 160 : 70);
     };
@@ -756,8 +982,8 @@ const UI = (() => {
     const hint = $('#hint');
     let h = '';
     if (s.tut === 0) h = '🪓 斧をドラッグして幹をスパッと横切れ！';
-    else if (s.tut === 1 && s.wood >= 15) h = '🪵 木材がたまった！下の【木こり】で雇え';
-    else if (s.tut === 2 && s.tickets >= 10) h = '🎰 無料10連ガチャが引ける！【ガチャ】へ';
+    else if (s.tut === 1 && s.wood >= 15) h = '🪵 木材がたまった！下のカードをタップして木こりを雇え';
+    else if (s.tut === 2 && s.tickets >= 10) h = '🎰 無料10連ガチャが引ける！左の【ガチャ】へ';
     if (s.tut === 1 && Object.keys(s.workers).length) s.tut = 2;
     if (s.tut === 2 && s.stats.pulls >= 10) s.tut = 3;
     if (hint.textContent !== h) hint.textContent = h;
@@ -919,7 +1145,7 @@ const UI = (() => {
           else toast('⚠️', '読み込めない', 'テキストが壊れているかも');
           break;
         case 'reset':
-          if (b.dataset.armed) { G.hardReset(); applySettings(); disp.wood = 0; switchTab('workers'); if (modalCur) modalCur.close(); toast('🧹', 'データを消した'); }
+          if (b.dataset.armed) { G.hardReset(); applySettings(); disp.wood = 0; closeDrawer(); if (modalCur) modalCur.close(); toast('🧹', 'データを消した'); }
           else { b.dataset.armed = '1'; b.textContent = '本当に消す（元に戻せない）'; }
           break;
       }
@@ -995,6 +1221,7 @@ const UI = (() => {
       FX.confetti(70);
     });
     G.on('equip', () => { if (tab === 'upgrades') rebuild(); });
+    G.on('levelUp', () => { if (tab === 'upgrades') rebuild(); });
   }
 
   // ------------------------------------------------------------- フレーム
@@ -1003,10 +1230,11 @@ const UI = (() => {
     upT += dt;
     if (upT > 0.12) {
       upT = 0;
-      if (current) current.update();
+      if (current && drawerOpen) current.update();
       updateBadges();
       updateSceneUI();
       updateStudy();
+      updateDock();
     }
     slowT += dt;
     if (slowT > 1) {
@@ -1016,5 +1244,5 @@ const UI = (() => {
     }
   }
 
-  return { init, frame, bump, banner, toast, modal, rebuild, blocked, nightCheck, afterHit, tapSwing: doTap, get tab() { return tab; } };
+  return { init, frame, bump, banner, toast, modal, rebuild, blocked, nightCheck, afterHit, tapSwing: doTap, shakeHud, openDrawer, closeDrawer, get tab() { return tab; } };
 })();

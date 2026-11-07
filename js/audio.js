@@ -152,14 +152,45 @@ const Sfx = (() => {
       [0, 4, 7, 11, 14].forEach((s) => tone(note(s, 392), 1.2, 'sawtooth', 0.04, 0.05));
     }
   }
+  // 倒れ始め: メキメキ＋報酬のきらめき（地響きは crash で着地時に）
   function fell(rar, boss) {
     if (!ok()) return;
-    noise(0.35, 0.18, 'lowpass', 700, 0.8);
-    tone(120, 0.38, 'sine', 0.5, 0.02, 38);
-    noise(0.25, 0.25, 'bandpass', 220, 1.2, 0.03);
+    noise(0.45, 0.16, 'bandpass', 420, 2.5, 0, 1200);
+    tone(70, 0.35, 'sawtooth', 0.05, 0, 120);
     const big = boss || rar === 'gold' || rar === 'rainbow';
     const seq = big ? [0, 4, 7, 12, 16, 19, 24] : [0, 7, 12];
     seq.forEach((s, i) => tone(note(s, 784), 0.14, 'triangle', 0.08, 0.06 + i * 0.05));
+  }
+  function crash(boss) {
+    if (!ok()) return;
+    tone(boss ? 70 : 110, 0.5, 'sine', 0.6, 0, 32);
+    noise(0.5, 0.3, 'lowpass', 600, 0.8);
+    noise(0.3, 0.25, 'bandpass', 200, 1.2, 0.02);
+    if (boss) tone(45, 0.9, 'sawtooth', 0.15, 0.05, 30);
+  }
+  function rouletteTick() {
+    if (!ok() || throttle('rtick', 30)) return;
+    tone(1500 + Math.random() * 200, 0.03, 'square', 0.035);
+  }
+  function rouletteWin(m) {
+    if (!ok()) return;
+    const seq = m >= 100 ? [0, 4, 7, 12, 16, 19, 24, 28, 31] : m >= 10 ? [0, 4, 7, 12, 16, 19, 24] : m >= 5 ? [0, 4, 7, 12] : [0, 7, 12];
+    seq.forEach((s, i) => tone(note(s, 659), 0.18, 'square', 0.05, i * 0.05));
+    if (m >= 10) noise(0.9, 0.12, 'highpass', 5000, 0.7, 0.1);
+  }
+  function golden() {
+    if (!ok()) return;
+    for (let i = 0; i < 12; i++) tone(note([0, 4, 7, 12][i % 4] + 12 * Math.floor(i / 4), 784), 0.14, 'triangle', 0.05, i * 0.04);
+    noise(0.8, 0.12, 'highpass', 6000, 0.7, 0.05);
+  }
+  function streak() {
+    if (!ok()) return;
+    [0, 5, 9, 12, 17].forEach((s, i) => tone(note(s, 587), 0.16, 'square', 0.05, i * 0.06));
+  }
+  function levelUp() {
+    if (!ok()) return;
+    [0, 4, 7, 12, 7, 12, 16, 24].forEach((s, i) => tone(note(s, 523), 0.2, i < 4 ? 'triangle' : 'square', 0.055, i * 0.07));
+    tone(1046, 0.9, 'sine', 0.05, 0.5, 2093);
   }
   function coin() {
     if (!ok() || throttle('coin', 45)) return;
@@ -293,7 +324,8 @@ const Sfx = (() => {
   }
 
   return {
-    unlock: ensure, setEnabled, setVolume, setVibe, vibrate, whoosh, slash, grab, echo, thunder, blast, unlockFx, chop, crit, fell, coin, gem, buy, milestone, error,
+    unlock: ensure, setEnabled, setVolume, setVibe, vibrate, whoosh, slash, grab, echo, thunder, blast, unlockFx,
+    crash, rouletteTick, rouletteWin, golden, streak, levelUp, chop, crit, fell, coin, gem, buy, milestone, error,
     feverStart, feverEnd, boss, bossWin, bossFail, tick, stage, ach, squirrel, chest, gachaRoll, gachaReveal,
     prestige, goddess,
   };

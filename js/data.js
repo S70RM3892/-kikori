@@ -51,6 +51,14 @@ const D = (() => {
     SPIRIT_BONUS: 0.1,
     PRESTIGE_MIN_STAGE: 25,
     STUDY_MULT: 2,
+    // --- ドーパミン追加分
+    LEVEL_BONUS: 0.02, // 伐採レベル1ごとに全ダメージ+2%
+    GOLDEN_CHANCE: 0.012, // 1撃ごとにゴールデンタイム突入
+    GOLDEN_TIME: 5,
+    GOLDEN_RATE: 0.3, // ゴールデン中、1撃ごとに木1本の30%ぶんの木材
+    ROULETTE_CHANCE: 0.12, // 倒した瞬間にボーナスルーレット
+    ROULETTE_DELAY: 1.1,
+    FREE_PULL_MIN: 8, // 無料ガチャの間隔（分）
   };
 
   // ---------------------------------------------------------------- 木こり軍団（自動DPS）
@@ -193,6 +201,11 @@ const D = (() => {
     { id: 'jackpot', w: 1.5, icon: '🎰', name: '大当たり', text: '斬撃 ×777（7秒）＋💎77' },
   ];
 
+  // ---------------------------------------------------------------- ボーナスルーレット・連続伐採・実況
+  const ROULETTE = [{ m: 2, w: 50 }, { m: 3, w: 25 }, { m: 5, w: 15 }, { m: 10, w: 8 }, { m: 100, w: 1 }];
+  const STREAK_MS = [[10, 5, 0], [25, 10, 1], [50, 20, 1], [100, 40, 2], [200, 80, 3], [500, 150, 5]]; // [本数, ジェム, 宝箱]
+  const ANNOUNCE = { 10: 'NICE!', 25: 'GREAT!', 50: 'AWESOME!!', 100: 'UNSTOPPABLE!!', 200: 'GODLIKE!!!', 300: 'LEGENDARY!!!', 500: 'MYTHIC!!!!', 777: 'JACKPOT!!!!', 1000: '伐採神!!!!!', 2000: '∞' };
+
   // ---------------------------------------------------------------- 宝箱
   const CHESTS = [
     { id: 'wood', name: '木の宝箱', w: 60, col: '#c08a4a', sec: 120, gems: [1, 3], ticket: 0 },
@@ -232,6 +245,8 @@ const D = (() => {
     { t: 'squirrels', stat: 'squirrels', base: 1, grow: 1.02, text: (n) => `黄金リスを${n}匹捕まえる` },
     { t: 'fevers', stat: 'fevers', base: 1, grow: 1.06, text: (n) => `フィーバーを${n}回発動する` },
     { t: 'stage', special: 'stage', text: (n) => `ステージ${n}に到達する` },
+    { t: 'roulettes', stat: 'roulettes', base: 2, grow: 1.08, text: (n) => `ボーナスルーレットを${n}回当てる` },
+    { t: 'goldens', stat: 'goldens', base: 1, grow: 1.05, text: (n) => `ゴールデンタイムを${n}回出す` },
   ];
 
   // ---------------------------------------------------------------- 実績
@@ -259,6 +274,14 @@ const D = (() => {
   ach('thunder1', '⚡', '落雷', '雷神の加護を発動', (S) => st(S, 'thunders') >= 1, 30);
   ach('blast1', '☄️', '爆裂デビュー', '爆裂斬を発動', (S) => st(S, 'blasts') >= 1, 40);
   ach('blast100', '☄️', '爆裂魔', '爆裂斬を100回', (S) => st(S, 'blasts') >= 100, 120);
+  [5, 10, 25, 50, 100].forEach((n, i) => ach('lvl' + i, '⭐', `伐採レベル${n}`, `伐採レベル${n}に到達`, (S) => (S.lvl || 1) >= n, [10, 20, 50, 100, 200][i]));
+  ach('roul10', '🎰', '10倍キター', 'ボーナスルーレットで×10', (S) => st(S, 'bestRoulette') >= 10, 30);
+  ach('roul100', '💯', '100倍!!!', 'ボーナスルーレットで×100', (S) => st(S, 'bestRoulette') >= 100, 150);
+  ach('roul50', '🎰', 'ルーレット中毒', 'ボーナスルーレットを50回当てる', (S) => st(S, 'roulettes') >= 50, 60);
+  ach('golden1', '✨', 'ゴールデンタイム', 'ゴールデンタイムに入る', (S) => st(S, 'goldens') >= 1, 20);
+  ach('golden25', '👑', '黄金の木こり', 'ゴールデンタイム25回', (S) => st(S, 'goldens') >= 25, 80);
+  ach('streak25', '🔗', '25本連続', 'コンボを切らずに木を25本', (S) => st(S, 'bestStreak') >= 25, 40);
+  ach('streak100', '🔗', '100本連続', 'コンボを切らずに木を100本', (S) => st(S, 'bestStreak') >= 100, 150);
   ach('crit0', '💥', '会心デビュー', 'クリティカルを100回', (S) => st(S, 'crits') >= 100, 10);
   ach('crit1', '💥', '会心中毒', 'クリティカルを1万回', (S) => st(S, 'crits') >= 1e4, 50);
   ach('super', '💫', 'スーパー！', 'SUPER CRITを出す', (S) => st(S, 'supers') >= 1, 15);
@@ -306,5 +329,5 @@ const D = (() => {
     critm: [[10, '会心の衝撃波'], [20, '会心で時が止まる']],
   };
 
-  return { SLASH_FX, AXE_PATHS, CFG, WORKERS, MILESTONES, UPGRADES, RARITY, RARITY_ORDER, AXES, SP_TEXT, BIOMES, TREE_RARITY, SQUIRREL_FX, CHESTS, LOGIN, PERKS, MISSIONS, ACH };
+  return { ROULETTE, STREAK_MS, ANNOUNCE, SLASH_FX, AXE_PATHS, CFG, WORKERS, MILESTONES, UPGRADES, RARITY, RARITY_ORDER, AXES, SP_TEXT, BIOMES, TREE_RARITY, SQUIRREL_FX, CHESTS, LOGIN, PERKS, MISSIONS, ACH };
 })();
