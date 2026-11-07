@@ -2,14 +2,15 @@
 // =====================================================================
 //  バランスシミュレータ: 実際のゲームロジック（js/*.js）をそのまま読み込み、
 //  貪欲に買い物をするボットを走らせて進行速度を確認する。
-//    node tools/sim.js [分数=180] [タップ/秒=5] [seed]
+//    node tools/sim.js [分数=180] [斬撃/秒=2] [seed]
+//  斬撃は「幹を横切る回数/秒」。速さのランクとJUST率は人間の平均的なスワイプを想定。
 // =====================================================================
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
 const MIN = Number(process.argv[2] || 180);
-const TPS = Number(process.argv[3] || 5);
+const TPS = Number(process.argv[3] || 2);
 let seed = Number(process.argv[4] || 12345);
 const rng = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
 
@@ -41,12 +42,29 @@ G.on('chest', (r) => addG('chest', r.gems));
 G.on('comboMs', (d) => addG('combo', d.gems));
 G.on('daily', (d) => addG('daily', d.r.gems));
 G.on('gacha', (d) => addG('dupe', d.res.reduce((x, o) => x + o.gems, 0)));
-G.on('tap', (d) => { if (d.tier === 4) addG('god', 10); });
+G.on('swing', (d) => { if (d.tier === 4) addG('god', 10); });
 
+// 速さランクの分布（0..5）とJUST率: 普通に頑張って振る人
+const TIER_P = [0.02, 0.16, 0.36, 0.32, 0.11, 0.03];
+const TIER_V = [0.8, 1.8, 3.4, 5.6, 8.2, 11];
+const pJust = (st) => Math.min(0.85, 0.3 * (st.justZone / D.CFG.JUST_ZONE));
+function manualMult(st) {
+  let sm = 0;
+  for (let t = 0; t < 6; t++) { const b = D.CFG.SPEED_BONUS[t]; sm += TIER_P[t] * (1 + (b > 0 ? b * st.swingMult : b)); }
+  const jm = 1 + pJust(st) * (st.justMult * 1.25 - 1);
+  const proc = 1 + st.echoChance * st.echoCount * st.echoDmg + st.thunderChance * st.thunderCount * st.thunderMult + (st.blastEvery ? st.blastMult / st.blastEvery : 0);
+  return sm * jm * proc;
+}
 function effective(st) {
   const combo = 1 + Math.min(st.comboCap, TPS * st.comboWin > 1 ? 400 : 0) * D.CFG.COMBO_PCT;
   const crit = 1 + st.critC * (st.critM * 1.31 - 1);
-  return (st.dps + TPS * st.tap * crit) * combo;
+  return (st.dps + TPS * st.tap * crit * manualMult(st)) * combo;
+}
+function sampleSwing() {
+  let r = rng(), t = 0;
+  while (t < 5 && r > TIER_P[t]) { r -= TIER_P[t]; t++; }
+  const st = G.stats();
+  return { kind: 'swing', speed: TIER_V[t], just: rng() < pJust(st), dir: rng() < 0.5 ? -1 : 1 };
 }
 function evalWith(fn) {
   const s = S();
@@ -104,7 +122,7 @@ while (t < MIN * 60) {
   t += DT;
   simNow += DT * 1000;
   tapAcc += TPS * DT;
-  while (tapAcc >= 1) { tapAcc -= 1; G.tap(0, 0); }
+  while (tapAcc >= 1) { tapAcc -= 1; G.swing(sampleSwing()); }
   G.tick(DT);
   const s = S();
   if (Math.round(t * 10) % 5 === 0) {

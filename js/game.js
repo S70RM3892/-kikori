@@ -27,6 +27,7 @@ const G = (() => {
         pulls: 0, kills: 0, chestsOpened: 0, gold: 0, rainbow: 0, woodRun: 0, woodAll: 0, prestiges: 0,
         missionsDone: 0, loginDays: 0, studies: 0, sleeps: 0, goddess: 0, hires: 0, bestStage: 1,
         gotSSR: 0, gotUR: 0, gotLR: 0, playTime: 0, gemsAll: 0, bestSpirits: 0, bestBoss: 0,
+        justs: 0, maxChain: 0, greats: 0, maxSpeeds: 0, echoes: 0, thunders: 0, blasts: 0,
       },
       daily: { last: '' },
       settings: { sound: true, vol: 0.7, vibe: true, fx: 2, shake: true, flash: true, num: 'jp', night: true, buyAmt: 1 },
@@ -44,6 +45,7 @@ const G = (() => {
     bossTimer: 0, squirrel: null, squirrelTimer: 25, farmKills: 0,
     incomeEMA: 0, incomeAcc: 0, incomeT: 0, dpsAcc: 0,
     checkT: 0, dirty: true, st: null,
+    justChain: 0, blastCount: 0, pending: [],
   };
 
   // ------------------------------------------------------------- イベント
@@ -108,6 +110,22 @@ const G = (() => {
     st.tap = (st.tapBase * st.global + dps * st.soul) * st.axeTap;
     st.critC = Math.min(0.9, C.CRIT_BASE + 0.01 * lv('critc') + (sp.critc || 0));
     st.critM = C.CRIT_MULT + 0.25 * lv('critm') + (sp.critm || 0);
+    // 斬撃強化
+    st.swingMult = 1 + 0.15 * lv('swing');
+    st.justZone = Math.min(0.26, C.JUST_ZONE + 0.0045 * lv('just'));
+    st.justMult = C.JUST_MULT + 0.1 * lv('just');
+    st.chainCap = 5 + Math.floor(lv('just') / 2);
+    const ec = lv('echo'), th = lv('thunder'), bl = lv('blast');
+    st.echoChance = Math.min(1, 0.02 * ec);
+    st.echoCount = ec > 0 ? 1 + Math.floor(ec / 15) : 0;
+    st.echoDmg = 0.4 + 0.01 * ec;
+    st.thunderChance = th > 0 ? Math.min(0.4, 0.02 + 0.006 * th) : 0;
+    st.thunderCount = th > 0 ? 1 + Math.floor(th / 15) : 0;
+    st.thunderMult = 3 + 0.25 * th;
+    st.blastEvery = bl > 0 ? Math.max(10, 40 - bl) : 0;
+    st.blastMult = 8 + bl;
+    // 演出の強さ（斬撃系の強化レベルが上がるほど派手になる）
+    st.juice = 1 + 0.02 * (lv('swing') + lv('just') + ec + th + bl + lv('critc') + lv('critm'));
     st.comboWin = C.COMBO_WINDOW + 0.1 * lv('combo') + (sp.combo || 0);
     st.comboCap = C.COMBO_CAP + 50 * lv('combocap');
     st.feverTime = C.FEVER_TIME + 0.25 * lv('fever') + (sp.fever || 0);
@@ -296,10 +314,17 @@ const G = (() => {
     return true;
   }
 
-  // ------------------------------------------------------------- タップ
-  function tap(x, y) {
+  // ------------------------------------------------------------- 斬撃（メインの気持ちよさ）
+  // 斧をドラッグして幹を横切ると1撃。速く振るほど・切り込みの高さを狙うほど強い。
+  function speedTier(v) {
+    let t = 0;
+    for (const th of C.SPEED_TIERS) if (v >= th) t++;
+    return t;
+  }
+  function swing(o = {}) {
     if (S.study) return null;
     const st = stats();
+    const isTap = o.kind === 'tap';
     S.stats.taps++;
     T.combo++;
     T.comboTimer = st.comboWin;
@@ -311,8 +336,22 @@ const G = (() => {
       gainGems(g);
       emit('comboMs', { n: T.combo, gems: g });
     }
+    // 速度ランク（タップは -1 = ランクなし）
+    const stier = isTap ? -1 : speedTier(o.speed || 0);
+    const bonus = isTap ? 0 : C.SPEED_BONUS[stier];
+    const sMult = isTap ? C.TAP_MULT : 1 + (bonus > 0 ? bonus * st.swingMult : bonus);
+    if (stier >= 3) S.stats.greats++;
+    if (stier >= 5) S.stats.maxSpeeds++;
+    // JUST（切り込みの高さで斬る）と連続JUSTチェイン
+    const just = !isTap && !!o.just;
+    if (just) {
+      T.justChain++;
+      S.stats.justs++;
+      if (T.justChain > S.stats.maxChain) S.stats.maxChain = T.justChain;
+    } else if (!isTap) T.justChain = 0;
+    const jMult = just ? st.justMult * (1 + 0.1 * Math.min(T.justChain - 1, st.chainCap)) : 1;
+    // 会心
     const fever = T.fever > 0;
-    const cm = comboMult();
     let tier = 0;
     if (Math.random() < st.critC + (fever ? 0.25 : 0)) {
       tier = 1; S.stats.crits++;
@@ -325,18 +364,39 @@ const G = (() => {
       }
     }
     const tierMult = tier === 0 ? 1 : st.critM * [1, 1, 3, 10, 50][tier];
-    let dmg = st.tap * cm * buffMult('tap') * (fever ? st.feverMult : 1) * tierMult;
+    let dmg = st.tap * comboMult() * buffMult('tap') * (fever ? st.feverMult : 1) * tierMult * sMult * jMult;
     const alive = !!(T.tree && T.tree.alive);
     if (alive && T.tree.boss) dmg *= st.boss;
     if (!fever) {
-      T.feverGauge += 1 + (tier ? 2 : 0);
+      T.feverGauge += isTap ? 0.6 : 1 + Math.max(0, stier) * 0.2 + (just ? 1 : 0) + (tier ? 2 : 0);
       if (T.feverGauge >= C.FEVER_NEED) startFever();
     }
     if (tier === 4) gainGems(10);
-    emit('tap', { dmg, tier, combo: T.combo, x, y, alive });
+    // 追撃（強化で解放）: 残像・落雷・爆裂
+    const procs = [];
+    if (alive && !isTap) {
+      if (st.echoCount && Math.random() < st.echoChance) {
+        for (let k = 1; k <= st.echoCount; k++) procs.push({ kind: 'echo', delay: 0.11 * k, dmg: dmg * st.echoDmg, n: k });
+      }
+      if (st.thunderCount && Math.random() < st.thunderChance) {
+        for (let k = 0; k < st.thunderCount; k++) procs.push({ kind: 'thunder', delay: 0.08 + 0.14 * k, dmg: dmg * st.thunderMult, n: k + 1 });
+      }
+      if (st.blastEvery) {
+        T.blastCount++;
+        if (T.blastCount >= st.blastEvery) { T.blastCount = 0; procs.push({ kind: 'blast', delay: 0.06, dmg: dmg * st.blastMult, n: 1 }); }
+      }
+    }
+    const ev = {
+      dmg, tier, stier, just, chain: T.justChain, combo: T.combo, x: o.x, y: o.y, dir: o.dir || 1, alive, speed: o.speed || 0,
+      kind: isTap ? 'tap' : 'swing', procs: procs.map((p) => p.kind), blastIn: st.blastEvery ? st.blastEvery - T.blastCount : 0,
+    };
+    emit('swing', ev);
     if (alive) hit(dmg);
-    return { dmg, tier };
+    for (const p of procs) T.pending.push({ t: T.time + p.delay, kind: p.kind, dmg: p.dmg, n: p.n, x: o.x, y: o.y, dir: o.dir || 1 });
+    return ev;
   }
+  // ドラッグしない操作（タップ・キーボード）は弱い一振り
+  const tap = (x, y) => swing({ kind: 'tap', x, y });
 
   function startFever() {
     const st = stats();
@@ -674,7 +734,7 @@ const G = (() => {
 
     if (T.combo > 0) {
       T.comboTimer -= dt;
-      if (T.comboTimer <= 0) { emit('comboEnd', T.combo); T.combo = 0; }
+      if (T.comboTimer <= 0) { emit('comboEnd', T.combo); T.combo = 0; T.justChain = 0; T.blastCount = 0; }
     }
     if (T.fever > 0) {
       T.fever -= dt;
@@ -683,6 +743,19 @@ const G = (() => {
       T.feverGauge = Math.max(0, T.feverGauge - 10 * dt);
     }
 
+    if (T.pending.length) {
+      for (let i = 0; i < T.pending.length; i++) {
+        const p = T.pending[i];
+        if (T.time < p.t) continue;
+        T.pending.splice(i--, 1);
+        const alive = !!(T.tree && T.tree.alive);
+        if (p.kind === 'echo') S.stats.echoes++;
+        else if (p.kind === 'thunder') S.stats.thunders++;
+        else S.stats.blasts++;
+        emit('proc', Object.assign({ alive }, p));
+        if (alive) hit(p.dmg);
+      }
+    }
     if (!T.tree) spawnTree();
     if (T.tree.alive) {
       if (st.dps > 0) {
@@ -783,6 +856,7 @@ const G = (() => {
   }
   function reset() {
     T.tree = null; T.combo = 0; T.fever = 0; T.feverGauge = 0; T.bossTimer = 0; T.pendingBoss = false;
+    T.justChain = 0; T.blastCount = 0; T.pending = [];
     T.squirrel = null; T.squirrelTimer = 25; T.farmKills = 0; T.incomeEMA = 0;
     dirty();
     ensureMissions();
@@ -813,7 +887,7 @@ const G = (() => {
 
   return {
     get S() { return S; },
-    T, on, emit, stats, dirty, tick, tap, startFever,
+    T, on, emit, stats, dirty, tick, tap, swing, speedTier, startFever,
     unitDps, previewUpgrade, buyWorker, buyAmount, workerCost, maxAffordable, buyUpgrade, upgCost, upgMaxed,
     pull, canPull, equip, openChest, claimMission, missionProgress, missionText,
     catchSquirrel, goddessAnswer, challengeBoss, prestige, spiritGain, startStage, perk,

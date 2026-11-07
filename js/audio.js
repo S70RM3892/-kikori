@@ -87,6 +87,59 @@ const Sfx = (() => {
     if (combo > 1) tone(comboNote(combo), 0.12, 'triangle', 0.07, 0.005);
     if (tier >= 1) crit(tier);
   }
+  // ---- 斬撃（メイン）: 速さで音が太く、JUSTで金属音、連続JUSTで音程が上がる
+  function whoosh(sp) {
+    if (!ok() || throttle('whoosh', 110)) return;
+    const k = Math.min(1, sp / 10);
+    noise(0.12 + k * 0.06, 0.06 + k * 0.1, 'bandpass', 500 + k * 600, 1.2, 0, 2400 + k * 3000);
+  }
+  function slash(stier, just, chain, combo, tier) {
+    if (!ok() || throttle('slash', 22)) return;
+    const s = Math.max(0, stier);
+    const p = 0.9 + s * 0.06 + Math.random() * 0.08;
+    noise(0.08 + s * 0.012, 0.45 + s * 0.05, 'bandpass', 1100 * p, 1.3);
+    tone(170 * p, 0.12 + s * 0.02, 'sine', 0.38 + s * 0.03, 0, 50);
+    if (s >= 3) noise(0.05, 0.22, 'highpass', 5000, 0.8, 0.005);
+    if (s >= 4) tone(95, 0.25, 'sawtooth', 0.1, 0, 40);
+    if (combo > 1) tone(comboNote(combo), 0.12, 'triangle', 0.07, 0.006);
+    if (just) {
+      const up = Math.pow(2, Math.min(chain - 1, 12) / 12);
+      tone(2637 * up, 0.5, 'sine', 0.09, 0.01);
+      tone(3951 * up, 0.35, 'sine', 0.05, 0.012);
+      tone(2650 * up, 0.5, 'triangle', 0.03, 0.01);
+    }
+    if (tier >= 1) crit(tier);
+  }
+  function grab() {
+    if (!ok() || throttle('grab', 200)) return;
+    tone(330, 0.06, 'triangle', 0.06);
+    noise(0.05, 0.08, 'highpass', 3000, 0.7);
+  }
+  function echo(n) {
+    if (!ok()) return;
+    noise(0.07, 0.25, 'bandpass', 1500 + n * 300, 1.5);
+    tone(260 + n * 60, 0.1, 'sine', 0.18, 0, 90);
+  }
+  function thunder(n) {
+    if (!ok()) return;
+    noise(0.06, 0.5, 'highpass', 2500, 0.7);
+    noise(0.9, 0.35, 'lowpass', 400, 0.7, 0.04, 120);
+    tone(55, 0.8, 'sawtooth', 0.12, 0.03, 35);
+    if (n > 1) tone(1800, 0.08, 'square', 0.05);
+  }
+  function blast(lv) {
+    if (!ok()) return;
+    const big = lv >= 10;
+    tone(90, big ? 0.9 : 0.6, 'sine', 0.6, 0, 28);
+    noise(big ? 1.1 : 0.7, 0.5, 'lowpass', 900, 0.8, 0, 120);
+    noise(0.4, 0.2, 'highpass', 3500, 0.7, 0.02);
+    if (lv >= 20) [0, 7, 12, 19].forEach((s, i) => tone(note(s, 196), 0.9, 'sawtooth', 0.04, 0.1 + i * 0.05));
+  }
+  function unlockFx() {
+    if (!ok()) return;
+    [0, 4, 7, 11, 14, 19].forEach((s, i) => tone(note(s, 659), 0.22, 'square', 0.045, i * 0.06));
+    noise(0.6, 0.1, 'highpass', 6000, 0.7, 0.2);
+  }
   function crit(tier) {
     if (!ok()) return;
     const base = [0, 1318, 1567, 1975, 2637][tier];
@@ -240,7 +293,7 @@ const Sfx = (() => {
   }
 
   return {
-    unlock: ensure, setEnabled, setVolume, setVibe, vibrate, chop, crit, fell, coin, gem, buy, milestone, error,
+    unlock: ensure, setEnabled, setVolume, setVibe, vibrate, whoosh, slash, grab, echo, thunder, blast, unlockFx, chop, crit, fell, coin, gem, buy, milestone, error,
     feverStart, feverEnd, boss, bossWin, bossFail, tick, stage, ach, squirrel, chest, gachaRoll, gachaReveal,
     prestige, goddess,
   };

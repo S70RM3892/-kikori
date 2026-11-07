@@ -41,16 +41,8 @@ const UI = (() => {
     $('#btn-boss').addEventListener('click', () => { if (G.challengeBoss()) Sfx.boss(); });
     $('#critter').addEventListener('click', onCritter);
 
-    // シーンのタップ（マルチタッチ対応）
-    const wrap = $('#scene-wrap');
-    wrap.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('button')) return;
-      if (e.button !== undefined && e.button > 0) return;
-      e.preventDefault();
-      Sfx.unlock();
-      doTap(e.clientX, e.clientY);
-    });
-    wrap.addEventListener('contextmenu', (e) => e.preventDefault());
+    // 斧はドラッグで操作（input.js）。キーボードは軽い一振り
+    Input.init();
     window.addEventListener('keydown', (e) => {
       if (e.repeat) return;
       if (e.code !== 'Space' && e.code !== 'Enter') return;
@@ -68,12 +60,19 @@ const UI = (() => {
     disp.wood = S().wood;
     disp.gems = S().gems;
   }
+  let tapOnly = 0;
   function doTap(x, y) {
     if (modalCur || overlayBusy || G.S.study) return;
     const r = G.tap(x, y);
     if (!r) return;
     Sfx.vibrate(r.tier >= 2 ? 25 : 6);
-    if (S().tut === 0 && S().stats.taps >= 15) S().tut = 1;
+    // タップだけで遊んでいる人にドラッグを教える
+    if (++tapOnly === 6) toast('🪓', '斧はドラッグで振れ！', '幹を左右に速く横切るほど強い。切り込みを狙うとJUST');
+  }
+  // ドラッグで1撃入ったとき（input.js から）
+  function afterHit() {
+    tapOnly = 0;
+    if (S().tut === 0 && S().stats.taps >= 8) S().tut = 1;
   }
   const blocked = () => !!modalCur || overlayBusy || !!G.S.study;
 
@@ -267,8 +266,19 @@ const UI = (() => {
   };
 
   // --- 強化タブ
+  const UCAT = {
+    slash: '⚔️ 斬撃 <small>強化するほど1撃が派手で気持ちよくなる</small>',
+    combo: '🔥 コンボ・フィーバー',
+    econ: '🏭 木こり・経済',
+    luck: '🍀 運・その他',
+  };
   const UFMT = {
-    tap: (s) => `タップ基礎 ${fmt(s.tapBase)}`,
+    tap: (s) => `斬撃基礎 ${fmt(s.tapBase)}`,
+    swing: (s) => `GREAT ×${(1 + D.CFG.SPEED_BONUS[3] * s.swingMult).toFixed(1)} / MAX ×${(1 + D.CFG.SPEED_BONUS[5] * s.swingMult).toFixed(1)}`,
+    just: (s) => `JUST ×${s.justMult.toFixed(1)} ・ 幅${Math.round(s.justZone * 200)}%`,
+    echo: (s) => (s.echoCount ? `${Math.round(s.echoChance * 100)}%で残像${s.echoCount}体（${Math.round(s.echoDmg * 100)}%）` : 'なし'),
+    thunder: (s) => (s.thunderCount ? `${Math.round(s.thunderChance * 100)}%で落雷${s.thunderCount}発（×${s.thunderMult}）` : 'なし'),
+    blast: (s) => (s.blastEvery ? `${s.blastEvery}撃ごとに爆裂 ×${s.blastMult}` : 'なし'),
     soul: (s) => `DPSの ${(s.soul * 100).toFixed(1)}%`,
     critc: (s) => `会心率 ${(s.critC * 100).toFixed(0)}%`,
     critm: (s) => `会心 ×${s.critM.toFixed(2)}`,
@@ -287,13 +297,18 @@ const UI = (() => {
     build(root) {
       root.innerHTML = '';
       const st = G.stats();
-      root.appendChild(el('div', 'tab-head', `<div class="tab-stat">タップ <b class="u-tap">${fmt(st.tap)}</b></div><div class="tab-stat">会心 <b class="u-crit">${(st.critC * 100).toFixed(0)}% ×${st.critM.toFixed(1)}</b></div>`));
+      root.appendChild(el('div', 'tab-head', `<div class="tab-stat">斬撃 <b class="u-tap">${fmt(st.tap)}</b></div><div class="tab-stat">会心 <b class="u-crit">${(st.critC * 100).toFixed(0)}% ×${st.critM.toFixed(1)}</b></div>`));
       const list = el('div', 'list');
       this.rows = {};
+      let cat = '';
       for (const u of D.UPGRADES) {
-        const row = el('div', 'row upg');
+        if (u.cat !== cat) {
+          cat = u.cat;
+          list.appendChild(el('div', `upg-cat c-${cat}`, UCAT[cat] || ''));
+        }
+        const row = el('div', `row upg${u.cat === 'slash' ? ' slash' : ''}`);
         row.innerHTML = `<div class="r-ico"><span class="emo">${u.icon}</span><b class="r-cnt">0</b></div>` +
-          `<div class="r-main"><div class="r-name">${esc(u.name)}</div><div class="r-desc">${esc(u.desc)}</div><div class="r-sub"></div></div>` +
+          `<div class="r-main"><div class="r-name">${esc(u.name)}</div><div class="r-desc">${esc(u.desc)}</div><div class="r-sub"></div><div class="r-fx"></div></div>` +
           `<button type="button" class="buy"><span class="b-n">強化</span><b class="b-c">0</b></button>`;
         const btn = row.querySelector('.buy');
         holdButton(btn, () => {
@@ -303,7 +318,7 @@ const UI = (() => {
           this.update();
           return ok;
         });
-        this.rows[u.id] = { row, lv: row.querySelector('.r-cnt'), sub: row.querySelector('.r-sub'), btn, bn: row.querySelector('.b-n'), bc: row.querySelector('.b-c') };
+        this.rows[u.id] = { row, lv: row.querySelector('.r-cnt'), sub: row.querySelector('.r-sub'), fx: row.querySelector('.r-fx'), btn, bn: row.querySelector('.b-n'), bc: row.querySelector('.b-c') };
         list.appendChild(row);
         this.refreshText(u.id);
       }
@@ -313,6 +328,13 @@ const UI = (() => {
     },
     refreshText(id) {
       const u = G.UP[id], r = this.rows[id];
+      const fxl = D.SLASH_FX[id];
+      if (fxl) {
+        const l = S().upg[id] || 0;
+        const nx = fxl.find((x) => x[0] > l);
+        const got = fxl.filter((x) => x[0] <= l).map((x) => x[1]);
+        r.fx.innerHTML = (got.length ? `<span class="fx-on">✨${got.map(esc).join('・')}</span>` : '') + (nx ? `<span class="fx-next">Lv${nx[0]}で演出解放: ${esc(nx[1])}</span>` : '');
+      }
       if (G.upgMaxed(u)) { r.sub.textContent = UFMT[id](G.stats()) + '（MAX）'; return; }
       const p = G.previewUpgrade(id);
       r.sub.textContent = `${UFMT[id](p.cur)} → ${UFMT[id](p.next)}`;
@@ -686,7 +708,7 @@ const UI = (() => {
       setTimeout(() => { e.classList.add('out'); setTimeout(() => { e.remove(); pumpToasts(); }, 300); }, toastQ.length > 3 ? 1400 : 2600);
     }
   }
-  const BANNER_PRI = { god: 9, win: 8, area: 7, boss: 7, fever: 6, 'rare-rainbow': 6, fail: 5, 'rare-gold': 4, combo: 3, 'rare-silver': 2, ms: 3 };
+  const BANNER_PRI = { god: 9, unlock: 8, win: 8, area: 7, boss: 7, fever: 6, 'rare-rainbow': 6, fail: 5, 'rare-gold': 4, combo: 3, 'rare-silver': 2, ms: 3 };
   function banner(title, sub, type) {
     if (blocked() && type !== 'god') return;
     const pri = BANNER_PRI[type] || 1;
@@ -733,7 +755,7 @@ const UI = (() => {
     // チュートリアル
     const hint = $('#hint');
     let h = '';
-    if (s.tut === 0) h = '👆 木をタップして伐れ！連打でコンボ！';
+    if (s.tut === 0) h = '🪓 斧をドラッグして幹をスパッと横切れ！';
     else if (s.tut === 1 && s.wood >= 15) h = '🪵 木材がたまった！下の【木こり】で雇え';
     else if (s.tut === 2 && s.tickets >= 10) h = '🎰 無料10連ガチャが引ける！【ガチャ】へ';
     if (s.tut === 1 && Object.keys(s.workers).length) s.tut = 2;
@@ -964,6 +986,14 @@ const UI = (() => {
     G.on('studyAbort', (d) => { hideStudy(); toast('📚', '勉強を中断した', `ボーナスなし ・ 木材 +${fmt(d.wood)}`); });
     G.on('load', () => { disp.wood = S().wood; disp.gems = S().gems; });
     G.on('buyWorker', () => { if (tab === 'workers' && current) current.update(); });
+    G.on('buyUpgrade', (d) => {
+      const hitFx = (D.SLASH_FX[d.u.id] || []).find((x) => x[0] === d.lv);
+      if (!hitFx) return;
+      banner('演出解放！', `${d.u.icon} ${hitFx[1]}`, 'unlock');
+      toast('✨', `演出解放: ${hitFx[1]}`, `${d.u.name} Lv${d.lv}`, 'gold');
+      Sfx.unlockFx();
+      FX.confetti(70);
+    });
     G.on('equip', () => { if (tab === 'upgrades') rebuild(); });
   }
 
@@ -986,5 +1016,5 @@ const UI = (() => {
     }
   }
 
-  return { init, frame, bump, banner, toast, modal, rebuild, blocked, nightCheck, get tab() { return tab; } };
+  return { init, frame, bump, banner, toast, modal, rebuild, blocked, nightCheck, afterHit, tapSwing: doTap, get tab() { return tab; } };
 })();

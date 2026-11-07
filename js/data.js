@@ -9,7 +9,7 @@ const D = (() => {
     BOSS_TIME: 30,
     BOSS_HP_MULT: 8,
     HP_BASE: 10,
-    HP_G1: 1.6, // ステージ毎のHP成長率（〜SW）
+    HP_G1: 1.65, // ステージ毎のHP成長率（〜SW）
     HP_G2: 1.25, // SW以降
     HP_SW: 100,
     REWARD_PER_HP: 0.5,
@@ -20,12 +20,19 @@ const D = (() => {
     COMBO_WINDOW: 0.9,
     COMBO_PCT: 0.005, // 1コンボ毎に全ダメージ+0.5%（木こりにも乗る）
     COMBO_CAP: 100,
-    FEVER_NEED: 150,
+    FEVER_NEED: 200,
     FEVER_TIME: 8,
     FEVER_MULT: 3,
     CRIT_BASE: 0.05,
     CRIT_MULT: 3,
-    SOUL_BASE: 0.03, // タップにDPSの3%を上乗せ
+    SOUL_BASE: 0.02, // 斬撃に木こりDPSの2%を上乗せ
+    // --- 斬撃（斧をドラッグして幹を横切る）
+    SPEED_TIERS: [1.2, 2.5, 4.5, 7, 10], // 振る速さのしきい値（シーン短辺/秒）。超えた数がランク
+    SPEED_BONUS: [-0.5, 0, 0.3, 0.7, 1.2, 2], // ランク0..5 の倍率-1（プラス分は剛腕スイングで伸びる）
+    SPEED_LABEL: ['ソフト…', 'NICE', 'GOOD!', 'GREAT!!', 'EXCELLENT!!!', 'MAX SPEED!!!!'],
+    TAP_MULT: 0.4, // ドラッグせずタップしただけの一振り
+    JUST_ZONE: 0.08, // JUST判定の半幅（幹の高さに対する比）
+    JUST_MULT: 1.6,
     GEM_DROP: 0.002,
     CHEST_DROP: 0.002,
     SQUIRREL_MIN: 60,
@@ -69,20 +76,29 @@ const D = (() => {
 
   // ---------------------------------------------------------------- 強化
   const UPGRADES = [
-    { id: 'tap', icon: '🪓', name: '斧研ぎ', desc: 'タップの基礎ダメージUP（25Lvごとに2倍）', base: 20, growth: 1.22, max: 200 },
-    { id: 'soul', icon: '👊', name: '木こり魂', desc: 'タップにDPSの+0.5%を上乗せ', base: 500, growth: 2.6, max: 40 },
-    { id: 'critc', icon: '🎯', name: '会心の心得', desc: 'クリティカル率 +1%', base: 250, growth: 2.3, max: 25 },
-    { id: 'critm', icon: '💥', name: '会心の一撃', desc: 'クリティカル倍率 +0.25', base: 1000, growth: 2.4, max: 28 },
-    { id: 'combo', icon: '⏱️', name: 'コンボ維持', desc: 'コンボ受付時間 +0.1秒', base: 600, growth: 2.8, max: 12 },
-    { id: 'combocap', icon: '🔥', name: 'コンボ上限', desc: 'コンボ倍率の上限 +50コンボ', base: 2000, growth: 3, max: 18 },
-    { id: 'fever', icon: '🌈', name: 'フィーバー強化', desc: 'フィーバー倍率 +0.5・時間 +0.25秒', base: 5000, growth: 3.2, max: 20 },
-    { id: 'guild', icon: '🏭', name: '木こり組合', desc: '木こり全員のDPS ×1.3', base: 5e4, growth: 12, max: 30 },
-    { id: 'market', icon: '💰', name: '木材市場', desc: '伐採報酬 ×1.2', base: 3e4, growth: 12, max: 30 },
-    { id: 'squirrel', icon: '🐿️', name: 'リスの好物', desc: '黄金リスの出現間隔 -8%', base: 4000, growth: 5.5, max: 10 },
-    { id: 'gem', icon: '💎', name: 'ジェム鉱脈', desc: 'ジェムドロップ率 +0.5%', base: 9000, growth: 5.5, max: 20 },
-    { id: 'rare', icon: '🍀', name: 'レア木の加護', desc: 'レア木の出現率 +15%', base: 1.2e4, growth: 5, max: 20 },
-    { id: 'chest', icon: '📦', name: '宝箱センサー', desc: '宝箱ドロップ率 +0.4%', base: 2e4, growth: 5.5, max: 15 },
-    { id: 'night', icon: '🌙', name: '夜勤手当', desc: 'オフライン効率 +5%', base: 1e4, growth: 6.5, max: 10 },
+    // --- 斬撃（メインの気持ちよさ。レベルを上げるほど演出も派手になる）
+    { id: 'tap', cat: 'slash', icon: '🪓', name: '斧研ぎ', desc: '斬撃の基礎ダメージUP（25Lvごとに2倍）', base: 20, growth: 1.22, max: 200 },
+    { id: 'swing', cat: 'slash', icon: '🌪️', name: '剛腕スイング', desc: '速く振ったときのボーナス +15%。軌跡が派手になる', base: 300, growth: 2.6, max: 50 },
+    { id: 'just', cat: 'slash', icon: '🎯', name: '見切り', desc: 'JUSTの判定幅と倍率UP。連続JUSTの上限UP', base: 800, growth: 2.8, max: 40 },
+    { id: 'echo', cat: 'slash', icon: '👥', name: '残像斬り', desc: '斬撃の残像が追撃する確率 +2%（15Lvごとに残像+1）', base: 8000, growth: 3.2, max: 40 },
+    { id: 'thunder', cat: 'slash', icon: '⚡', name: '雷神の加護', desc: '斬るたびに落雷が落ちる確率UP（15Lvごとに雷+1）', base: 8e4, growth: 3.8, max: 30 },
+    { id: 'blast', cat: 'slash', icon: '☄️', name: '爆裂斬', desc: 'コンボ中、一定回数ごとに大爆発（Lvで間隔短縮・威力UP）', base: 4e5, growth: 4.2, max: 30 },
+    { id: 'critc', cat: 'slash', icon: '🎲', name: '会心の心得', desc: 'クリティカル率 +1%', base: 250, growth: 2.3, max: 25 },
+    { id: 'critm', cat: 'slash', icon: '💥', name: '会心の一撃', desc: 'クリティカル倍率 +0.25', base: 1000, growth: 2.4, max: 28 },
+    // --- コンボ・フィーバー
+    { id: 'combo', cat: 'combo', icon: '⏱️', name: 'コンボ維持', desc: 'コンボ受付時間 +0.1秒', base: 600, growth: 2.8, max: 12 },
+    { id: 'combocap', cat: 'combo', icon: '🔥', name: 'コンボ上限', desc: 'コンボ倍率の上限 +50コンボ', base: 2000, growth: 3, max: 18 },
+    { id: 'fever', cat: 'combo', icon: '🌈', name: 'フィーバー強化', desc: 'フィーバー倍率 +0.5・時間 +0.25秒', base: 5000, growth: 3.2, max: 20 },
+    // --- 木こり・経済
+    { id: 'soul', cat: 'econ', icon: '👊', name: '木こり魂', desc: '斬撃に木こりDPSの+0.5%を上乗せ', base: 500, growth: 2.6, max: 40 },
+    { id: 'guild', cat: 'econ', icon: '🏭', name: '木こり組合', desc: '木こり全員のDPS ×1.3', base: 5e4, growth: 12, max: 30 },
+    { id: 'market', cat: 'econ', icon: '💰', name: '木材市場', desc: '伐採報酬 ×1.2', base: 3e4, growth: 12, max: 30 },
+    // --- 運・その他
+    { id: 'squirrel', cat: 'luck', icon: '🐿️', name: 'リスの好物', desc: '黄金リスの出現間隔 -8%', base: 4000, growth: 5.5, max: 10 },
+    { id: 'gem', cat: 'luck', icon: '💎', name: 'ジェム鉱脈', desc: 'ジェムドロップ率 +0.5%', base: 9000, growth: 5.5, max: 20 },
+    { id: 'rare', cat: 'luck', icon: '🍀', name: 'レア木の加護', desc: 'レア木の出現率 +15%', base: 1.2e4, growth: 5, max: 20 },
+    { id: 'chest', cat: 'luck', icon: '📦', name: '宝箱センサー', desc: '宝箱ドロップ率 +0.4%', base: 2e4, growth: 5.5, max: 15 },
+    { id: 'night', cat: 'luck', icon: '🌙', name: '夜勤手当', desc: 'オフライン効率 +5%', base: 1e4, growth: 6.5, max: 10 },
   ];
 
   // ---------------------------------------------------------------- 斧（ガチャ）
@@ -169,12 +185,12 @@ const D = (() => {
   // ---------------------------------------------------------------- 黄金リスの効果
   const SQUIRREL_FX = [
     { id: 'frenzy', w: 30, icon: '🔥', name: '狂乱', text: '全ダメージ ×7（30秒）' },
-    { id: 'click', w: 16, icon: '👆', name: '連打狂乱', text: 'タップ ×77（12秒）' },
+    { id: 'click', w: 16, icon: '👆', name: '連打狂乱', text: '斬撃 ×77（12秒）' },
     { id: 'lucky', w: 28, icon: '🍀', name: 'ラッキー', text: '大量の木材をゲット' },
     { id: 'gems', w: 12, icon: '💎', name: 'ジェムの雨', text: 'ジェムが降ってきた' },
     { id: 'fever', w: 10, icon: '🌈', name: '即フィーバー', text: 'いきなりフィーバー突入' },
     { id: 'chest', w: 8, icon: '📦', name: '宝箱', text: '宝箱×2をゲット' },
-    { id: 'jackpot', w: 1.5, icon: '🎰', name: '大当たり', text: 'タップ ×777（7秒）＋💎77' },
+    { id: 'jackpot', w: 1.5, icon: '🎰', name: '大当たり', text: '斬撃 ×777（7秒）＋💎77' },
   ];
 
   // ---------------------------------------------------------------- 宝箱
@@ -204,7 +220,9 @@ const D = (() => {
   // ---------------------------------------------------------------- ミッション
   const MISSIONS = [
     { t: 'kills', stat: 'kills', base: 30, grow: 1.2, text: (n) => `木を${n}本伐採する` },
-    { t: 'taps', stat: 'taps', base: 200, grow: 1.2, text: (n) => `${n}回タップする` },
+    { t: 'taps', stat: 'taps', base: 200, grow: 1.2, text: (n) => `${n}回斬る` },
+    { t: 'justs', stat: 'justs', base: 15, grow: 1.18, text: (n) => `JUSTを${n}回出す` },
+    { t: 'greats', stat: 'greats', base: 20, grow: 1.18, text: (n) => `GREAT以上の速さで${n}回斬る` },
     { t: 'crits', stat: 'crits', base: 20, grow: 1.2, text: (n) => `クリティカルを${n}回出す` },
     { t: 'combo', special: 'combo', base: 60, add: 25, text: (n) => `${n}コンボを達成する` },
     { t: 'bosses', stat: 'bosses', base: 1, grow: 1.04, text: (n) => `ボスを${n}体倒す` },
@@ -221,7 +239,7 @@ const D = (() => {
   function ach(id, icon, name, desc, check, gems = 10) { ACH.push({ id, icon, name, desc, check, gems }); }
   const st = (S, k) => S.stats[k] || 0;
   [[100, '連打デビュー'], [1000, '指が覚醒した'], [1e4, '指に残像'], [1e5, '指が光速'], [1e6, '指が神']].forEach(([n, nm], i) =>
-    ach('tap' + i, '👆', nm, `${n.toLocaleString()}回タップ`, (S) => st(S, 'taps') >= n, [10, 20, 40, 80, 150][i]));
+    ach('tap' + i, '🪓', nm, `${n.toLocaleString()}回斬る`, (S) => st(S, 'taps') >= n, [10, 20, 40, 80, 150][i]));
   [[10, '初伐採'], [100, '森の掃除屋'], [1000, '森林破壊予備軍'], [1e4, '伐採マシーン'], [1e5, '森の天敵'], [1e6, 'ハゲ山量産']].forEach(([n, nm], i) =>
     ach('kill' + i, '🌲', nm, `木を${n.toLocaleString()}本伐採`, (S) => st(S, 'kills') >= n, [10, 20, 40, 80, 120, 200][i]));
   [[1e3, '千'], [1e6, '百万'], [1e9, '十億'], [1e12, '一兆'], [1e16, '一京'], [1e20, '一垓'], [1e28, '一穣'], [1e40, '一正'], [1e52, '恒河沙'], [1e64, '不可思議'], [1e68, '無量大数']].forEach(([n, nm], i) =>
@@ -230,6 +248,17 @@ const D = (() => {
     ach('stage' + i, '🗺️', `ステージ${n}`, `ステージ${n}に到達`, (S) => st(S, 'bestStage') >= n, 15 + i * 15));
   [[50, 'コンボ入門'], [100, '百連撃'], [300, '止まらない指'], [1000, '千手観音'], [3000, '指がもげる']].forEach(([n, nm], i) =>
     ach('combo' + i, '🔥', nm, `${n}コンボ達成`, (S) => st(S, 'maxCombo') >= n, [10, 20, 40, 80, 150][i]));
+  ach('just1', '🎯', '見切った', 'JUSTを出す', (S) => st(S, 'justs') >= 1, 10);
+  ach('just100', '🎯', '見切りの達人', 'JUSTを100回', (S) => st(S, 'justs') >= 100, 40);
+  ach('just1000', '🗡️', '剣聖', 'JUSTを1000回', (S) => st(S, 'justs') >= 1000, 120);
+  ach('chain10', '⛓️', '10連JUST', 'JUSTを10回連続で出す', (S) => st(S, 'maxChain') >= 10, 50);
+  ach('chain30', '🧘', '無我の境地', 'JUSTを30回連続で出す', (S) => st(S, 'maxChain') >= 30, 150);
+  ach('spd1', '💨', '音速の木こり', 'MAX SPEEDで斬る', (S) => st(S, 'maxSpeeds') >= 1, 30);
+  ach('spd100', '☄️', '光速の木こり', 'MAX SPEEDで100回斬る', (S) => st(S, 'maxSpeeds') >= 100, 100);
+  ach('echo1', '👥', '残像だ', '残像斬りを出す', (S) => st(S, 'echoes') >= 1, 20);
+  ach('thunder1', '⚡', '落雷', '雷神の加護を発動', (S) => st(S, 'thunders') >= 1, 30);
+  ach('blast1', '☄️', '爆裂デビュー', '爆裂斬を発動', (S) => st(S, 'blasts') >= 1, 40);
+  ach('blast100', '☄️', '爆裂魔', '爆裂斬を100回', (S) => st(S, 'blasts') >= 100, 120);
   ach('crit0', '💥', '会心デビュー', 'クリティカルを100回', (S) => st(S, 'crits') >= 100, 10);
   ach('crit1', '💥', '会心中毒', 'クリティカルを1万回', (S) => st(S, 'crits') >= 1e4, 50);
   ach('super', '💫', 'スーパー！', 'SUPER CRITを出す', (S) => st(S, 'supers') >= 1, 15);
@@ -267,5 +296,15 @@ const D = (() => {
   ach('study10', '🎓', '合格する木こり', '勉強ブーストを10回完走', (S) => st(S, 'studies') >= 10, 300);
   ach('sleep1', '😴', '寝る子は育つ', '6時間以上休んで戻ってくる', (S) => st(S, 'sleeps') >= 1, 50);
 
-  return { AXE_PATHS, CFG, WORKERS, MILESTONES, UPGRADES, RARITY, RARITY_ORDER, AXES, SP_TEXT, BIOMES, TREE_RARITY, SQUIRREL_FX, CHESTS, LOGIN, PERKS, MISSIONS, ACH };
+  // 斬撃系の強化で解放される演出（レベル到達でバナー表示）
+  const SLASH_FX = {
+    swing: [[1, '光る斬撃の軌跡'], [10, '二重の軌跡'], [25, '虹色の軌跡'], [40, '炎の軌跡']],
+    just: [[1, 'JUSTの衝撃波'], [10, '黄金の波紋'], [25, 'JUSTスローモーション']],
+    echo: [[1, '残像 1体'], [15, '残像 2体'], [30, '残像 3体']],
+    thunder: [[1, '落雷'], [15, '二連雷'], [30, '三連神雷']],
+    blast: [[1, '爆裂'], [10, '大爆裂'], [20, '超新星']],
+    critm: [[10, '会心の衝撃波'], [20, '会心で時が止まる']],
+  };
+
+  return { SLASH_FX, AXE_PATHS, CFG, WORKERS, MILESTONES, UPGRADES, RARITY, RARITY_ORDER, AXES, SP_TEXT, BIOMES, TREE_RARITY, SQUIRREL_FX, CHESTS, LOGIN, PERKS, MISSIONS, ACH };
 })();

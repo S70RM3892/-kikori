@@ -16,13 +16,20 @@ const FX = (() => {
   let bgCanvas = null, bgKey = '';
   let palIdx = -1, pal = null;
   let quality = 2, allowShake = true, allowFlash = true, calm = false;
-  const MAXP = [90, 240, 460], MAXT = [24, 45, 80];
+  const MAXP = [90, 220, 380], MAXT = [24, 45, 80];
+  const flareCache = new Map(); // 閃光のスプライト（色ごとに1回だけ作る）
   let P2 = null;
   const GEO = { gy: 0, th: 0, tw: 0, cr: 0, cx: 0, hudBottom: 90 };
   const geoMap = new Map();
   const wPhase = {};
   let targets = { wood: null, gem: null };
   let blocked = () => false; // モーダル中はシーン由来の演出を止める
+  // --- ドラッグ中の斧と斬撃演出
+  let held = null;
+  const trail = [], cuts = [], ghosts = [], bolts = [];
+  let freezeAxe = 0, axeStick = null;
+  let zoom = 0, zoomX = 0, zoomY = 0, slowmo = 0, treeDir = 1;
+  const TRAIL_MS = 150;
 
   const FONT_D = '"Dela Gothic One", "Hiragino Sans", "Yu Gothic", system-ui, sans-serif';
   const FONT_B = '"M PLUS Rounded 1c", "Hiragino Maru Gothic ProN", "Hiragino Sans", system-ui, sans-serif';
@@ -562,14 +569,15 @@ const FX = (() => {
   }
 
   // ------------------------------------------------------------- 斧
-  function drawAxe(c, axe, gx, gy, ang, k, mirror, glowPhase) {
+  // (px,py) = 斧画像(64x64)のどの点を (gx,gy) に合わせるか。既定は握り、手持ちは刃先 (56,18)
+  function drawAxe(c, axe, gx, gy, ang, k, mirror, glowPhase, px = 32, py = 62, noGlow = false) {
     if (!axe) axe = { blade: ['#e0e6ec', '#7f8b96'], handle: '#7a5533' };
     c.save();
     c.translate(gx, gy);
     c.rotate(ang);
     c.scale(k * mirror, k);
-    c.translate(-32, -62);
-    if (axe.glow && quality > 0) {
+    c.translate(-px, -py);
+    if (axe.glow && quality > 0 && !noGlow) {
       c.shadowColor = axe.glow === 'rainbow' ? `hsl(${(clock * 200) % 360},100%,60%)` : axe.glow;
       c.shadowBlur = 16 + Math.sin(glowPhase * 6) * 6;
     }
@@ -616,6 +624,7 @@ const FX = (() => {
     c.clearRect(0, 0, W, H);
     c.save();
     c.translate(ox_, oy_);
+    if (zoom > 0.001) { c.translate(zoomX, zoomY); c.scale(1 + zoom, 1 + zoom); c.translate(-zoomX, -zoomY); }
     c.drawImage(bgCanvas, 0, 0, W, H);
     drawAmbient(c, dt);
     const T = G.T, S = G.S;
@@ -661,19 +670,104 @@ const FX = (() => {
       growT = Math.min(1, growT + dt / 0.32);
       const k = U.ease.outBack(growT);
       const wob = Math.sin(sclock * 38) * 0.05 * treeShake;
-      const shx = Math.sin(sclock * 70) * 5 * treeShake;
+      const shx = Math.sin(sclock * 70) * 5 * treeShake + treeDir * treeShake * 3;
       drawTreeFull(c, tree, GEO.cx + shx, GEO.gy, Math.max(0.01, k), 1, wob);
-      // 斧
-      const pose = axePose(tree);
-      const eq = G.stats().eq;
-      const swing = axeT < 0.35 ? U.ease.outQuad(axeT / 0.35) : 1 - U.ease.inOutSine((axeT - 0.35) / 0.65);
-      const ang = U.lerp(pose.restA, pose.hitA, axeT >= 1 ? 0 : swing);
-      drawAxe(c, eq, pose.gx + shx * 0.3, pose.gy, ang, pose.k * Math.min(1, k), pose.side > 0 ? -1 : 1, clock);
+      if (growT >= 1) drawJustGuide(c, tree, shx);
+      drawCuts(c, dt, tree, shx);
+      // 待機中の斧（つかむと手に移る）
+      if (!held) {
+        const pose = axePose(tree);
+        const eq = G.stats().eq;
+        const sw = axeT < 0.35 ? U.ease.outQuad(axeT / 0.35) : 1 - U.ease.inOutSine((axeT - 0.35) / 0.65);
+        const ang = U.lerp(pose.restA, pose.hitA, axeT >= 1 ? 0 : sw) + (axeT >= 1 ? Math.sin(sclock * 2.4) * 0.05 : 0);
+        drawAxe(c, eq, pose.gx + shx * 0.3, pose.gy, ang, pose.k * Math.min(1, k), pose.side > 0 ? -1 : 1, clock);
+      }
+      if (S.tut === 0 && !held && growT >= 1) drawDemo(c, tree);
+    } else {
+      cuts.length = 0;
     }
 
     drawWorkers(c, dt);
     c.restore();
     drawHud(c, dt);
+  }
+
+  // JUSTの的（切り込みの高さ）
+  function drawJustGuide(c, tree, shx) {
+    const m = treeMetrics(tree);
+    const half = Math.max(7, m.th * G.stats().justZone);
+    const y = GEO.gy - m.h0, x = GEO.cx + shx;
+    const chain = G.T.justChain;
+    const pulse = 0.5 + 0.5 * Math.sin(sclock * 5);
+    c.save();
+    c.globalAlpha = 0.14 + 0.1 * pulse + Math.min(0.3, chain * 0.03);
+    c.fillStyle = '#ffe14a';
+    c.fillRect(x - m.tw * 0.8, y - half, m.tw * 1.6, half * 2);
+    c.globalAlpha = 0.9;
+    c.fillStyle = chain >= 2 ? `hsl(${(sclock * 300) % 360},100%,65%)` : '#ffe14a';
+    c.strokeStyle = 'rgba(40,20,0,0.7)';
+    c.lineWidth = 1.5;
+    const ax = m.tw * 0.5 + 6 + pulse * 3, sz = 6;
+    for (const sd of [-1, 1]) {
+      c.beginPath();
+      c.moveTo(x + sd * ax, y);
+      c.lineTo(x + sd * (ax + sz * 1.4), y - sz);
+      c.lineTo(x + sd * (ax + sz * 1.4), y + sz);
+      c.closePath();
+      c.fill();
+      c.stroke();
+    }
+    c.restore();
+  }
+  // 幹に残る斬撃の跡
+  function drawCuts(c, dt, tree, shx) {
+    if (!cuts.length) return;
+    const m = treeMetrics(tree);
+    c.save();
+    c.globalCompositeOperation = 'lighter';
+    c.lineCap = 'round';
+    for (let i = cuts.length - 1; i >= 0; i--) {
+      const k = cuts[i];
+      k.life -= dt;
+      if (k.life <= 0) { cuts.splice(i, 1); continue; }
+      const a = k.life / k.max;
+      const half = m.tw * (0.9 + (1 - a) * 0.7);
+      const x = GEO.cx + shx;
+      c.globalAlpha = a;
+      c.strokeStyle = k.col;
+      c.lineWidth = k.w * a + 1;
+      c.beginPath();
+      c.moveTo(x - half * k.dir, k.y + k.tilt * half);
+      c.lineTo(x + half * k.dir, k.y - k.tilt * half);
+      c.stroke();
+      c.strokeStyle = '#ffffff';
+      c.lineWidth = Math.max(1, k.w * a * 0.35);
+      c.stroke();
+    }
+    c.restore();
+  }
+  // チュートリアル: 指で幹を横切る手本
+  function drawDemo(c, tree) {
+    const m = treeMetrics(tree);
+    const y = GEO.gy - m.h0;
+    const span = Math.min(W * 0.32, m.cr * 1.5);
+    const ph = (sclock % 1.6) / 1.6;
+    const leg = ph < 0.5 ? ph / 0.5 : (ph - 0.5) / 0.5;
+    const dir = ph < 0.5 ? 1 : -1;
+    const e = U.ease.inOutSine(U.clamp(leg / 0.45, 0, 1));
+    const x0 = GEO.cx - dir * span, x = x0 + dir * span * 2 * e;
+    c.save();
+    c.globalAlpha = 0.6 * (1 - Math.max(0, leg - 0.6) / 0.4);
+    c.strokeStyle = '#ffffff';
+    c.lineWidth = 6;
+    c.lineCap = 'round';
+    c.beginPath(); c.moveTo(x0, y); c.lineTo(x, y); c.stroke();
+    c.globalAlpha = 0.95;
+    c.font = `32px ${FONT_B}`;
+    c.textAlign = 'center';
+    c.textBaseline = 'top';
+    c.fillText('👆', x, y + 4);
+    c.restore();
   }
 
   function landed(f) {
@@ -852,6 +946,9 @@ const FX = (() => {
 
   // ------------------------------------------------------------- オーバーレイ（粒子・数字）
   function spawn(p) {
+    if (!(isFinite(p.x) && isFinite(p.y))) return;
+    if (p.vx === undefined) p.vx = 0; // 速度なしの粒子（閃光・輪）が NaN にならないように
+    if (p.vy === undefined) p.vy = 0;
     const max = MAXP[quality];
     if (parts.length >= max) parts.splice(0, parts.length - max + 1);
     parts.push(p);
@@ -892,6 +989,7 @@ const FX = (() => {
     const c = ox;
     c.setTransform(DPR, 0, 0, DPR, 0, 0);
     c.clearRect(0, 0, OW, OH);
+    drawTrail(c);
     for (let i = parts.length - 1; i >= 0; i--) {
       const p = parts[i];
       p.life -= dt;
@@ -911,7 +1009,7 @@ const FX = (() => {
         if (p.t === 'confetti') p.vx += Math.sin(clock * 4 + p.ph) * 40 * dt;
         p.x += p.vx * dt;
         p.y += p.vy * dt;
-        if (p.t === 'spark' || p.t === 'dust') { p.vx *= 1 - 2.5 * dt; p.vy *= 1 - 2.5 * dt; }
+        if (p.t === 'spark' || p.t === 'dust' || p.t === 'fire') { p.vx *= 1 - 2.5 * dt; p.vy *= 1 - 2.5 * dt; }
       }
       if (p.rot !== undefined) p.rot += (p.vr || 0) * dt;
       c.save();
@@ -924,6 +1022,18 @@ const FX = (() => {
         case 'confetti': c.rotate(p.rot); c.scale(1, Math.sin(clock * 9 + p.ph)); c.fillStyle = p.col; c.fillRect(-p.s / 2, -p.s / 2, p.s, p.s * 1.5); break;
         case 'dust': c.fillStyle = 'rgba(230,215,190,0.55)'; c.beginPath(); c.arc(0, 0, p.s * (1.6 - a * 0.6), 0, 7); c.fill(); break;
         case 'ring': c.strokeStyle = p.col; c.lineWidth = 4 * a; c.beginPath(); c.arc(0, 0, p.s * (1 - a) + 10, 0, 7); c.stroke(); break;
+        case 'flare': {
+          const r = p.s * (1.15 - a * 0.55);
+          c.globalCompositeOperation = 'lighter';
+          c.globalAlpha = a;
+          c.drawImage(flareSprite(p.col || '255,235,190'), -r, -r, r * 2, r * 2);
+          break;
+        }
+        case 'fire': {
+          c.fillStyle = a > 0.75 ? '#fff4b0' : a > 0.5 ? '#ffb02e' : a > 0.28 ? '#ff5a1f' : 'rgba(70,50,50,0.8)';
+          c.beginPath(); c.arc(0, 0, p.s * (1.7 - a), 0, 7); c.fill();
+          break;
+        }
         case 'coin': {
           c.fillStyle = '#ffcf4a'; c.strokeStyle = '#8a5a10'; c.lineWidth = 1.5;
           c.beginPath(); c.arc(0, 0, p.s, 0, 7); c.fill(); c.stroke();
@@ -940,6 +1050,9 @@ const FX = (() => {
       }
       c.restore();
     }
+    drawGhosts(c, dt);
+    drawBolts(c, dt);
+    drawHeldAxe(c);
     for (let i = texts.length - 1; i >= 0; i--) {
       const t = texts[i];
       t.life -= dt;
@@ -970,6 +1083,162 @@ const FX = (() => {
     }
   }
 
+  function flareSprite(col) {
+    let cv = flareCache.get(col);
+    if (cv) return cv;
+    cv = document.createElement('canvas');
+    cv.width = cv.height = 128;
+    const g2 = cv.getContext('2d');
+    const g = g2.createRadialGradient(64, 64, 0, 64, 64, 64);
+    g.addColorStop(0, 'rgba(255,255,255,1)');
+    g.addColorStop(0.3, `rgba(${col},0.85)`);
+    g.addColorStop(1, `rgba(${col},0)`);
+    g2.fillStyle = g;
+    g2.fillRect(0, 0, 128, 128);
+    flareCache.set(col, cv);
+    return cv;
+  }
+
+  // ------------------------------------------------------------- 手持ちの斧と軌跡
+  const hexRGB = (h) => { const n = parseInt(h.slice(1), 16); return `${n >> 16},${(n >> 8) & 255},${n & 255}`; };
+  const heldScale = () => U.clamp(Math.min(W, H) * 0.0034, 0.85, 1.7);
+  function grab(p) {
+    const ti = trunkInfo();
+    held = { x: p.x, y: p.y, dx: p.x, dy: p.y, vx: 0, vy: 0, sp: 0, pt: p.t, mirror: ti && p.x > ti.cx ? -1 : 1, tilt: 0 };
+    const tree = G.T.tree;
+    if (tree && tree.alive) { const pose = axePose(tree); held.dx = rect.left + pose.gx; held.dy = rect.top + pose.gy - 30; }
+    trail.length = 0;
+    Sfx.grab();
+  }
+  function drag(p, sp) {
+    if (!held) return;
+    const dt = Math.max(0.004, (p.t - held.pt) / 1000);
+    const vx = (p.x - held.x) / dt, vy = (p.y - held.y) / dt;
+    held.vx = held.vx * 0.55 + vx * 0.45;
+    held.vy = held.vy * 0.55 + vy * 0.45;
+    if (Math.abs(held.vx) > 80) held.mirror = held.vx > 0 ? 1 : -1;
+    const tilt = U.clamp(Math.atan2(held.vy, Math.abs(held.vx) + 1), -1.1, 1.1);
+    held.tilt += (tilt - held.tilt) * 0.35;
+    held.x = p.x;
+    held.y = p.y;
+    held.sp = sp;
+    held.pt = p.t;
+    trail.push({ x: p.x, y: p.y, t: performance.now(), sp });
+    if (trail.length > 80) trail.shift();
+  }
+  function release() { held = null; }
+  function drawHeldAxe(c) {
+    if (!held) return;
+    const stuck = freezeAxe > 0 && axeStick;
+    const tx = stuck ? axeStick.x : held.x, ty = stuck ? axeStick.y : held.y;
+    held.dx += (tx - held.dx) * (stuck ? 1 : 0.65);
+    held.dy += (ty - held.dy) * (stuck ? 1 : 0.65);
+    drawAxe(c, G.stats().eq, held.dx, held.dy, held.tilt * held.mirror, heldScale(), held.mirror, clock, 56, 18);
+  }
+  function drawTrail(c) {
+    const now = performance.now();
+    while (trail.length && now - trail[0].t > TRAIL_MS) trail.shift();
+    if (trail.length < 2) return;
+    const lv = G.S.upg.swing || 0;
+    const style = lv >= 40 ? 'flame' : lv >= 25 || G.T.fever > 0 ? 'rainbow' : lv >= 1 ? 'glow' : 'plain';
+    const eq = G.stats().eq;
+    const glowRGB = eq && eq.glow && eq.glow !== 'rainbow' ? hexRGB(eq.glow) : '255,200,110';
+    const passes = style === 'plain' ? [1] : [2.6, 1];
+    const offs = lv >= 10 ? [0, 1] : [0];
+    c.save();
+    c.lineCap = 'round';
+    c.globalCompositeOperation = 'lighter';
+    for (const off of offs) {
+      for (const wm of passes) {
+        for (let i = 1; i < trail.length; i++) {
+          const a = trail[i - 1], b = trail[i];
+          const f = i / (trail.length - 1);
+          const age = U.clamp((now - b.t) / TRAIL_MS, 0, 1);
+          const alpha = (1 - age) * f * (wm > 1 ? 0.3 : 0.85) * (off ? 0.55 : 1);
+          if (alpha <= 0.01) continue;
+          const w = (2 + Math.min(1, b.sp / 8) * 15 * (1 + lv * 0.012)) * f * wm * (off ? 0.5 : 1);
+          let col;
+          if (style === 'plain') col = '255,255,255';
+          else if (style === 'glow') col = wm > 1 ? glowRGB : '255,255,255';
+          else if (style === 'flame') col = wm > 1 ? '255,90,20' : '255,225,140';
+          c.strokeStyle = col ? `rgba(${col},${alpha})` : `hsla(${(clock * 400 + i * 24) % 360},100%,${wm > 1 ? 55 : 78}%,${alpha})`;
+          c.lineWidth = w;
+          let ox_ = 0, oy_ = 0;
+          if (off) { const dx = b.x - a.x, dy = b.y - a.y, l = Math.hypot(dx, dy) || 1; ox_ = (-dy / l) * 11; oy_ = (dx / l) * 11; }
+          c.beginPath(); c.moveTo(a.x + ox_, a.y + oy_); c.lineTo(b.x + ox_, b.y + oy_); c.stroke();
+        }
+      }
+    }
+    c.restore();
+    if (style === 'flame' && held && held.sp > 3 && quality > 0 && Math.random() < 0.6) {
+      spawn({ t: 'fire', x: held.x, y: held.y, vx: (Math.random() - 0.5) * 60, vy: -30, life: 0.45, max: 0.45, s: 4 + Math.random() * 5, g: -90 });
+    }
+  }
+  function drawGhosts(c, dt) {
+    if (!ghosts.length) return;
+    const eq = G.stats().eq, k = heldScale();
+    for (let i = ghosts.length - 1; i >= 0; i--) {
+      const g = ghosts[i];
+      g.t += dt;
+      const p = g.t / g.dur;
+      if (p >= 1) { ghosts.splice(i, 1); continue; }
+      const span = 80;
+      const x = g.x - g.dir * span + g.dir * span * 2 * U.ease.outCubic(p);
+      c.save();
+      c.globalCompositeOperation = 'lighter';
+      c.strokeStyle = `rgba(200,160,255,${0.7 * (1 - p)})`;
+      c.lineWidth = 7;
+      c.lineCap = 'round';
+      c.beginPath(); c.moveTo(g.x - g.dir * span, g.y); c.lineTo(x, g.y); c.stroke();
+      c.restore();
+      c.save();
+      c.globalAlpha = 0.55 * (1 - p);
+      drawAxe(c, eq, x, g.y, 0.15 * g.dir, k, g.dir, clock, 56, 18, true);
+      c.restore();
+    }
+  }
+  function makeBolt(x, y) {
+    const pts = [], n = 12, top = Math.max(0, rect.top - 10);
+    const bx = x + (Math.random() - 0.5) * 90;
+    for (let i = 0; i <= n; i++) {
+      const t = i / n;
+      pts.push([U.lerp(bx, x, t) + (i && i < n ? (Math.random() - 0.5) * 40 : 0), U.lerp(top, y, t)]);
+    }
+    return { pts, life: 0.24, max: 0.24 };
+  }
+  function drawBolts(c, dt) {
+    for (let i = bolts.length - 1; i >= 0; i--) {
+      const b = bolts[i];
+      b.life -= dt;
+      if (b.life <= 0) { bolts.splice(i, 1); continue; }
+      const a = b.life / b.max;
+      c.save();
+      c.globalCompositeOperation = 'lighter';
+      c.lineJoin = 'round';
+      c.lineCap = 'round';
+      for (const [w, col] of [[12, `rgba(110,170,255,${0.35 * a})`], [5, `rgba(190,225,255,${0.9 * a})`], [1.8, `rgba(255,255,255,${a})`]]) {
+        c.strokeStyle = col;
+        c.lineWidth = w;
+        c.beginPath();
+        b.pts.forEach(([px, py], j) => (j ? c.lineTo(px, py) : c.moveTo(px, py)));
+        c.stroke();
+      }
+      c.restore();
+    }
+  }
+  // 当たり判定用の幹の位置（ビューポート座標）
+  function trunkInfo() {
+    const tree = G.T.tree;
+    if (!tree || !tree.alive || growT < 0.6) return null;
+    const m = treeMetrics(tree);
+    return {
+      cx: rect.left + GEO.cx, top: rect.top + GEO.gy - m.th, bottom: rect.top + GEO.gy,
+      notchY: rect.top + GEO.gy - m.h0, justHalf: Math.max(7, m.th * G.stats().justZone),
+      margin: Math.max(8, m.tw * 0.55), unit: unit(),
+    };
+  }
+  const unit = () => U.clamp(Math.min(W, H), 220, 520);
+
   // ------------------------------------------------------------- 演出API
   function addShake(v) { if (allowShake) shake = Math.min(1.2, shake + v); }
   function addFlash(v, rgb = '255,255,255') { flash = Math.min(0.7, Math.max(flash, v)); flashRGB = rgb; }
@@ -989,10 +1258,132 @@ const FX = (() => {
     { label: 'GOD CRIT!!!!', fill: '#ffffff', size: 62, rainbow: true },
   ];
 
-  function onTap(d) {
+  const SPEED_COL = ['#aab4c0', '#ffffff', '#9dff4a', '#ffd23a', '#ff8a1a', '#ffffff'];
+  // ★ メインの気持ちよさ: 斧が幹に入った瞬間
+  function onSwing(d) {
     axeT = 0;
-    Sfx.chop(d.combo, d.tier);
+    if (d.kind === 'tap') Sfx.chop(d.combo, d.tier);
+    else Sfx.slash(d.stier, d.just, d.chain, d.combo, d.tier);
     if (blocked()) return;
+    if (d.kind === 'tap') { tapVisuals(d); return; }
+    const J = Math.min(2.6, G.stats().juice);
+    const q = [0.4, 0.7, 1][quality];
+    const s = d.stier, x = d.x, y = d.y;
+    const lvJ = G.S.upg.just || 0, lvM = G.S.upg.critm || 0;
+    // ヒットストップ（刺さる手応え）と斧の食い込み
+    let hs = 0.022 + 0.011 * s + (d.just ? 0.04 : 0) + d.tier * 0.02;
+    if (lvM >= 20 && d.tier >= 1) hs += 0.04;
+    hitStop = Math.max(hitStop, Math.min(0.17, hs * (0.85 + 0.12 * J)));
+    freezeAxe = hitStop * 0.9;
+    axeStick = { x: x - d.dir * 4, y };
+    // カメラ
+    zoom = Math.min(0.09, Math.max(zoom, 0.01 + 0.006 * s + (d.just ? 0.022 : 0) + d.tier * 0.01));
+    zoomX = x - rect.left;
+    zoomY = y - rect.top;
+    addShake((0.06 + 0.035 * s + (d.just ? 0.12 : 0)) * Math.min(1.6, J));
+    treeShake = Math.min(1.8, treeShake + 0.45 + s * 0.12);
+    treeDir = d.dir;
+    treeSquash = Math.min(1, treeSquash + 0.2 + d.tier * 0.2);
+    const tierInfo = TIER[d.tier];
+    // 斬撃の跡と閃光
+    cuts.push({ y: y - rect.top, dir: d.dir, tilt: (Math.random() - 0.5) * 0.3, life: 0.3 + s * 0.03, max: 0.3 + s * 0.03, col: d.just ? '#ffe680' : tierInfo ? tierInfo.fill : s >= 4 ? '#ffb070' : '#fff2d0', w: 3 + s * 1.2 + (d.just ? 3 : 0) });
+    if (cuts.length > 6) cuts.shift();
+    spawn({ t: 'flare', x, y, life: 0.16, max: 0.16, s: (26 + 9 * s + (d.just ? 26 : 0)) * Math.min(1.5, J), col: d.just ? '255,225,90' : '255,235,190' });
+    // 木片と火花（振った方向へ飛ぶ）
+    const nChip = Math.round((3 + 2.5 * s + (d.just ? 5 : 0)) * J * q);
+    for (let i = 0; i < nChip; i++) {
+      spawn({ t: 'chip', x, y, vx: d.dir * (180 + Math.random() * 380 + s * 60), vy: -80 - Math.random() * 300, life: 0.8, max: 0.8, s: 3 + Math.random() * 4, rot: Math.random() * 6, vr: (Math.random() - 0.5) * 24, col: Math.random() < 0.5 ? '#f3d29a' : '#c8894a' });
+    }
+    if (s >= 2) {
+      const nSp = Math.round((4 + 4 * (s - 2)) * J * q);
+      for (let i = 0; i < nSp; i++) {
+        const a = (d.dir > 0 ? 0 : Math.PI) + (Math.random() - 0.5) * 1.6, v = 300 + Math.random() * 500;
+        spawn({ t: 'spark', x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0.35, max: 0.35, s: 2.5, col: s >= 5 ? `hsl(${Math.random() * 360},100%,70%)` : '#ffe9a0' });
+      }
+    }
+    // 数字と評価
+    const size = 18 + 3.5 * s + (d.just ? 7 : 0) + (tierInfo ? tierInfo.size * 0.35 : 0);
+    const nx = x + d.dir * (30 + Math.random() * 16), ny = y - 20 - Math.random() * 14;
+    floatText(nx, ny, U.fmt(d.dmg), { size, fill: tierInfo ? tierInfo.fill : G.T.fever > 0 ? '#ffe6ff' : '#ffffff', rainbow: !!(tierInfo && tierInfo.rainbow), pop: 1.5 + s * 0.08 + (d.just ? 0.25 : 0), vy: -100, vx: d.dir * 40, life: 0.85 });
+    const kmh = s >= 2 ? ` ${Math.round(d.speed * 18)}km/h` : '';
+    if (s >= 1 && quality > 0) floatText(nx, ny - size * 0.95, D.CFG.SPEED_LABEL[s] + kmh, { size: 10 + s * 1.8, fill: SPEED_COL[s], rainbow: s >= 5, pop: 1.3, vy: -100, vx: d.dir * 40, life: 0.85 });
+    if (tierInfo) {
+      floatText(nx, ny - size * 1.9, tierInfo.label, { size: tierInfo.size * 0.42, fill: tierInfo.fill, rainbow: tierInfo.rainbow, pop: 1.8, vy: -90, life: 1.0 });
+      burst(x, y, [4, 8, 14][quality] * d.tier, { col: tierInfo.rainbow ? undefined : tierInfo.fill, speed: 200 + d.tier * 120 });
+      if (d.tier >= 2) addFlash(0.1 * d.tier, d.tier >= 4 ? '255,255,255' : '255,220,120');
+      if (d.tier >= 3 || (lvM >= 10 && d.tier >= 1)) spawn({ t: 'ring', x, y, life: 0.45, max: 0.45, s: 120 + d.tier * 30, col: tierInfo.fill });
+      if (d.tier >= 4) { confetti(90); UI.banner('GOD CRIT', '神が降りた ・ 💎+10', 'god'); }
+    }
+    if (d.just) {
+      const ch = d.chain;
+      floatText(x, y + 32, ch >= 2 ? `JUST ×${ch}` : 'JUST!', { size: 19 + Math.min(18, ch * 1.4), fill: '#ffe14a', stroke: '#4a2a00', rainbow: ch >= 10, pop: 2, vy: -30, life: 0.9 });
+      spawn({ t: 'ring', x, y, life: 0.4, max: 0.4, s: 90, col: '#ffe14a' });
+      if (lvJ >= 10) {
+        spawn({ t: 'ring', x, y, life: 0.6, max: 0.6, s: 170, col: '#fff3a0' });
+        spawn({ t: 'ring', x, y, life: 0.8, max: 0.8, s: 260, col: '#ffd84a' });
+      }
+      if (lvJ >= 25) slowmo = Math.max(slowmo, 0.22);
+      addFlash(0.06 + Math.min(0.12, ch * 0.01), '255,225,120');
+      if (ch > 0 && ch % 10 === 0) { UI.banner(`JUST ×${ch}!!`, '見切りが止まらない', 'combo'); confetti(50); }
+    }
+    comboPop = 1;
+    if (G.COMBO_MS.indexOf(d.combo) >= 0) burst(rect.left + W - 50, rect.top + 24, 24, { speed: 260 });
+    if (d.blastIn > 0 && d.blastIn <= 3 && quality > 0) floatText(x, y - 72, `爆裂まで ${d.blastIn}`, { size: 12, fill: '#ffb070', vy: -40, life: 0.5, light: true });
+  }
+  // 強化で解放される追撃: 残像・落雷・爆裂
+  function onProc(p) {
+    if (p.kind === 'echo') Sfx.echo(p.n);
+    else if (p.kind === 'thunder') Sfx.thunder(p.n);
+    else Sfx.blast(G.S.upg.blast || 0);
+    if (blocked() || !p.alive) return;
+    const x = p.x, y = p.y;
+    const q = [0.4, 0.7, 1][quality];
+    if (p.kind === 'echo') {
+      const dir = p.n % 2 ? -p.dir : p.dir;
+      const yy = y + (p.n - 1) * 7 * (p.n % 2 ? 1 : -1);
+      ghosts.push({ x, y: yy, dir, t: 0, dur: 0.15 });
+      if (ghosts.length > 4) ghosts.shift();
+      cuts.push({ y: yy - rect.top, dir, tilt: 0, life: 0.25, max: 0.25, col: '#c9a0ff', w: 4 });
+      floatText(x + dir * 30, yy - 12, U.fmt(p.dmg), { size: 17, fill: '#dcc0ff', stroke: '#2a0a4a', vy: -90, vx: dir * 30, life: 0.7 });
+      if (p.n === 1) floatText(x + dir * 30, yy - 36, '残像!', { size: 12, fill: '#dcc0ff', vy: -90, life: 0.7 });
+      for (let i = 0; i < Math.round(5 * q); i++) spawn({ t: 'chip', x, y: yy, vx: dir * (150 + Math.random() * 300), vy: -60 - Math.random() * 220, life: 0.7, max: 0.7, s: 3, rot: 0, vr: 10, col: '#d9b8ff' });
+      treeShake = Math.min(1.8, treeShake + 0.3);
+      hitStop = Math.max(hitStop, 0.02);
+    } else if (p.kind === 'thunder') {
+      bolts.push(makeBolt(x, y));
+      addFlash(0.28, '170,210,255');
+      addShake(0.35);
+      zoom = Math.max(zoom, 0.03);
+      zoomX = x - rect.left;
+      zoomY = y - rect.top;
+      burst(x, y, Math.round(16 * q), { col: '#bfe4ff', speed: 420 });
+      floatText(x, y - 50, U.fmt(p.dmg), { size: 28, fill: '#e8f6ff', stroke: '#0a2a5a', pop: 2, vy: -80, life: 1 });
+      floatText(x, y - 82, p.n > 1 ? `${p.n}連雷!!` : '落雷!', { size: 16, fill: '#9fd8ff', vy: -80, life: 1 });
+      hitStop = Math.max(hitStop, 0.05);
+    } else {
+      const lv = G.S.upg.blast || 0;
+      const big = lv >= 10, nova = lv >= 20;
+      addFlash(nova ? 0.6 : 0.35, '255,160,60');
+      addShake(nova ? 1.2 : 0.8);
+      zoom = Math.max(zoom, nova ? 0.1 : 0.06);
+      zoomX = x - rect.left;
+      zoomY = y - rect.top;
+      hitStop = Math.max(hitStop, nova ? 0.14 : 0.09);
+      spawn({ t: 'flare', x, y, life: 0.35, max: 0.35, s: big ? 220 : 140, col: '255,170,60' });
+      const rings = nova ? 3 : big ? 2 : 1;
+      for (let i = 0; i < rings; i++) spawn({ t: 'ring', x, y, life: 0.5 + i * 0.2, max: 0.5 + i * 0.2, s: 150 + i * 120, col: i ? '#ffd27a' : '#ff8a3a' });
+      const n = Math.round((big ? 40 : 24) * q);
+      for (let i = 0; i < n; i++) {
+        const a = Math.random() * Math.PI * 2, v = 80 + Math.random() * (big ? 420 : 260);
+        spawn({ t: 'fire', x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0.6 + Math.random() * 0.4, max: 1, s: 8 + Math.random() * 12, g: -60 });
+      }
+      floatText(x, y - 40, U.fmt(p.dmg), { size: 36, fill: '#ffd27a', stroke: '#4a1400', pop: 2.4, vy: -70, life: 1.2 });
+      floatText(x, y - 82, nova ? '超新星!!!' : big ? '大爆裂!!' : '爆裂!', { size: 22, fill: '#ff8a3a', stroke: '#2a0a00', pop: 2, vy: -70, life: 1.2 });
+      if (nova) confetti(80);
+    }
+  }
+  // タップ・キーボードの軽い一振り（従来の演出）
+  function tapVisuals(d) {
     const np = notchPoint();
     const x = d.x != null ? d.x : np.x + (Math.random() - 0.5) * 60;
     const y = d.y != null ? d.y : np.y - 40 - Math.random() * 40;
@@ -1044,7 +1435,8 @@ const FX = (() => {
 
   // ------------------------------------------------------------- イベント購読
   function bind() {
-    G.on('tap', onTap);
+    G.on('swing', onSwing);
+    G.on('proc', onProc);
     G.on('fell', onFell);
     G.on('spawn', (tree) => {
       growT = 0;
@@ -1084,7 +1476,11 @@ const FX = (() => {
   // ------------------------------------------------------------- フレーム
   function frame(dt) {
     clock += dt;
-    if (hitStop > 0) { hitStop -= dt; dt *= 0.15; }
+    const real = dt;
+    freezeAxe = Math.max(0, freezeAxe - real);
+    if (hitStop > 0) { hitStop -= real; dt *= 0.08; }
+    else if (slowmo > 0) { slowmo -= real; dt *= 0.35; }
+    zoom = zoom > 0.001 ? zoom * Math.pow(0.0006, real) : 0;
     sclock += dt;
     shake = Math.max(0, shake - dt * 2.2);
     flash = Math.max(0, flash - dt * 2.4);
@@ -1111,6 +1507,7 @@ const FX = (() => {
 
   return {
     init, resize, frame, setQuality, floatText, burst, confetti, coins, addShake, addFlash, spawn,
+    grab, drag, release, trunkInfo, unit,
     sceneCenter, notchPoint, axeIconSVG, biomeName, palette,
     get rect() { return rect; },
   };
