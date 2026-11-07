@@ -39,6 +39,17 @@ const UI = (() => {
       if (st.sound) { Sfx.unlock(); Sfx.buy(); }
     });
     $('#btn-settings').addEventListener('click', openSettings);
+    $('#btn-speed').addEventListener('click', () => {
+      Sfx.unlock();
+      const prevMax = G.speedMax();
+      const v = G.cycleSpeed();
+      const eff = G.gameSpeed();
+      if (eff < v) toast('🌙', '夜は等速', '夜ふかしガード中は倍速にならない（設定でOFF可）');
+      else if (v === 1 && prevMax < 3) toast('⏩', `3倍速はステージ${D.CFG.SPEED3_STAGE}で解放`, 'もっと奥の森へ進め');
+      Sfx.speed(eff);
+      updateSpeedBtn();
+      if (eff > 1) banner(`${'▶'.repeat(eff)} ${eff}倍速`, '木こりも木の生え変わりも速くなる', 'speed');
+    });
     $('#btn-study').addEventListener('click', openStudy);
     $('#btn-boss').addEventListener('click', () => { if (G.challengeBoss()) Sfx.boss(); });
     $('#critter').addEventListener('click', onCritter);
@@ -90,6 +101,15 @@ const UI = (() => {
   }
 
   // ------------------------------------------------------------- HUD
+  function updateSpeedBtn() {
+    const v = Math.min(S().settings.speed || 1, G.speedMax());
+    const eff = G.gameSpeed();
+    setText('speed-x', `×${v}`);
+    setCls('btn-speed', 'fast', eff > 1);
+    setCls('btn-speed', 'x3', eff >= 3);
+    setCls('btn-speed', 'capped', eff < v);
+    setCls('hud', 'speedy', eff > 1);
+  }
   function bump(kind) {
     const e = kind === 'gem' ? $('#cur-gem') : $('#cur-wood');
     if (!e) return;
@@ -122,7 +142,7 @@ const UI = (() => {
   function setText(id, v) { if (last[id] !== v) { last[id] = v; const e = document.getElementById(id); if (e) e.textContent = v; } }
   function setScale(id, f) { const k = 's' + id, v = Math.round(U.clamp(f, 0, 1) * 1000); if (last[k] !== v) { last[k] = v; const e = document.getElementById(id); if (e) e.style.transform = `scaleX(${v / 1000})`; } }
   function setCls(id, cls, on) { const k = 'c' + id + cls; if (last[k] !== on) { last[k] = on; const e = document.getElementById(id); if (e) e.classList.toggle(cls, on); } }
-  let hpTrail = 1, comboFade = 0, comboShown = 0;
+  let hpTrail = 1, comboFade = 0, comboShown = 0, totShown = 0, finishT = 0, finishTot = 0;
   function buildPips() {
     $('#pips').innerHTML = Array.from({ length: D.CFG.TREES_PER_STAGE }, () => '<i></i>').join('');
   }
@@ -166,11 +186,18 @@ const UI = (() => {
       }
     }
     // コンボと倍率メーター
-    if (T.combo > 1) { comboFade = 1; comboShown = T.combo; } else comboFade = Math.max(0, comboFade - dt * 2);
+    if (T.combo > 1) { comboFade = 1; comboShown = T.combo; finishT = 0; }
+    else if (finishT > 0) { comboFade = 1; finishT = Math.max(0, finishT - dt); }
+    else comboFade = Math.max(0, comboFade - dt * 2);
     const cb = $('#combo-box');
     if (cb) {
       cb.style.opacity = comboFade.toFixed(2);
       setText('combo-n', String(comboShown));
+      // 合計ダメージはくるくる回りながら追いつく
+      const tot = T.combo > 0 ? T.comboDmg : finishTot;
+      totShown = tot < totShown ? tot : totShown + (tot - totShown) * Math.min(1, dt * 10);
+      setText('combo-total', fmt(totShown));
+      setCls('combo-box', 'finish', finishT > 0);
       const n = comboShown;
       const tierC = n >= 500 ? 't5' : n >= 200 ? 't4' : n >= 100 ? 't3' : n >= 50 ? 't2' : 't1';
       if (last.ctier !== tierC) { last.ctier = tierC; cb.dataset.tier = tierC; }
@@ -576,33 +603,40 @@ const UI = (() => {
   };
 
   // --- ガチャタブ
+  const rateTxt = (k) => `${(D.RARITY[k].rate * 100).toFixed(1)}%`;
   TABS.gacha = {
     build(root) {
       const s = S();
       root.innerHTML = '';
+      const pu = G.pickup();
+      const fan = D.AXES.filter((a) => a.fantasy);
       const hero = el('div', 'gacha-hero');
-      hero.innerHTML = `<div class="gh-title">斧ガチャ</div><div class="gh-sub">LR 0.1% ・ UR 0.9% ・ SSR 4.5% ・ SR 14.5%</div><div class="gh-pity"></div>`;
+      hero.innerHTML = (pu ? `<button type="button" class="gh-pu r-${pu.r}" aria-label="ピックアップ: ${esc(pu.name)}"><span class="gh-pu-img">${FX.axeIcon(pu, 92)}</span><span class="gh-pu-txt"><small>本日のピックアップ</small><b>${esc(pu.name)}</b><span><span class="rb r-${pu.r}">${pu.r}</span> <em>出現率UP!</em></span><small class="gh-pu-left"></small></span></button>` : '') +
+        `<div class="gh-title">斧ガチャ</div><div class="gh-fan">現実にない<b>幻想の斧</b> ${fan.length}種 登場中</div>` +
+        `<div class="gh-sub">${['EX', 'LR', 'UR', 'SSR', 'SR'].map((k) => `${k} ${rateTxt(k)}`).join(' ・ ')}</div><div class="gh-pity"></div>`;
       root.appendChild(hero);
+      if (pu) hero.querySelector('.gh-pu').addEventListener('click', () => axeDetail(pu, true));
       const btns = el('div', 'gacha-btns');
       btns.innerHTML = `<button type="button" class="pull pf"><span class="pl">無料1回</span><b class="pc"></b><small>${D.CFG.FREE_PULL_MIN}分ごと</small></button>` +
         `<button type="button" class="pull p1"><span class="pl">1回</span><b class="pc"></b></button>` +
-        `<button type="button" class="pull p10"><span class="pl">10連</span><b class="pc"></b><small>SR以上 1枠確定</small></button>`;
+        `<button type="button" class="pull p10"><span class="pl">10連</span><b class="pc"></b><small>${s.stats.pulls > 0 ? 'SR以上 1枠確定' : '初回は幻想の斧 1本確定!'}</small></button>`;
       root.appendChild(btns);
       btns.querySelector('.pf').addEventListener('click', () => doPull(1, true));
       btns.querySelector('.p1').addEventListener('click', () => doPull(1));
       btns.querySelector('.p10').addEventListener('click', () => doPull(10));
-      root.appendChild(el('details', 'rates', `<summary>排出率と仕組み</summary><table><tr><th>レア</th><th>確率</th><th>装備タップ倍率</th><th>所持ボーナス/Lv</th></tr>${D.RARITY_ORDER.slice().reverse().map((k) => { const r = D.RARITY[k]; return `<tr><td><span class="rb r-${k}">${k}</span></td><td>${(r.rate * 100).toFixed(1)}%</td><td>×${r.tap}</td><td>+${Math.round(r.pas * 100)}%</td></tr>`; }).join('')}</table><p>同じ斧が出ると Lv アップ（最大 Lv${D.CFG.AXE_MAX_LV}）。最大 Lv 後の重複はジェムに変換。${G.stats().pity}回引いて SSR 以上が出なければ次は SSR 確定（天井）。チケット🎫は1枚で1回分。</p>`));
+      root.appendChild(el('details', 'rates', `<summary>排出率と仕組み</summary><table><tr><th>レア</th><th>確率</th><th>装備タップ倍率</th><th>所持ボーナス/Lv</th></tr>${D.RARITY_ORDER.slice().reverse().map((k) => { const r = D.RARITY[k]; return `<tr><td><span class="rb r-${k}">${k}</span></td><td>${(r.rate * 100).toFixed(1)}%</td><td>×${r.tap}</td><td>+${Math.round(r.pas * 100)}%</td></tr>`; }).join('')}</table><p>同じ斧が出ると Lv アップ（最大 Lv${D.CFG.AXE_MAX_LV}）。最大 Lv 後の重複はジェムに変換。${G.stats().pity}回引いて SSR 以上が出なければ次は SSR 確定（天井）。チケット🎫は1枚で1回分。</p><p>ピックアップの斧は、同じレアを引いたときに ${Math.round(D.CFG.PICKUP_SHARE * 100)}% の確率で出る。毎日0時に入れ替わる。幻想の斧は1本ずつ形・動き・斬ったときの演出と音が違う。</p>`));
       const owned = Object.keys(s.axes).length;
       const st = G.stats();
-      root.appendChild(el('div', 'sec-title', `斧コレクション <b>${owned}/${D.AXES.length}</b><span>所持ボーナス 全ダメージ +${fmt(Math.round((st.axeMult - 1) * 100))}%</span>`));
+      const fanOwned = fan.filter((a) => s.axes[a.id]).length;
+      root.appendChild(el('div', 'sec-title', `斧コレクション <b>${owned}/${D.AXES.length}</b><span>幻想 ${fanOwned}/${fan.length} ・ 所持ボーナス 全ダメージ +${fmt(Math.round((st.axeMult - 1) * 100))}%</span>`));
       const grid = el('div', 'axe-grid');
       const order = D.RARITY_ORDER.slice().reverse();
-      const axes = D.AXES.slice().sort((a, b) => order.indexOf(a.r) - order.indexOf(b.r));
+      const axes = D.AXES.slice().sort((a, b) => order.indexOf(a.r) - order.indexOf(b.r) || (b.fantasy ? 1 : 0) - (a.fantasy ? 1 : 0));
       for (const a of axes) {
         const lv = s.axes[a.id] || 0;
-        const b = el('button', `axe-card r-${a.r}${lv ? ' owned' : ''}${s.equip === a.id ? ' eq' : ''}`);
+        const b = el('button', `axe-card r-${a.r}${lv ? ' owned' : ''}${s.equip === a.id ? ' eq' : ''}${a.fantasy ? ' fan' : ''}`);
         b.type = 'button';
-        b.innerHTML = `<span class="ac-r">${a.r}</span><div class="ac-icon">${FX.axeIconSVG(a, 44)}</div><div class="ac-name">${lv ? esc(a.name) : '？？？'}</div><div class="ac-lv">${lv ? 'Lv' + lv : ''}</div>${s.equip === a.id ? '<span class="ac-eq">装備中</span>' : ''}`;
+        b.innerHTML = `<span class="ac-r">${a.r}${a.fantasy ? '<i class="ac-fan">幻</i>' : ''}</span><div class="ac-icon">${FX.axeIcon(a, 50)}</div><div class="ac-name">${lv ? esc(a.name) : '？？？'}</div><div class="ac-lv">${lv ? 'Lv' + lv : ''}</div>${s.equip === a.id ? '<span class="ac-eq">装備中</span>' : ''}`;
         if (lv) b.addEventListener('click', () => axeDetail(a));
         else b.disabled = true;
         grid.appendChild(b);
@@ -612,6 +646,7 @@ const UI = (() => {
       this.p1 = btns.querySelector('.p1');
       this.p10 = btns.querySelector('.p10');
       this.pity = hero.querySelector('.gh-pity');
+      this.puLeft = hero.querySelector('.gh-pu-left');
     },
     update() {
       const s = S();
@@ -629,28 +664,31 @@ const UI = (() => {
       this.pf.classList.toggle('free', fl <= 0);
       const left = G.stats().pity - s.pity;
       this.pity.innerHTML = `SSR以上確定まで あと <b>${Math.max(1, left)}</b> 回`;
+      if (this.puLeft) {
+        const t = Math.ceil(G.pickupLeft());
+        this.puLeft.textContent = `入れ替わりまで ${Math.floor(t / 3600)}時間${String(Math.floor((t % 3600) / 60)).padStart(2, '0')}分`;
+      }
     },
   };
-  function axeDetail(a) {
+  const spText = (a, lv) => (a.sp ? Object.keys(a.sp).map((k) => D.SP_TEXT[k](a.sp[k] * (1 + 0.2 * (Math.max(1, lv) - 1)))).join(' / ') : 'なし');
+  function axeDetail(a, preview) {
     const s = S();
     const lv = s.axes[a.id] || 0;
     const R = D.RARITY[a.r];
-    const tapM = R.tap * (1 + 0.1 * (lv - 1));
-    const sp = a.sp ? Object.keys(a.sp).map((k) => D.SP_TEXT[k](a.sp[k] * (1 + 0.2 * (lv - 1)))).join(' / ') : 'なし';
+    const tapM = R.tap * (1 + 0.1 * (Math.max(1, lv) - 1));
     const body = el('div', 'axe-detail');
-    body.innerHTML = `<div class="ad-icon r-${a.r}">${FX.axeIconSVG(a, 96)}</div>` +
+    body.innerHTML = `<div class="ad-icon r-${a.r}">${FX.axeIcon(a, 132)}</div>` +
+      (a.fantasy ? '<div class="ad-fan">✦ 幻想の斧 ✦</div>' : '') +
       `<p class="ad-desc">${esc(a.desc)}</p>` +
-      `<dl><dt>レア</dt><dd><span class="rb r-${a.r}">${a.r}</span> Lv${lv}/${D.CFG.AXE_MAX_LV}</dd>` +
-      `<dt>装備時タップ</dt><dd>×${tapM.toFixed(2)}</dd><dt>装備時特性</dt><dd>${esc(sp)}</dd>` +
-      `<dt>所持ボーナス</dt><dd>全ダメージ +${Math.round(R.pas * lv * 100)}%</dd></dl>`;
+      `<dl><dt>レア</dt><dd><span class="rb r-${a.r}">${a.r}</span> ${lv ? `Lv${lv}/${D.CFG.AXE_MAX_LV}` : '未所持'}</dd>` +
+      `<dt>装備時タップ</dt><dd>×${tapM.toFixed(2)}</dd><dt>装備時特性</dt><dd>${esc(spText(a, lv))}</dd>` +
+      `<dt>所持ボーナス</dt><dd>全ダメージ +${Math.round(R.pas * Math.max(1, lv) * 100)}%${lv ? '' : '（入手時）'}</dd></dl>`;
     const isEq = s.equip === a.id;
-    modal({
-      title: a.name, body, cls: 'r-' + a.r,
-      buttons: [
-        { text: isEq ? '装備中' : '装備する', cls: 'primary', disabled: isEq, onClick: () => { G.equip(a.id); Sfx.milestone(); rebuild(); } },
-        { text: '閉じる' },
-      ],
-    });
+    const buttons = preview && !lv ? [{ text: '閉じる', cls: 'primary' }] : [
+      { text: isEq ? '装備中' : '装備する', cls: 'primary', disabled: isEq || !lv, onClick: () => { G.equip(a.id); rebuild(); } },
+      { text: '閉じる' },
+    ];
+    modal({ title: a.name, body, cls: 'r-' + a.r, buttons });
   }
   function doPull(n, free) {
     if (overlayBusy) return;
@@ -664,26 +702,57 @@ const UI = (() => {
     if (S().tut === 2) S().tut = 3;
     gachaShow(r.res, n, free);
   }
+  // ガチャ演出: 光の色が 青→紫→金→虹→白→（暗転） と昇格していき、SSR以上は1本ずつ大きく見せる
   let r0Free = false;
+  const STEP = { N: 0, R: 0, SR: 1, SSR: 2, UR: 3, LR: 4, EX: 5 };
+  const HYPE = ['', 'キラッ…', '金色の光…！', '虹色！？ 激アツ!!', 'LEGEND…!!!', '？？？？？'];
   function gachaShow(res, n, free) {
     r0Free = !!free;
     overlayBusy = true;
     const rank = (r) => G.RANK[r];
+    const spd = Math.max(1, G.gameSpeed());
+    const ms = (t) => t / spd;
     const top = res.reduce((m, o) => (rank(o.r) > rank(m) ? o.r : m), 'N');
-    const ov = el('div', `gacha-ov top-${top}`);
-    ov.innerHTML = `<div class="g-stage"><div class="g-portal"><div class="g-rays"></div><div class="g-core">🪓</div></div><div class="g-hype">${rank(top) >= 4 ? '!!! 激アツ !!!' : rank(top) >= 3 ? '金色の光…！' : rank(top) >= 2 ? 'なにかが光った…' : ''}</div><div class="g-skip">タップでスキップ</div></div>`;
+    let target = STEP[top];
+    for (const o of res) FX.axeIcon(o.axe, 8); // 絵を先に作っておく
+    // 新しい幻想の斧は低いレアでも1本ずつ見せるので、少なくとも紫の光までは昇格させる
+    const fanNew = res.some((o) => o.axe.fantasy && o.isNew);
+    if (fanNew && target < 1) target = 1;
+    const ov = el('div', `gacha-ov lv-0 top-${top}`);
+    ov.style.setProperty('--gs', String(spd));
+    ov.innerHTML = `<div class="g-stage"><div class="g-portal"><div class="g-rays"></div><div class="g-ring"></div><div class="g-core">🪓</div></div><div class="g-hype"></div><div class="g-skip">タップでスキップ</div></div>`;
     document.body.appendChild(ov);
-    Sfx.gachaRoll(rank(top) >= 3 ? 1.6 : 1.1);
-    let revealed = false;
+    Sfx.gachaRoll((0.9 + target * 0.55) / spd);
+    const timers = [];
+    let lvNow = 0, revealed = false;
+    const setLv = (k) => {
+      ov.classList.remove('lv-' + lvNow);
+      lvNow = k;
+      ov.classList.add('lv-' + k);
+      const h = ov.querySelector('.g-hype');
+      if (h) h.textContent = HYPE[k];
+    };
+    const up = (k) => {
+      setLv(k);
+      Sfx.gachaUp(k);
+      Sfx.vibrate(k >= 3 ? [20, 30, 40] : 15);
+      FX.addFlash(k >= 5 ? 0.85 : 0.22 + k * 0.08, k >= 5 ? '0,0,0' : k >= 3 ? '255,180,240' : k >= 2 ? '255,220,120' : '200,160,255');
+      const p = ov.querySelector('.g-portal');
+      if (p) { p.classList.remove('pop'); void p.offsetWidth; p.classList.add('pop'); }
+      if (k >= 5) ov.classList.add('crack');
+    };
     const reveal = () => {
       if (revealed) return;
       revealed = true;
+      timers.forEach(clearTimeout);
+      if (lvNow < target) setLv(target);
       ov.classList.add('reveal');
       const grid = el('div', `g-cards n${n}`);
+      const step = n > 1 ? 110 / spd : 0;
       res.forEach((o, i) => {
-        const c = el('div', `g-card r-${o.r}`);
-        c.style.animationDelay = `${i * (n > 1 ? 0.11 : 0)}s`;
-        c.innerHTML = `<div class="gc-in"><span class="gc-r">${o.r}</span>${FX.axeIconSVG(o.axe, n > 1 ? 46 : 110)}<div class="gc-name">${esc(o.axe.name)}</div>` +
+        const c = el('div', `g-card r-${o.r}${o.axe.fantasy ? ' fan' : ''}`);
+        c.style.animationDelay = `${(i * step) / 1000}s`;
+        c.innerHTML = `<div class="gc-in"><span class="gc-r">${o.r}</span>${o.pickup ? '<span class="gc-pu">UP</span>' : o.axe.fantasy ? '<span class="gc-fan">幻</span>' : ''}${FX.axeIcon(o.axe, n > 1 ? 54 : 124)}<div class="gc-name">${esc(o.axe.name)}</div>` +
           `<div class="gc-tag">${o.isNew ? '<b class="new">NEW!</b>' : o.lvUp ? `<b class="lvup">Lv${o.lv}↑</b>` : `<b class="cv">💎+${o.gems}</b>`}</div></div>`;
         grid.appendChild(c);
         setTimeout(() => {
@@ -691,9 +760,8 @@ const UI = (() => {
           if (rank(o.r) >= 3) {
             const r = c.getBoundingClientRect();
             FX.burst(r.left + r.width / 2, r.top + r.height / 2, 30, { speed: 320, col: rank(o.r) >= 4 ? undefined : '#ffd84a' });
-            if (rank(o.r) >= 4) { FX.confetti(140); FX.addFlash(0.5); }
           }
-        }, i * (n > 1 ? 110 : 0) + 250);
+        }, i * step + 250 / spd);
       });
       const st = ov.querySelector('.g-stage');
       st.innerHTML = '';
@@ -708,13 +776,53 @@ const UI = (() => {
       const close = () => { ov.remove(); overlayBusy = false; if (tab === 'gacha') rebuild(); };
       ok.addEventListener('click', close);
       again.disabled = !G.canPull(n);
-      if (r0Free) { again.textContent = `もう1回（💎${D.CFG.GACHA_1}）`; }
+      if (r0Free) again.textContent = `もう1回（💎${D.CFG.GACHA_1}）`;
       again.addEventListener('click', () => { close(); doPull(n); });
-      if (rank(top) >= 3) FX.confetti(rank(top) >= 4 ? 160 : 70);
+      // SSR以上は1本ずつ大きく見せる（レアの低い順に、最後が一番いい斧）
+      const shows = res.filter((o) => rank(o.r) >= 3 || (o.axe.fantasy && o.isNew)).sort((a, b) => rank(a.r) - rank(b.r));
+      if (shows.length) {
+        btns.classList.add('wait');
+        const next = () => {
+          const o = shows.shift();
+          if (!o || !ov.isConnected) { btns.classList.remove('wait'); return; }
+          showcase(ov, o, next);
+        };
+        setTimeout(next, n > 1 ? res.length * step + 520 / spd : 420 / spd);
+      }
     };
+    for (let k = 1; k <= target; k++) timers.push(setTimeout(() => up(k), ms(650 + (k - 1) * 560)));
+    timers.push(setTimeout(reveal, ms(1000 + target * 560 + (target >= 5 ? 700 : 0))));
     ov.addEventListener('click', (e) => { if (!revealed && !e.target.closest('.btn')) reveal(); });
-    setTimeout(reveal, rank(top) >= 3 ? 1700 : 1150);
   }
+  function showcase(ov, o, done) {
+    const a = o.axe;
+    const rk = rank6(o.r);
+    const box = el('div', `g-show r-${o.r}${a.fantasy ? ' fan' : ''}`);
+    box.innerHTML = `<div class="gs-rays"></div><div class="gs-in">` +
+      `<div class="gs-rar"><span class="rb r-${o.r}">${o.r}</span>${a.fantasy ? '<span class="gs-tag fan">幻想の斧</span>' : ''}${o.pickup ? '<span class="gs-tag pu">PICKUP</span>' : ''}</div>` +
+      `<div class="gs-img">${FX.axeIcon(a, 210)}</div><div class="gs-name">${esc(a.name)}</div><div class="gs-desc">${esc(a.desc)}</div>` +
+      `<div class="gs-sp">✦ ${esc(spText(a, o.lv))}</div><div class="gs-new">${o.isNew ? 'NEW!!' : o.lvUp ? `Lv${o.lv} にアップ!` : `💎+${o.gems}`}</div><div class="gs-btns"></div></div>`;
+    const bb = box.querySelector('.gs-btns');
+    if (S().equip !== a.id) {
+      const eb = el('button', 'btn primary', '装備する');
+      eb.type = 'button';
+      eb.addEventListener('click', (e) => { e.stopPropagation(); G.equip(a.id); eb.disabled = true; eb.textContent = '装備した！'; Sfx.equip(rk); });
+      bb.appendChild(eb);
+    } else bb.appendChild(el('span', 'gs-eq', '装備中'));
+    const nb = el('button', 'btn', '次へ');
+    nb.type = 'button';
+    let closed = false;
+    const close = () => { if (closed) return; closed = true; box.classList.add('out'); setTimeout(() => { box.remove(); done(); }, 220); };
+    nb.addEventListener('click', (e) => { e.stopPropagation(); close(); });
+    box.addEventListener('click', (e) => { if (!e.target.closest('.btn')) close(); });
+    bb.appendChild(nb);
+    ov.appendChild(box);
+    Sfx.showcase(o.r);
+    Sfx.vibrate(rk >= 4 ? [30, 40, 60] : 20);
+    FX.confetti(rk >= 5 ? 200 : rk >= 4 ? 140 : 70);
+    FX.addFlash(rk >= 5 ? 0.6 : 0.35, rk >= 6 ? '255,120,220' : '255,255,255');
+  }
+  const rank6 = (r) => G.RANK[r] || 0;
 
   // --- ミッション・宝箱・ログボタブ
   TABS.quests = {
@@ -927,14 +1035,14 @@ const UI = (() => {
   }
   function pumpToasts() {
     const root = $('#toasts');
-    while (toastQ.length && root.children.length < 2) {
+    while (toastQ.length && root.children.length < 2 && !overlayBusy) {
       const t = toastQ.shift();
       const e = el('div', `toast ${t.cls}`, `<span class="t-ico">${t.icon}</span><div><b>${esc(t.title)}</b>${t.sub ? `<small>${esc(t.sub)}</small>` : ''}</div>`);
       root.appendChild(e);
       setTimeout(() => { e.classList.add('out'); setTimeout(() => { e.remove(); pumpToasts(); }, 300); }, toastQ.length > 3 ? 1400 : 2600);
     }
   }
-  const BANNER_PRI = { god: 9, unlock: 8, win: 8, area: 7, boss: 7, fever: 6, 'rare-rainbow': 6, fail: 5, 'rare-gold': 4, combo: 3, 'rare-silver': 2, ms: 3 };
+  const BANNER_PRI = { god: 9, unlock: 8, win: 8, area: 7, boss: 7, fever: 6, 'rare-rainbow': 6, fail: 5, 'rare-gold': 4, combo: 3, 'rare-silver': 2, ms: 3, speed: 2 };
   function banner(title, sub, type) {
     if (blocked() && type !== 'god') return;
     const pri = BANNER_PRI[type] || 1;
@@ -1061,6 +1169,7 @@ const UI = (() => {
     const st = S().settings;
     const h = new Date().getHours();
     const night = st.night && (h >= 22 || h < 5);
+    G.T.speedCap = night ? 1 : 3;
     if (document.body.classList.contains('night') !== night || force) {
       document.body.classList.toggle('night', night);
       $('#night-tint').hidden = !night;
@@ -1220,7 +1329,25 @@ const UI = (() => {
       Sfx.unlockFx();
       FX.confetti(70);
     });
-    G.on('equip', () => { if (tab === 'upgrades') rebuild(); });
+    G.on('equip', () => { if (tab === 'upgrades' || tab === 'gacha') rebuild(); });
+    G.on('comboEnd', (d) => {
+      if (d.n < 10) return;
+      finishT = 1.5;
+      finishTot = d.dmg;
+      totShown = Math.min(totShown, d.dmg);
+      setText('combo-fin', d.best && d.n >= 20 ? '自己ベスト!!' : 'FINISH!');
+      Sfx.comboFinish(d.best && d.n >= 20);
+      if (d.best && d.n >= 30 && !blocked()) banner('BEST COMBO!!', `${d.n}hit ・ 合計 ${fmt(d.dmg)}`, 'combo');
+    });
+    G.on('stage', (d) => {
+      const st = S().stats;
+      if (d.stage >= D.CFG.SPEED3_STAGE && !st.speed3) {
+        st.speed3 = 1;
+        banner('3倍速 解放!!', '右上の ×ボタンで切り替え', 'unlock');
+        toast('⏩', '3倍速が使えるようになった', '右上のボタンで ×1 → ×2 → ×3', 'gold');
+        Sfx.unlockFx();
+      }
+    });
     G.on('levelUp', () => { if (tab === 'upgrades') rebuild(); });
   }
 
@@ -1235,6 +1362,8 @@ const UI = (() => {
       updateSceneUI();
       updateStudy();
       updateDock();
+      updateSpeedBtn();
+      if (toastQ.length && !overlayBusy) pumpToasts();
     }
     slowT += dt;
     if (slowT > 1) {

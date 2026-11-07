@@ -33,6 +33,7 @@
       </div>
       <div class="hud-right">
         <div class="hud-btns">
+          <button type="button" id="btn-speed" class="icon-btn speed-btn" aria-label="倍速の切り替え" title="倍速（×1 → ×2 → ×3）"><i aria-hidden="true">▶▶</i><b id="speed-x">×1</b></button>
           <button type="button" id="btn-study" class="icon-btn" aria-label="勉強ブースト" title="勉強ブースト">📚</button>
           <button type="button" id="btn-sound" class="icon-btn" aria-label="サウンド切り替え" title="サウンド">🔊</button>
           <button type="button" id="btn-settings" class="icon-btn" aria-label="設定" title="設定">⚙️</button>
@@ -56,6 +57,8 @@
       <div class="combo-n" id="combo-n">0</div>
       <div class="combo-l">COMBO</div>
       <div class="combo-win"><i id="combo-win"></i></div>
+      <div class="combo-total"><small>合計</small><b id="combo-total">0</b></div>
+      <div class="combo-fin" id="combo-fin">FINISH!</div>
       <div class="mult"><small>斬撃倍率</small><b id="mult">×1.00</b><div class="heat"><i id="heat"></i></div></div>
       <div class="chain" id="chain"></div>
     </div>
@@ -100,6 +103,7 @@
 <script src="js/data.js"></script>
 <script src="js/game.js"></script>
 <script src="js/audio.js"></script>
+<script src="js/axe3d.js"></script>
 <script src="js/world.js"></script>
 <script src="js/fx.js"></script>
 <script src="js/input.js"></script>

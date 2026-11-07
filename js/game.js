@@ -11,7 +11,9 @@ const G = (() => {
   D.WORKERS.forEach((w) => (WK[w.id] = w));
   D.UPGRADES.forEach((u) => (UP[u.id] = u));
   D.MISSIONS.forEach((m) => (MS[m.t] = m));
-  const RANK = { N: 0, R: 1, SR: 2, SSR: 3, UR: 4, LR: 5 };
+  const RANK = { N: 0, R: 1, SR: 2, SSR: 3, UR: 4, LR: 5, EX: 6 };
+  // 日替わりピックアップの候補（SSR以上の幻想の斧）
+  const PICKUPS = D.AXES.filter((a) => a.fantasy && RANK[a.r] >= 3);
   const SAVE_KEY = 'dopadopa-kikori-save-v1';
   const COMBO_MS = [50, 100, 200, 300, 500, 777, 1000, 2000, 3000, 5000, 10000];
 
@@ -27,12 +29,12 @@ const G = (() => {
         taps: 0, crits: 0, supers: 0, ultras: 0, gods: 0, maxCombo: 0, fevers: 0, bosses: 0, squirrels: 0,
         pulls: 0, kills: 0, chestsOpened: 0, gold: 0, rainbow: 0, woodRun: 0, woodAll: 0, prestiges: 0,
         missionsDone: 0, loginDays: 0, studies: 0, sleeps: 0, goddess: 0, hires: 0, bestStage: 1,
-        gotSSR: 0, gotUR: 0, gotLR: 0, playTime: 0, gemsAll: 0, bestSpirits: 0, bestBoss: 0,
+        gotSSR: 0, gotUR: 0, gotLR: 0, gotEX: 0, playTime: 0, gemsAll: 0, bestSpirits: 0, bestBoss: 0, bestComboDmg: 0,
         justs: 0, maxChain: 0, greats: 0, maxSpeeds: 0, echoes: 0, thunders: 0, blasts: 0,
         goldens: 0, roulettes: 0, bestRoulette: 0, bestStreak: 0, rouletteWood: 0,
       },
       daily: { last: '' },
-      settings: { sound: true, vol: 0.7, vibe: true, fx: 2, shake: true, flash: true, num: 'jp', night: true, buyAmt: 1 },
+      settings: { sound: true, vol: 0.7, vibe: true, fx: 2, shake: true, flash: true, num: 'jp', night: true, buyAmt: 1, speed: 1 },
       study: null,
       tut: 0,
       lastSave: Date.now(),
@@ -48,7 +50,7 @@ const G = (() => {
     incomeEMA: 0, incomeAcc: 0, incomeT: 0, dpsAcc: 0,
     checkT: 0, dirty: true, st: null,
     justChain: 0, blastCount: 0, pending: [],
-    treeStreak: 0, golden: 0, goldenMax: 1,
+    treeStreak: 0, golden: 0, goldenMax: 1, comboDmg: 0, speedCap: 3,
   };
 
   // ------------------------------------------------------------- イベント
@@ -115,16 +117,18 @@ const G = (() => {
     st.critC = Math.min(0.9, C.CRIT_BASE + 0.01 * lv('critc') + (sp.critc || 0));
     st.critM = C.CRIT_MULT + 0.25 * lv('critm') + (sp.critm || 0);
     // 斬撃強化
-    st.swingMult = 1 + 0.15 * lv('swing');
-    st.justZone = Math.min(0.26, C.JUST_ZONE + 0.0045 * lv('just'));
+    st.swingMult = 1 + 0.15 * lv('swing') + (sp.speed || 0);
+    st.justZone = Math.min(0.3, Math.min(0.26, C.JUST_ZONE + 0.0045 * lv('just')) * (1 + (sp.just || 0)));
     st.justMult = C.JUST_MULT + 0.1 * lv('just');
     st.chainCap = 5 + Math.floor(lv('just') / 2);
     const ec = lv('echo'), th = lv('thunder'), bl = lv('blast');
-    st.echoChance = Math.min(1, 0.02 * ec);
-    st.echoCount = ec > 0 ? 1 + Math.floor(ec / 15) : 0;
+    st.echoChance = Math.min(1, 0.02 * ec + (sp.echo || 0));
+    st.echoCount = ec > 0 || sp.echo ? 1 + Math.floor(ec / 15) : 0;
     st.echoDmg = 0.4 + 0.01 * ec;
-    st.thunderChance = th > 0 ? Math.min(0.4, 0.02 + 0.006 * th) : 0;
-    st.thunderCount = th > 0 ? 1 + Math.floor(th / 15) : 0;
+    st.thunderChance = th > 0 || sp.thunder ? Math.min(0.6, (th > 0 ? Math.min(0.4, 0.02 + 0.006 * th) : 0) + (sp.thunder || 0)) : 0;
+    st.thunderCount = th > 0 || sp.thunder ? 1 + Math.floor(th / 15) : 0;
+    st.goldenChance = C.GOLDEN_CHANCE * (1 + (sp.golden || 0));
+    st.rouletteChance = C.ROULETTE_CHANCE * (1 + (sp.roul || 0));
     st.thunderMult = 3 + 0.25 * th;
     st.blastEvery = bl > 0 ? Math.max(10, 40 - bl) : 0;
     st.blastMult = 8 + bl;
@@ -299,7 +303,7 @@ const G = (() => {
       emit('streak', { n: sm[0], gems: sm[1], chests: sm[2] });
     }
     // 倒した瞬間のボーナスルーレット（×2〜×100）。結果は少し後に入る
-    const rc = C.ROULETTE_CHANCE * (tr.boss ? 3 : tr.rar.id !== 'normal' ? 2 : 1);
+    const rc = st.rouletteChance * (tr.boss ? 3 : tr.rar.id !== 'normal' ? 2 : 1);
     if (Math.random() < rc) {
       const r = U.weighted(D.ROULETTE);
       const bonus = reward * (r.m - 1);
@@ -366,6 +370,7 @@ const G = (() => {
     const st = stats();
     const isTap = o.kind === 'tap';
     S.stats.taps++;
+    if (T.combo === 0) T.comboDmg = 0;
     T.combo++;
     T.comboTimer = st.comboWin;
     T.comboWin = st.comboWin;
@@ -416,7 +421,7 @@ const G = (() => {
     // ゴールデンタイム: 低確率で突入し、その間は斬るたびに木材が噴き出す
     let gold = 0;
     if (alive && !isTap) {
-      if (T.golden <= 0 && Math.random() < C.GOLDEN_CHANCE) {
+      if (T.golden <= 0 && Math.random() < st.goldenChance) {
         T.golden = C.GOLDEN_TIME;
         T.goldenMax = C.GOLDEN_TIME;
         S.stats.goldens++;
@@ -445,6 +450,8 @@ const G = (() => {
       dmg, tier, stier, just, chain: T.justChain, combo: T.combo, x: o.x, y: o.y, dir: o.dir || 1, alive, speed: o.speed || 0, gold,
       kind: isTap ? 'tap' : 'swing', procs: procs.map((p) => p.kind), blastIn: st.blastEvery ? st.blastEvery - T.blastCount : 0,
     };
+    T.comboDmg += dmg;
+    ev.total = T.comboDmg;
     emit('swing', ev);
     if (alive) hit(dmg);
     for (const p of procs) T.pending.push({ t: T.time + p.delay, kind: p.kind, dmg: p.dmg, n: p.n, x: o.x, y: o.y, dir: o.dir || 1 });
@@ -537,16 +544,22 @@ const G = (() => {
     else return { error: 'gems' };
     const st = stats();
     const res = [];
+    // 初めての10連は幻想の斧が1本確定
+    const firstTen = n === 10 && !(S.stats.pulls > 0);
     for (let i = 0; i < n; i++) {
       S.pity++;
       let r = rollRarity();
+      const forceFan = firstTen && i === n - 1 && !res.some((x) => x.axe.fantasy);
+      if (forceFan && RANK[r] < 2) r = 'SR';
       if (n === 10 && i === n - 1 && !res.some((x) => RANK[x.r] >= 2) && RANK[r] < 2) r = 'SR';
       if (S.pity >= st.pity && RANK[r] < 3) r = 'SSR';
       if (RANK[r] >= 3) S.pity = 0;
-      const pool = D.AXES.filter((a) => a.r === r);
-      const axe = pool[Math.floor(Math.random() * pool.length)];
+      const pu = pickup();
+      let axe;
+      if (pu && pu.r === r && Math.random() < C.PICKUP_SHARE) axe = pu;
+      else { const pool = D.AXES.filter((a) => a.r === r && (!forceFan || a.fantasy)); axe = pool[Math.floor(Math.random() * pool.length)]; }
       const had = S.axes[axe.id] || 0;
-      const out = { axe, r, isNew: !had, lvUp: false, gems: 0, lv: 1 };
+      const out = { axe, r, isNew: !had, lvUp: false, gems: 0, lv: 1, pickup: axe === pu };
       if (!had) S.axes[axe.id] = 1;
       else if (had < C.AXE_MAX_LV) { S.axes[axe.id] = had + 1; out.lvUp = true; }
       else { out.gems = D.RARITY[r].gem; gainGems(out.gems); }
@@ -554,6 +567,7 @@ const G = (() => {
       if (r === 'SSR') S.stats.gotSSR++;
       if (r === 'UR') S.stats.gotUR++;
       if (r === 'LR') S.stats.gotLR++;
+      if (r === 'EX') S.stats.gotEX++;
       res.push(out);
     }
     S.stats.pulls += n;
@@ -572,6 +586,32 @@ const G = (() => {
     dirty();
     emit('equip', AX[id]);
     return true;
+  }
+
+  // 日替わりピックアップ（端末の日付で毎日0時に替わる）
+  function dayIndex(t) {
+    const d = new Date(t || Date.now());
+    return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000);
+  }
+  const pickup = (t) => (PICKUPS.length ? PICKUPS[dayIndex(t) % PICKUPS.length] : null);
+  function pickupLeft() {
+    const d = new Date();
+    return Math.max(0, (new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1) - d) / 1000);
+  }
+
+  // ------------------------------------------------------------- 倍速
+  const speedMax = () => ((S.stats.bestStage || 1) >= C.SPEED3_STAGE ? 3 : 2);
+  function gameSpeed() {
+    if (S.study) return 1;
+    return Math.max(1, Math.min(S.settings.speed || 1, speedMax(), T.speedCap || 3));
+  }
+  // 倍速の切り替え（×1 → ×2 → ×3 → ×1）。戻り値は新しい設定
+  function cycleSpeed() {
+    const max = speedMax();
+    const cur = Math.min(S.settings.speed || 1, max);
+    S.settings.speed = cur >= max ? 1 : cur + 1;
+    emit('speed', { speed: S.settings.speed, eff: gameSpeed(), max });
+    return S.settings.speed;
   }
 
   // ------------------------------------------------------------- 宝箱
@@ -791,10 +831,17 @@ const G = (() => {
     T.time += dt;
     S.stats.playTime += dt;
     const st = stats();
+    // 倍速: 木こりの働き・木の生え変わり・リスの出現が速くなる。フィーバー・ゴールデン・
+    // ボスの制限時間・コンボ受付は実時間のまま（人の手を急かさない）
+    const gdt = dt * gameSpeed();
 
     if (T.combo > 0) {
       T.comboTimer -= dt;
-      if (T.comboTimer <= 0) { emit('comboEnd', T.combo); T.combo = 0; T.justChain = 0; T.blastCount = 0; T.treeStreak = 0; }
+      if (T.comboTimer <= 0) {
+        if (T.comboDmg > (S.stats.bestComboDmg || 0)) S.stats.bestComboDmg = T.comboDmg;
+        emit('comboEnd', { n: T.combo, dmg: T.comboDmg, best: T.comboDmg >= S.stats.bestComboDmg });
+        T.combo = 0; T.justChain = 0; T.blastCount = 0; T.treeStreak = 0;
+      }
     }
     if (T.golden > 0) {
       T.golden -= dt;
@@ -824,14 +871,15 @@ const G = (() => {
         if (p.kind === 'echo') S.stats.echoes++;
         else if (p.kind === 'thunder') S.stats.thunders++;
         else S.stats.blasts++;
-        emit('proc', Object.assign({ alive }, p));
+        if (alive && T.combo > 0) T.comboDmg += p.dmg;
+        emit('proc', Object.assign({ alive, total: T.comboDmg }, p));
         if (alive) hit(p.dmg);
       }
     }
     if (!T.tree) spawnTree();
     if (T.tree.alive) {
       if (st.dps > 0) {
-        let d = st.dps * comboMult() * buffMult('all') * (T.fever > 0 ? st.feverMult : 1) * dt;
+        let d = st.dps * comboMult() * buffMult('all') * (T.fever > 0 ? st.feverMult : 1) * gdt;
         if (T.tree.boss) d *= st.boss;
         T.dpsAcc += d;
         hit(d);
@@ -841,7 +889,7 @@ const G = (() => {
         if (T.bossTimer <= 0) bossFail();
       }
     } else {
-      T.respawn -= dt;
+      T.respawn -= gdt;
       if (T.respawn <= 0) {
         if (T.pendingBoss) challengeBoss();
         else spawnTree();
@@ -852,7 +900,7 @@ const G = (() => {
       T.squirrel.life -= dt;
       if (T.squirrel.life <= 0) { T.squirrel = null; T.squirrelTimer = nextSquirrelTime(); emit('sqGone'); }
     } else {
-      T.squirrelTimer -= dt;
+      T.squirrelTimer -= gdt;
       if (T.squirrelTimer <= 0) {
         T.squirrel = {
           kind: Math.random() < C.GODDESS_RATE ? 'goddess' : 'squirrel',
@@ -962,6 +1010,7 @@ const G = (() => {
     T, on, emit, stats, dirty, tick, tap, swing, speedTier, startFever,
     unitDps, previewUpgrade, buyWorker, buyAmount, workerCost, maxAffordable, buyUpgrade, upgCost, upgMaxed,
     pull, canPull, freeLeft, xpNeed, gainXp, equip, openChest, claimMission, missionProgress, missionText,
+    pickup, pickupLeft, gameSpeed, speedMax, cycleSpeed, PICKUPS,
     catchSquirrel, goddessAnswer, challengeBoss, prestige, spiritGain, startStage, perk,
     startStudy, abortStudy, finishStudy, studyLeft, applyOffline, checkDaily,
     save, serialize, loadFrom, init, exportSave, importSave, hardReset,

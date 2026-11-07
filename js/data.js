@@ -59,6 +59,9 @@ const D = (() => {
     ROULETTE_CHANCE: 0.12, // 倒した瞬間にボーナスルーレット
     ROULETTE_DELAY: 1.1,
     FREE_PULL_MIN: 8, // 無料ガチャの間隔（分）
+    PICKUP_SHARE: 0.5, // ピックアップ斧と同じレアを引いたとき、ピックアップが出る割合
+    SPEEDS: [1, 2, 3], // 倍速モード
+    SPEED3_STAGE: 30, // 3倍速の解放ステージ
   };
 
   // ---------------------------------------------------------------- 木こり軍団（自動DPS）
@@ -115,10 +118,11 @@ const D = (() => {
     R: { rate: 0.30, tap: 1.5, pas: 0.02, col: '#4fb4ff', gem: 4 },
     SR: { rate: 0.145, tap: 2, pas: 0.05, col: '#c46bff', gem: 10 },
     SSR: { rate: 0.045, tap: 3, pas: 0.15, col: '#ffcc33', gem: 40 },
-    UR: { rate: 0.009, tap: 5, pas: 0.4, col: '#ff4d8d', gem: 120 },
+    UR: { rate: 0.008, tap: 5, pas: 0.4, col: '#ff4d8d', gem: 120 },
     LR: { rate: 0.001, tap: 10, pas: 1.2, col: '#ffffff', gem: 400 },
+    EX: { rate: 0.001, tap: 16, pas: 2, col: '#ff2a6a', gem: 800 },
   };
-  const RARITY_ORDER = ['N', 'R', 'SR', 'SSR', 'UR', 'LR'];
+  const RARITY_ORDER = ['N', 'R', 'SR', 'SSR', 'UR', 'LR', 'EX'];
   // blade: [明, 暗], handle, glow
   const AXES = [
     { id: 'a_rusty', r: 'N', name: '錆びた斧', desc: '物置の奥で眠っていた。', blade: ['#c98b5a', '#7a4a2a'], handle: '#6b4a2f' },
@@ -146,6 +150,23 @@ const D = (() => {
     { id: 'a_chrono', r: 'UR', name: '時空斧クロノス', desc: 'フィーバーの時が止まる。', blade: ['#a8fff0', '#008a8a'], handle: '#3a2a10', sp: { fever: 3, combo: 0.3 }, glow: '#4affe0' },
     { id: 'a_shinra', r: 'LR', name: '森羅万象断ち', desc: 'この世のすべてを伐る。', blade: ['#ffffff', '#ffcf3a'], handle: '#ffffff', sp: { all: 1 }, glow: 'rainbow', double: true },
     { id: 'a_inf', r: 'LR', name: '∞斧インフィニティ', desc: '会心が止まらない。', blade: ['#ffffff', '#3affd0'], handle: '#101010', sp: { critm: 5, critc: 0.08 }, glow: 'rainbow' },
+    // --- 幻想の斧（現実には存在しない斧。1本ずつ専用の3Dモデルと斬撃演出がある）
+    { id: 'x_tuna', r: 'R', fantasy: true, model: 'tuna', fx: 'splash', name: '冷凍マグロ', desc: 'カッチカチに凍った本マグロ。なぜか木が伐れる。', blade: ['#dfe7f0', '#1d2d50'], handle: '#23365e', glow: '#9fd8ff', sp: { reward: 0.15 } },
+    { id: 'x_candy', r: 'R', fantasy: true, model: 'candy', fx: 'candy', name: 'ペロペロキャンディ斧', desc: 'あまい。とにかくあまい。うず巻きが回る。', blade: ['#ffd6ec', '#ff4fa8'], handle: '#fffaf2', glow: '#ff8fd0', sp: { combo: 0.15 } },
+    { id: 'x_pixel', r: 'SR', fantasy: true, model: 'pixel', fx: 'pixel', name: 'ドット斧', desc: '8bitの世界から来た。当たり判定は四角い。', blade: ['#ffffff', '#6c7890'], handle: '#b0702e', glow: '#7aff6a', sp: { critc: 0.03 } },
+    { id: 'x_beam', r: 'SR', fantasy: true, model: 'beam', fx: 'beam', name: 'ビームアックス', desc: '刃が光でできている。ブォン。', blade: ['#f4ffff', '#18c8ff'], handle: '#2b3140', glow: '#3ae0ff', sp: { speed: 0.3 } },
+    { id: 'x_sakura', r: 'SR', fantasy: true, model: 'sakura', fx: 'petal', name: '桜吹雪の斧', desc: '振るたびに花びらが舞う。春は無敵。', blade: ['#fff0f7', '#ff6aae'], handle: '#2a1018', glow: '#ff9ad0', sp: { golden: 0.5 } },
+    { id: 'x_luna', r: 'SSR', fantasy: true, model: 'crescent', fx: 'moon', name: '三日月斧ルナ', desc: '月の欠けた部分で伐る。JUSTが広がる。', blade: ['#ffffff', '#7f9ce0'], handle: '#1a2348', glow: '#a8c8ff', sp: { just: 0.25, critm: 1 } },
+    { id: 'x_crystal', r: 'SSR', fantasy: true, model: 'crystal', fx: 'crystal', name: '水晶斧クリスタリア', desc: '結晶が勝手に伸びて刃になった。', blade: ['#e8fdff', '#2ac8ff'], handle: '#c8d4e4', glow: '#7fe8ff', sp: { critm: 2.5 } },
+    { id: 'x_gear', r: 'SSR', fantasy: true, model: 'gear', fx: 'gear', name: '歯車斧クロックワーク', desc: '回るほど速く伐れる機械仕掛け。', blade: ['#ffe0a0', '#b07a20'], handle: '#4a2c18', glow: '#ffd27a', sp: { dps: 0.6 } },
+    { id: 'x_seraph', r: 'SSR', fantasy: true, model: 'wing', fx: 'feather', name: '天翼斧セラフィム', desc: '天使の翼でできている。幸運を呼ぶ。', blade: ['#fffaf0', '#ffd977'], handle: '#f6f1e6', glow: '#fff2b0', sp: { roul: 0.6 } },
+    { id: 'x_galaxy', r: 'UR', fantasy: true, model: 'galaxy', fx: 'galaxy', name: '銀河斧ギャラクシア', desc: '刃の中で銀河が回っている。', blade: ['#e0d0ff', '#3a1a8a'], handle: '#1c1442', glow: '#9a7aff', sp: { all: 0.6, gem: 0.004 } },
+    { id: 'x_kera', r: 'UR', fantasy: true, model: 'bolt', fx: 'bolt', name: '雷霆斧ケラウノス', desc: '神話の雷を斧の形に固めた。斬るたびに落雷。', blade: ['#fff7b8', '#ffb800'], handle: '#2a2a3a', glow: '#ffe14a', sp: { thunder: 0.15, all: 0.3 } },
+    { id: 'x_volca', r: 'UR', fantasy: true, model: 'dragon', fx: 'fire', name: '焔竜斧ヴォルカ', desc: '竜の頭そのもの。ボスを噛み砕く。', blade: ['#ff8a5a', '#7a0610'], handle: '#1a0808', glow: '#ff5a1a', sp: { boss: 1.5, critm: 2 } },
+    { id: 'x_horizon', r: 'LR', fantasy: true, model: 'blackhole', fx: 'void', name: '黒穴斧ホライゾン', desc: '刃の先に事象の地平線。木も光も吸い込む。', blade: ['#ffd08a', '#1a0626'], handle: '#0d0816', glow: '#ff9a4a', sp: { all: 1, reward: 0.5 } },
+    { id: 'x_phoenix', r: 'LR', fantasy: true, model: 'phoenix', fx: 'phoenix', name: '不死鳥斧フェニクス', desc: '燃え尽きても蘇る。フィーバーが終わらない。', blade: ['#fff2a0', '#ff3a12'], handle: '#d8a640', glow: '#ff7a2a', sp: { fever: 4, all: 0.8 } },
+    { id: 'x_genesis', r: 'EX', fantasy: true, model: 'genesis', fx: 'genesis', name: '創世斧ジェネシス', desc: '世界を最初に伐り拓いた、はじまりの斧。', blade: ['#ffffff', '#ffd76a'], handle: '#ffffff', glow: 'rainbow', double: true, sp: { all: 2, critm: 5, golden: 1 } },
+    { id: 'x_imag', r: 'EX', fantasy: true, model: 'imaginary', fx: 'glitch', name: '虚数斧イマジナリ', desc: '実在しない。でも確かに伐れる。√-1。', blade: ['#5ff4ff', '#ff3a6a'], handle: '#0a0014', glow: '#ff4fd8', double: true, sp: { all: 1.5, critc: 0.1, echo: 0.5 } },
   ];
   // 斧のシルエット（64x64、握りは下端 (32,62)）。Canvas の Path2D と SVG で共用。
   const AXE_PATHS = {
@@ -166,6 +187,12 @@ const D = (() => {
     fever: (v) => `フィーバー +${(Math.round(v * 10) / 10)}秒`,
     gem: (v) => `ジェム率 +${(Math.round(v * 1000) / 10)}%`,
     all: (v) => `全ダメージ +${Math.round(v * 100)}%`,
+    speed: (v) => `速さボーナス +${Math.round(v * 100)}%`,
+    golden: (v) => `ゴールデン率 +${Math.round(v * 100)}%`,
+    roul: (v) => `ルーレット率 +${Math.round(v * 100)}%`,
+    just: (v) => `JUSTの幅 +${Math.round(v * 100)}%`,
+    echo: (v) => `残像率 +${Math.round(v * 100)}%`,
+    thunder: (v) => `落雷率 +${Math.round(v * 100)}%`,
   };
 
   // ---------------------------------------------------------------- バイオーム（10ステージ毎）
@@ -299,6 +326,12 @@ const D = (() => {
   ach('gotSSR', '✨', 'SSRキター！', 'SSRの斧を入手', (S) => st(S, 'gotSSR') >= 1, 30);
   ach('gotUR', '💖', 'URキタァァ！！', 'URの斧を入手', (S) => st(S, 'gotUR') >= 1, 80);
   ach('gotLR', '🌈', '伝説', 'LRの斧を入手', (S) => st(S, 'gotLR') >= 1, 300);
+  ach('gotEX', '🌌', '幻想の向こう側', 'EXの斧を入手', (S) => st(S, 'gotEX') >= 1, 500);
+  const fantasyOwned = (S) => AXES.filter((a) => a.fantasy && S.axes[a.id]).length;
+  ach('fantasy1', '🐟', 'ありえない斧', '幻想の斧を1本入手', (S) => fantasyOwned(S) >= 1, 15);
+  ach('fantasy5', '✨', '幻想コレクター', '幻想の斧を5本集める', (S) => fantasyOwned(S) >= 5, 60);
+  ach('fantasy10', '🌠', '幻想マニア', '幻想の斧を10本集める', (S) => fantasyOwned(S) >= 10, 150);
+  ach('fantasyAll', '🪐', '幻想コンプリート', '幻想の斧をすべて集める', (S) => fantasyOwned(S) >= AXES.filter((a) => a.fantasy).length, 600);
   ach('allAxes', '👑', '斧コンプリート', 'すべての斧を集める', (S) => Object.keys(S.axes).length >= AXES.length, 1000);
   ach('gold1', '🌟', '金の木', '金の木を伐採', (S) => st(S, 'gold') >= 1, 15);
   ach('rainbow1', '🌈', '虹の木', '虹の木を伐採', (S) => st(S, 'rainbow') >= 1, 50);

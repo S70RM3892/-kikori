@@ -291,9 +291,74 @@ const Sfx = (() => {
     while (t < dur) { noise(0.06, 0.25, 'bandpass', 180 + t * 300, 1.5, t); t += gap; gap = Math.max(0.035, gap * 0.9); }
     tone(110, dur, 'sawtooth', 0.05, 0, 440);
   }
+  const RANKS = { N: 0, R: 1, SR: 2, SSR: 3, UR: 4, LR: 5, EX: 6 };
+  // 昇格演出: 光の色が変わるたびに鳴る（5 = EX の暗転）
+  function gachaUp(step) {
+    if (!ok()) return;
+    if (step >= 5) {
+      noise(0.7, 0.45, 'highpass', 1800, 0.6);
+      tone(45, 1.4, 'sawtooth', 0.25, 0.05, 25);
+      noise(1.4, 0.22, 'lowpass', 260, 0.8, 0.1);
+      [0, 1, 6, 7].forEach((st, i) => tone(note(st, 131), 1.2, 'sawtooth', 0.03, 0.3 + i * 0.02));
+      return;
+    }
+    const base = [0, 0, 4, 7, 12][step] || 0;
+    [0, 4, 7, 12].forEach((st, i) => tone(note(st + base, 392), 0.32, 'triangle', 0.065, i * 0.045));
+    noise(0.35, 0.15, 'highpass', 3000, 0.7, 0, 9000);
+    tone(80, 0.45, 'sine', 0.38, 0, 38);
+  }
+  // SSR以上を1本ずつ見せるときのファンファーレ
+  function showcase(r) {
+    if (!ok()) return;
+    const rank = RANKS[r] || 0;
+    const seq = rank >= 6 ? [0, 7, 12, 16, 19, 24, 28, 31, 36] : rank >= 5 ? [0, 4, 7, 12, 16, 19, 24, 28] : rank >= 4 ? [0, 4, 7, 12, 16, 19, 24] : [0, 4, 7, 12, 16];
+    seq.forEach((st, i) => tone(note(st, 392), 0.36, i % 2 ? 'square' : 'triangle', 0.05, i * 0.07));
+    [0, 4, 7].forEach((st) => tone(note(st, 196), 1.5, 'sawtooth', 0.03, seq.length * 0.07));
+    noise(1.2, 0.12, 'highpass', 5000, 0.7, 0.1);
+    if (rank >= 6) tone(55, 1.8, 'sine', 0.3, 0, 30);
+  }
+  function equip(rank) {
+    if (!ok() || throttle('equip', 200)) return;
+    tone(1318, 0.3, 'triangle', 0.08);
+    tone(2637, 0.5, 'sine', 0.05, 0.05);
+    noise(0.3, 0.1, 'highpass', 6000, 0.7);
+    if (rank >= 3) [0, 4, 7, 12].forEach((st, i) => tone(note(st, 784), 0.2, 'square', 0.04, 0.1 + i * 0.05));
+  }
+  function speed(n) {
+    if (!ok()) return;
+    for (let i = 0; i < n; i++) tone(660 * Math.pow(1.26, i), 0.09, 'square', 0.05, i * 0.07);
+    noise(0.3, 0.12, 'bandpass', 800, 1, 0, 5000);
+  }
+  function comboFinish(best) {
+    if (!ok()) return;
+    (best ? [0, 4, 7, 12, 16, 19, 24] : [0, 7, 12]).forEach((st, i) => tone(note(st, 659), 0.18, 'square', 0.045, i * 0.05));
+  }
+  // 幻想の斧: 斬るたびに斧ごとの音を重ねる
+  function axeHit(kind) {
+    if (!ok() || throttle('axe', 55)) return;
+    const pent = () => PENTA[Math.floor(Math.random() * 5)];
+    switch (kind) {
+      case 'splash': noise(0.14, 0.35, 'lowpass', 900, 1, 0, 300); tone(420, 0.12, 'sine', 0.12, 0, 160); break;
+      case 'candy': tone(1400 + Math.random() * 300, 0.08, 'sine', 0.12, 0, 2400); tone(2100, 0.06, 'triangle', 0.05, 0.03); break;
+      case 'pixel': [0, 4, 7].forEach((st, i) => tone(note(st + 12, 523), 0.05, 'square', 0.05, i * 0.03)); break;
+      case 'beam': tone(220, 0.22, 'sawtooth', 0.07, 0, 90); tone(880, 0.18, 'sine', 0.05, 0, 330); noise(0.12, 0.08, 'highpass', 4000, 0.7); break;
+      case 'petal': tone(note(pent() + 12, 659), 0.3, 'triangle', 0.06); break;
+      case 'moon': tone(1568, 0.6, 'sine', 0.05); tone(2349, 0.5, 'sine', 0.03, 0.02); break;
+      case 'crystal': tone(2637 + Math.random() * 200, 0.4, 'sine', 0.06); tone(3520, 0.3, 'sine', 0.03, 0.03); break;
+      case 'gear': for (let i = 0; i < 3; i++) tone(1800 + i * 200, 0.025, 'square', 0.04, i * 0.035); break;
+      case 'feather': noise(0.25, 0.06, 'highpass', 3500, 0.6); tone(note(pent() + 24, 523), 0.35, 'sine', 0.04); break;
+      case 'galaxy': for (let i = 0; i < 3; i++) tone(note(pent() + 12 * (1 + (i % 2)), 659), 0.4, 'sine', 0.035, i * 0.04); break;
+      case 'bolt': noise(0.05, 0.25, 'highpass', 5000, 0.8); tone(2400, 0.05, 'square', 0.04, 0, 600); break;
+      case 'fire': noise(0.3, 0.22, 'bandpass', 600, 0.8, 0, 2400); break;
+      case 'void': tone(90, 0.5, 'sine', 0.3, 0, 28); noise(0.4, 0.1, 'lowpass', 300, 0.8, 0, 80); break;
+      case 'phoenix': noise(0.3, 0.2, 'bandpass', 700, 0.8, 0, 2600); tone(1200, 0.25, 'sine', 0.05, 0.05, 2400); break;
+      case 'genesis': [0, 4, 7, 12].forEach((st) => tone(note(st, 523), 0.45, 'triangle', 0.035)); tone(2093, 0.5, 'sine', 0.04, 0.02); break;
+      case 'glitch': for (let i = 0; i < 4; i++) tone(200 + Math.random() * 2400, 0.03, 'square', 0.04, i * 0.025); break;
+    }
+  }
   function gachaReveal(r) {
     if (!ok()) return;
-    const rank = { N: 0, R: 1, SR: 2, SSR: 3, UR: 4, LR: 5 }[r] || 0;
+    const rank = Math.min(5, RANKS[r] || 0);
     if (rank <= 1) { tone(rank ? 880 : 660, 0.15, 'triangle', 0.08); return; }
     const seq = rank === 2 ? [0, 4, 7] : rank === 3 ? [0, 4, 7, 12, 16] : [0, 4, 7, 12, 16, 19, 24, 28];
     seq.forEach((s, i) => tone(note(s, 523), 0.25, 'square', 0.05, i * 0.06));
@@ -327,6 +392,6 @@ const Sfx = (() => {
     unlock: ensure, setEnabled, setVolume, setVibe, vibrate, whoosh, slash, grab, echo, thunder, blast, unlockFx,
     crash, rouletteTick, rouletteWin, golden, streak, levelUp, chop, crit, fell, coin, gem, buy, milestone, error,
     feverStart, feverEnd, boss, bossWin, bossFail, tick, stage, ach, squirrel, chest, gachaRoll, gachaReveal,
-    prestige, goddess,
+    prestige, goddess, gachaUp, showcase, equip, speed, comboFinish, axeHit,
   };
 })();

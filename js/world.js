@@ -11,7 +11,7 @@ const World = (() => {
   let ok = false;
   let renderer = null, scene = null, camera = null;
   let W = 1, H = 1;
-  let time = 0, quality = 2, allowShake = true;
+  let time = 0, wtime = 0, quality = 2, allowShake = true;
   let dynScale = 1, perfT = 0, perfAcc = 0, perfN = 0; // 重い端末では描画解像度を自動で下げる
   let v1, v2, m4, q4, e3, s3, cTmp, cWhite, raycaster, plane, ndc;
 
@@ -21,7 +21,7 @@ const World = (() => {
   let cur = null;
   const fallers = [];
   let band = null, arrows = [];
-  let axe = null, axeKey = '';
+  let axe = null, axeKey = '', axeScene = null, axeLights = null, onAxeChange = null, warmT = 0, warmAcc = 0;
   const hold = { on: false, x: 0, y: 0, ax: 0, ay: 0, az: 0, mirror: 1, tilt: 0, stick: 0, sx: 0, sy: 0, sz: 0, vx: 0, vy: 0, pt: 0, grabT: 0 };
   let workers = [], workerKey = '';
   const emojiTex = new Map();
@@ -115,6 +115,9 @@ const World = (() => {
     makeParticles();
     makeBand();
     makeAmbient();
+    // 斧は別のシーンに置き、専用のスタジオ照明＋映り込みで描く（背景の色を拾わない）
+    axeScene = new T3.Scene();
+    if (typeof Axe3D !== 'undefined') { Axe3D.init(renderer); axeLights = Axe3D.studio(axeScene); }
     resize();
     return true;
   }
@@ -539,41 +542,20 @@ const World = (() => {
   }
 
   // ------------------------------------------------------------- 斧（3D）
-  function axeShape(pts) {
-    const s = new T3.Shape();
-    s.moveTo(pts[0], -pts[1]);
-    for (let i = 2; i < pts.length; ) {
-      if (pts[i] === 'c') { s.bezierCurveTo(pts[i + 1], -pts[i + 2], pts[i + 3], -pts[i + 4], pts[i + 5], -pts[i + 6]); i += 7; }
-      else { s.lineTo(pts[i], -pts[i + 1]); i += 2; }
-    }
-    s.closePath();
-    return s;
-  }
+  const DEFAULT_AXE = { id: '_none', r: 'N', blade: ['#e0e6ec', '#7f8b96'], handle: '#7a5533' };
   function buildAxe(def) {
-    if (axe) { scene.remove(axe.g); axe.geos.forEach((g) => g.dispose()); axe.mats.forEach((m) => m.dispose()); }
-    def = def || { blade: ['#e0e6ec', '#7f8b96'], handle: '#7a5533' };
+    const first = !axe;
+    if (axe) { axeScene.remove(axe.g); axe.P.dispose(); }
+    def = def || DEFAULT_AXE;
+    const P = Axe3D.build(def);
     const g = new T3.Group();
-    const inner = new T3.Group();
     const S = 1 / 40;
-    inner.scale.setScalar(S);
-    inner.position.set(-56 * S, 18 * S, 0);
-    g.add(inner);
-    const glowCol = def.glow && def.glow !== 'rainbow' ? new T3.Color(def.glow) : def.glow === 'rainbow' ? new T3.Color('#ff66cc') : new T3.Color(def.blade[1]);
-    const bladeM = new T3.MeshStandardMaterial({ color: def.blade[0], metalness: 0.55, roughness: 0.28, emissive: glowCol, emissiveIntensity: def.glow ? 0.55 : 0.12, flatShading: true });
-    const handleM = new T3.MeshStandardMaterial({ color: def.handle, roughness: 0.75, flatShading: true });
-    const ext = { depth: 4, bevelEnabled: true, bevelThickness: 1.2, bevelSize: 1.1, bevelSegments: 1, curveSegments: 8 };
-    const geos = [];
-    const mkBlade = (pts) => { const eg = new T3.ExtrudeGeometry(axeShape(pts), ext); eg.translate(0, 0, -2); geos.push(eg); return new T3.Mesh(eg, bladeM); };
-    inner.add(mkBlade([30, 11, 44, 9, 'c', 50, 3, 59, 5, 60, 17, 'c', 61, 29, 52, 35, 46, 30, 30, 25]));
-    if (def.double) inner.add(mkBlade([34, 11, 20, 9, 'c', 14, 3, 5, 5, 4, 17, 'c', 3, 29, 12, 35, 18, 30, 34, 25]));
-    else inner.add(mkBlade([30, 12, 24, 13, 24, 23, 30, 24]));
-    const hg = new T3.CylinderGeometry(2.7, 3.1, 56, 10);
-    geos.push(hg);
-    const handle = new T3.Mesh(hg, handleM);
-    handle.position.set(32, -36, 0);
-    inner.add(handle);
-    scene.add(g);
-    axe = { g, inner, bladeM, handleM, geos, mats: [bladeM, handleM], def, rainbow: def.glow === 'rainbow' };
+    P.grp.scale.setScalar(S);
+    P.grp.position.set(-56 * S, 18 * S, 0);
+    g.add(P.grp);
+    axeScene.add(g);
+    axe = { g, P, def, spin: first ? 0 : 1, act: 0 };
+    if (!first && onAxeChange) onAxeChange(def);
   }
 
   // ------------------------------------------------------------- 3D粒子
@@ -861,12 +843,23 @@ const World = (() => {
     hold.x = p.x; hold.y = p.y; hold.pt = p.t;
   }
   function release() { hold.on = false; }
-  function updateAxe(dt, real) {
+  function updateAxe(dt, real, busy) {
     const eq = G.stats().eq;
     const key = eq ? eq.id : '-';
-    if (key !== axeKey) { axeKey = key; buildAxe(eq); }
+    // ガチャなどの画面が開いている間は持ち替えない（閉じた瞬間に登場させる）
+    if (key !== axeKey && (!busy || !axe)) { axeKey = key; buildAxe(eq); }
     const g = axe.g;
-    if (axe.rainbow) { cTmp.setHSL((time * 0.4) % 1, 1, 0.55); axe.bladeM.emissive.copy(cTmp); }
+    const sp = Math.hypot(hold.vx, hold.vy) / Math.max(1, Math.min(W, H));
+    axe.act += ((hold.on ? Math.min(1, sp * 0.6) : 0) + (hold.stick > 0 ? 1 : 0) - axe.act) * Math.min(1, real * 8);
+    axe.P.tick(time, real, axe.act);
+    for (const s of axe.P.glows) s.material.opacity = Math.min(1, s.userData.base * (1 + lightBoost * 0.35 + axe.act * 0.5));
+    // 命中の閃光で斧もギラッと光る。フィーバー中は縁の光が虹色に回る
+    if (axeLights) {
+      axeLights.key.intensity = 1 + lightBoost * 0.5 + axe.act * 0.25;
+      axeLights.rim.color.set(0xbcd8ff);
+      if (feverMix > 0.01) axeLights.rim.color.lerp(cTmp.setHSL((time * 0.25) % 1, 1, 0.6), feverMix);
+      axeLights.rim.intensity = 0.9 + feverMix * 0.8;
+    }
     hold.stick = Math.max(0, hold.stick - real);
     const o = cur;
     let tx, ty, tz, rz, ry, sx;
@@ -902,8 +895,21 @@ const World = (() => {
       ry = -0.85;
       sx = -1;
     }
+    let k = 1.05;
+    if (axe.spin > 0) {
+      // 装備した瞬間: くるくる回りながら大きくなって手元に来る
+      axe.spin = Math.max(0, axe.spin - real * 1.6);
+      const p = 1 - axe.spin;
+      k *= Math.max(0.01, U.ease.outBack(p));
+      ry += (1 - U.ease.outCubic(p)) * Math.PI * 4;
+    }
     g.rotation.set(0, ry, rz);
-    g.scale.set(sx * 1.05, 1.05, 1.05);
+    g.scale.set(sx * k, k, k);
+  }
+  // 斧の画面上の位置（装備演出の光などに使う）
+  function axeScreen() {
+    if (!ok || !axe) return null;
+    return toScreen(axe.g.position.x, axe.g.position.y, axe.g.position.z);
   }
 
   // ------------------------------------------------------------- フレーム
@@ -914,9 +920,12 @@ const World = (() => {
       else { m.emissive.copy(m.userData.baseEm); m.emissiveIntensity = m.userData.baseEi; }
     }
   }
-  function frame(dt, real) {
+  function frame(dt, real, busy) {
     if (!ok) return;
     time += dt;
+    // 倍速: 木の生え変わり・倒れる速さ・木こりの手つきも速くする
+    const spd = G.gameSpeed ? G.gameSpeed() : 1;
+    wtime += dt * spd;
     ensureBiome(G.biomeIndex(G.S.stage));
     const T = G.T;
     if (!cur && T.tree && T.tree.alive) onSpawn(T.tree); // 起動・読み込み直後
@@ -941,7 +950,7 @@ const World = (() => {
     // 現在の木
     const o = cur;
     if (o) {
-      o.grow = Math.min(1, o.grow + dt / 0.42);
+      o.grow = Math.min(1, o.grow + (dt * spd) / 0.42);
       const gs = Math.max(0.01, U.ease.outElastic(o.grow) * 0.9 + o.grow * 0.1);
       o.root.scale.setScalar(gs);
       const dmg = 1 - o.tree.hp / o.tree.maxHp;
@@ -984,7 +993,7 @@ const World = (() => {
     // 倒れる木・逃げるボス
     for (let i = fallers.length - 1; i >= 0; i--) {
       const f = fallers[i];
-      f.fallT += dt;
+      f.fallT += dt * (1 + (spd - 1) * 0.5);
       if (f.escape) {
         f.root.position.y += dt * 7;
         f.root.scale.multiplyScalar(Math.max(0.5, 1 - dt * 1.5));
@@ -1017,7 +1026,7 @@ const World = (() => {
     }
     // 木こり
     for (const w of workers) {
-      const ph = (time / w.period + w.ph) % 1;
+      const ph = (wtime / w.period + w.ph) % 1;
       const jerk = ph < 0.18 ? Math.sin((ph / 0.18) * Math.PI) : 0;
       w.sp.material.rotation = -w.side * jerk * 0.45;
       w.sp.position.y = 0.55 + Math.abs(Math.sin(time * 5 + w.ph * 6)) * 0.06;
@@ -1027,7 +1036,7 @@ const World = (() => {
     stepInst(chips, P.chips, dt, 'chip');
     stepInst(leaves, P.leaves, dt, 'leaf');
     stepInst(coins, P.coins, dt, 'coin');
-    updateAxe(dt, real);
+    updateAxe(dt, real, busy);
 
     // カメラ
     cam.shake = Math.max(0, cam.shake - real * 2.4);
@@ -1046,6 +1055,16 @@ const World = (() => {
     camera.fov = cam.fovBase * (1 - Math.min(0.3, cam.punch));
     camera.updateProjectionMatrix();
     renderer.render(scene, camera);
+    // 斧: 深度はそのまま（幹に食い込むと隠れる）で上から描く
+    renderer.autoClear = false;
+    renderer.render(axeScene, camera);
+    renderer.autoClear = true;
+    // 図鑑・ガチャ用の斧の画像を少しずつ作っておく
+    warmT += real;
+    if (warmT > 2.5 && warmT < 1e9 && (warmAcc += real) >= 0.1) {
+      warmAcc = 0;
+      if (!Axe3D.warmStep()) warmT = 1e9;
+    }
     // 2秒ごとに平均フレーム時間を見て解像度を調整（落ちすぎたら下げ、余裕があれば戻す）
     perfAcc += real; perfN++; perfT += real;
     if (perfT >= 2) {
@@ -1063,6 +1082,8 @@ const World = (() => {
     init, resize, frame, setQuality, palette, trunkInfo, canopyScreen, notchScreen, toScreen,
     reset, onSpawn, onHit, onProc, onFell, onBossFail, finisher, flashLight, shake, punch, grab, drag, release,
     set onLanded(fn) { onLanded = fn; },
+    set onAxeChange(fn) { onAxeChange = fn; },
+    axeScreen,
     biomeName: () => palette(G.biomeIndex(G.S.stage)).name,
   };
 })();

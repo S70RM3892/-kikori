@@ -12,7 +12,7 @@ const FX = (() => {
   const parts = [], texts = [], trail = [], ghosts = [], bolts = [], roulettes = [];
   let clock = 0;
   let flash = 0, flashRGB = '255,255,255', hitStop = 0, slowmo = 0, comboPop = 0;
-  let quality = 2, allowFlash = true, calm = false;
+  let quality = 2, allowFlash = true, calm = false, rmotion = false;
   const MAXP = [90, 220, 380], MAXT = [26, 48, 84];
   const TRAIL_MS = 150;
   const flareCache = new Map();
@@ -22,6 +22,10 @@ const FX = (() => {
   let held = null;
   let gl = false;
   let dpsT = 0;
+  const focus = { t: 0, dur: 0, x: 0, y: 0, col: '255,255,255', lines: null, k: 0 };
+  let lastHit = { t: -9, tier: 0, stier: 0, x: 0, y: 0 };
+  const streaks = [];
+  let focusCool = 0;
 
   const FONT_D = '"Dela Gothic One", "Hiragino Sans", "Yu Gothic", system-ui, sans-serif';
   const FONT_B = '"M PLUS Rounded 1c", "Hiragino Maru Gothic ProN", "Hiragino Sans", system-ui, sans-serif';
@@ -44,6 +48,7 @@ const FX = (() => {
     for (const k in D.AXE_PATHS) P2[k] = new Path2D(D.AXE_PATHS[k]);
     gl = World.init(document.getElementById('gl'));
     World.onLanded = landed;
+    World.onAxeChange = onAxeChange;
     resize();
     window.addEventListener('resize', resize);
     bind();
@@ -64,6 +69,7 @@ const FX = (() => {
   function setQuality(settings) {
     const night = document.body.classList.contains('night');
     calm = night;
+    rmotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
     quality = night ? Math.min(1, settings.fx) : settings.fx;
     allowFlash = settings.flash && !night;
     World.setQuality(settings);
@@ -80,9 +86,12 @@ const FX = (() => {
   }
   function floatText(x, y, s, o = {}) {
     if (!(isFinite(x) && isFinite(y))) return;
+    // 画面の端で切れないように、文字幅のぶん内側へ寄せる
+    const hw = String(s).length * (o.size || 18) * 0.42 * (o.pop || 1.5) * 0.8;
+    x = hw * 2 + 12 >= OW ? OW / 2 : U.clamp(x, hw + 6, OW - hw - 6);
     const max = MAXT[quality];
     if (texts.length >= max) texts.splice(0, texts.length - max + 1);
-    texts.push({ x, y, s, size: o.size || 18, fill: o.fill || '#fff', stroke: o.stroke || 'rgba(30,14,4,0.9)', vy: o.vy || -70, vx: o.vx || 0, life: o.life || 0.9, max: o.life || 0.9, pop: o.pop || 1.5, rainbow: !!o.rainbow, light: !!o.light, font: o.font || FONT_D });
+    texts.push({ x, y, s, size: o.size || 18, fill: o.fill || '#fff', stroke: o.stroke || 'rgba(30,14,4,0.9)', vy: o.vy || -70, vx: o.vx || 0, life: o.life || 0.9, max: o.life || 0.9, pop: o.pop || 1.5, rainbow: !!o.rainbow, light: !!o.light, font: o.font || FONT_D, rot: o.rot || 0 });
   }
   function burst(x, y, n, opts = {}) {
     for (let i = 0; i < n; i++) {
@@ -221,7 +230,14 @@ const FX = (() => {
       c.restore();
       c.save();
       c.globalAlpha = 0.55 * (1 - p);
-      drawAxe2D(c, eq, x, g.y, 0.15 * g.dir, k, g.dir);
+      const th = eq && typeof Axe3D !== 'undefined' ? Axe3D.cached(eq.id) : null;
+      if (th) {
+        const sz = 74 * k;
+        c.translate(x, g.y);
+        c.scale(g.dir, 1);
+        c.rotate(0.35);
+        c.drawImage(th.canvas, -sz / 2, -sz / 2, sz, sz);
+      } else drawAxe2D(c, eq, x, g.y, 0.15 * g.dir, k, g.dir);
       c.restore();
     }
   }
@@ -370,11 +386,12 @@ const FX = (() => {
         p.x = it * it * p.sx + 2 * it * t * p.cx + t * t * p.tx;
         p.y = it * it * p.sy + 2 * it * t * p.cy + t * t * p.ty;
       } else {
-        p.vy += (p.t === 'chip' ? 900 : p.t === 'confetti' ? 60 : p.t === 'dust' ? -20 : p.g || 0) * dt;
-        if (p.t === 'confetti') p.vx += Math.sin(clock * 4 + p.ph) * 40 * dt;
+        p.vy += (p.t === 'chip' ? 900 : p.t === 'confetti' ? 60 : p.t === 'dust' ? -20 : p.t === 'drop' || p.t === 'pix' ? 700 : p.g || 0) * dt;
+        if (p.t === 'confetti' || p.t === 'petal' || p.t === 'feather') { p.vx += Math.sin(clock * 4 + (p.ph || 0)) * 40 * dt; p.vx *= 1 - 1.2 * dt; p.vy = Math.min(p.vy, 90); }
         p.x += p.vx * dt;
         p.y += p.vy * dt;
-        if (p.t === 'spark' || p.t === 'dust' || p.t === 'fire') { p.vx *= 1 - 2.5 * dt; p.vy *= 1 - 2.5 * dt; }
+        if (p.t === 'spark' || p.t === 'dust' || p.t === 'fire' || p.t === 'shard' || p.t === 'moon' || p.t === 'gearp') { p.vx *= 1 - 2.5 * dt; p.vy *= 1 - 2.5 * dt; }
+        if (p.t === 'implode') { p.x += (p.tx - p.x) * Math.min(1, dt * 9); p.y += (p.ty - p.y) * Math.min(1, dt * 9); }
       }
       if (p.rot !== undefined) p.rot += (p.vr || 0) * dt;
       c.save();
@@ -404,6 +421,63 @@ const FX = (() => {
           c.fillStyle = '#c98a2a'; c.beginPath(); c.arc(0, 0, p.s * 0.55, 0, 7); c.fill();
           c.strokeStyle = '#ffe9a8'; c.beginPath(); c.arc(0, 0, p.s * 0.3, 0, 7); c.stroke();
           break;
+        case 'drop':
+          c.rotate(Math.atan2(p.vy, p.vx));
+          c.fillStyle = p.col; c.beginPath(); c.ellipse(0, 0, p.s * 1.7, p.s * 0.8, 0, 0, 7); c.fill();
+          c.fillStyle = 'rgba(255,255,255,0.8)'; c.beginPath(); c.arc(p.s * 0.5, -p.s * 0.2, p.s * 0.3, 0, 7); c.fill();
+          break;
+        case 'pix': c.fillStyle = p.col; c.fillRect(-p.s / 2, -p.s / 2, p.s, p.s); break;
+        case 'petal':
+          c.rotate(p.rot); c.scale(1, 0.55 + 0.45 * Math.sin(clock * 7 + (p.ph || 0)));
+          c.fillStyle = p.col; c.beginPath(); c.ellipse(0, 0, p.s, p.s * 0.62, 0, 0, 7); c.fill();
+          break;
+        case 'feather':
+          c.rotate(p.rot); c.scale(1, 0.6 + 0.4 * Math.sin(clock * 5 + (p.ph || 0)));
+          c.fillStyle = p.col; c.beginPath(); c.ellipse(0, 0, p.s * 1.7, p.s * 0.5, 0, 0, 7); c.fill();
+          c.strokeStyle = 'rgba(180,140,60,0.7)'; c.lineWidth = 1; c.beginPath(); c.moveTo(-p.s * 1.9, 0); c.lineTo(p.s * 1.6, 0); c.stroke();
+          break;
+        case 'moon':
+          c.rotate(p.rot); c.globalCompositeOperation = 'lighter';
+          c.strokeStyle = p.col; c.lineWidth = 2 + 4 * a; c.lineCap = 'round';
+          c.beginPath(); c.arc(0, 0, p.s * (1.5 - a * 0.5), -1.15, 1.15); c.stroke();
+          break;
+        case 'shard':
+          c.rotate(p.rot); c.fillStyle = p.col; c.strokeStyle = 'rgba(255,255,255,0.9)'; c.lineWidth = 1.2;
+          c.beginPath(); c.moveTo(0, -p.s * 1.3); c.lineTo(p.s * 0.55, p.s * 0.6); c.lineTo(-p.s * 0.55, p.s * 0.6); c.closePath(); c.fill(); c.stroke();
+          break;
+        case 'gearp':
+          c.rotate(p.rot); c.fillStyle = p.col;
+          for (let k = 0; k < 6; k++) { c.rotate(Math.PI / 3); c.fillRect(-p.s * 0.22, -p.s * 1.35, p.s * 0.44, p.s * 0.6); }
+          c.beginPath(); c.arc(0, 0, p.s, 0, 7); c.fill();
+          c.fillStyle = 'rgba(40,20,0,0.6)'; c.beginPath(); c.arc(0, 0, p.s * 0.38, 0, 7); c.fill();
+          break;
+        case 'implode':
+          c.globalCompositeOperation = 'lighter'; c.strokeStyle = p.col; c.lineWidth = 2 + (1 - a) * 5;
+          c.beginPath(); c.arc(0, 0, Math.max(1, p.s * a), 0, 7); c.stroke();
+          break;
+        case 'glitch':
+          c.globalCompositeOperation = 'lighter'; c.fillStyle = p.col;
+          c.fillRect(-p.s * 2 + (Math.random() - 0.5) * 8, -p.h / 2, p.s * 4, p.h);
+          break;
+        case 'slash': {
+          // 斬撃の閃き: 細長いひし形が一瞬で伸びて消える
+          c.rotate(p.rot); c.globalCompositeOperation = 'lighter';
+          const L = p.s * (0.75 + 0.25 * (1 - a)), w = p.w * Math.sin(Math.min(1, (1 - a) * 3 + 0.2) * Math.PI) + 1;
+          c.globalAlpha = Math.min(1, a * 1.8);
+          c.fillStyle = `rgba(${p.col},0.75)`;
+          c.beginPath(); c.moveTo(-L, 0); c.lineTo(0, -w * 2.2); c.lineTo(L, 0); c.lineTo(0, w * 2.2); c.closePath(); c.fill();
+          c.fillStyle = '#ffffff';
+          c.beginPath(); c.moveTo(-L * 0.92, 0); c.lineTo(0, -w * 0.7); c.lineTo(L * 0.92, 0); c.lineTo(0, w * 0.7); c.closePath(); c.fill();
+          break;
+        }
+        case 'pillar': {
+          c.globalCompositeOperation = 'lighter';
+          const w = p.s * a;
+          const gr = c.createLinearGradient(0, -p.y, 0, 0);
+          gr.addColorStop(0, `rgba(${p.col},0)`); gr.addColorStop(0.7, `rgba(${p.col},0.6)`); gr.addColorStop(1, 'rgba(255,255,255,0.95)');
+          c.fillStyle = gr; c.fillRect(-w / 2, -p.y, w, p.y + 10);
+          break;
+        }
         case 'gem':
           c.rotate(clock * 4);
           c.fillStyle = '#5ee8ff'; c.strokeStyle = '#0a5a7a'; c.lineWidth = 1.5;
@@ -427,6 +501,7 @@ const FX = (() => {
       c.save();
       c.globalAlpha = Math.min(1, t.life / (t.max * 0.35));
       c.translate(t.x, t.y);
+      if (t.rot) c.rotate(t.rot);
       c.scale(s, s);
       c.font = `${t.size}px ${t.font}`;
       c.textAlign = 'center';
@@ -440,10 +515,157 @@ const FX = (() => {
       c.restore();
     }
     drawRoulettes(c, real);
+    drawFocus(c, real);
+    drawStreaks(c, real);
     if (flash > 0.01 && allowFlash) {
       c.fillStyle = `rgba(${flashRGB},${flash})`;
       c.fillRect(0, 0, OW, OH);
     }
+  }
+
+  // ------------------------------------------------------------- 集中線（マンガの効果線）: 大きな瞬間だけ
+  function focusLines(x, y, dur = 0.35, col = '255,255,255', k = 1) {
+    if (calm || rmotion || quality === 0 || focusCool > 0) return;
+    focusCool = 0.6;
+    Object.assign(focus, { t: 0, dur, x, y, col, k, lines: null });
+  }
+  function drawFocus(c, real) {
+    focusCool = Math.max(0, focusCool - real);
+    if (focus.dur <= 0) return;
+    focus.t += real;
+    const p = focus.t / focus.dur;
+    if (p >= 1) { focus.dur = 0; return; }
+    // 2フレームに1回線を引き直してザワザワさせる
+    if (!focus.lines || Math.random() < 0.5) {
+      const n = quality >= 2 ? 64 : 40;
+      focus.lines = [];
+      for (let i = 0; i < n; i++) focus.lines.push([(i / n) * Math.PI * 2 + Math.random() * 0.08, 0.32 + Math.random() * 0.3, 0.006 + Math.random() * 0.016]);
+    }
+    const R = Math.hypot(OW, OH);
+    const base = Math.min(OW, OH) * (0.62 - 0.12 * focus.k);
+    c.save();
+    c.globalAlpha = (p < 0.15 ? p / 0.15 : 1 - (p - 0.15) / 0.85) * 0.75;
+    c.fillStyle = `rgb(${focus.col})`;
+    c.beginPath();
+    for (const [a, r0, w] of focus.lines) {
+      const rin = base * r0 * 1.6;
+      c.moveTo(focus.x + Math.cos(a) * rin, focus.y + Math.sin(a) * rin);
+      c.lineTo(focus.x + Math.cos(a - w) * R, focus.y + Math.sin(a - w) * R);
+      c.lineTo(focus.x + Math.cos(a + w) * R, focus.y + Math.sin(a + w) * R);
+      c.closePath();
+    }
+    c.fill();
+    c.restore();
+  }
+  // 倍速中: 画面の端を風の線が流れる
+  function drawStreaks(c, real) {
+    const sp = G.gameSpeed ? G.gameSpeed() : 1;
+    if (sp > 1 && !calm && !rmotion && quality > 0 && !blocked() && Math.random() < (sp - 1) * 0.35) {
+      const top = Math.random() < 0.5;
+      streaks.push({ x: OW + 40, y: top ? OH * (0.12 + Math.random() * 0.18) : OH * (0.62 + Math.random() * 0.16), v: OW * (1.6 + Math.random() * 1.2) * (sp - 0.5), l: 40 + Math.random() * 90 * sp });
+    }
+    if (!streaks.length) return;
+    c.save();
+    c.strokeStyle = 'rgba(255,255,255,0.28)';
+    c.lineWidth = 1.6;
+    c.lineCap = 'round';
+    c.beginPath();
+    for (let i = streaks.length - 1; i >= 0; i--) {
+      const st = streaks[i];
+      st.x -= st.v * real;
+      if (st.x + st.l < -20) { streaks.splice(i, 1); continue; }
+      c.moveTo(st.x, st.y);
+      c.lineTo(st.x + st.l, st.y);
+    }
+    c.stroke();
+    c.restore();
+  }
+
+  // ------------------------------------------------------------- 幻想の斧: 斧ごとの斬撃演出
+  function signature(eq, x, y, d, q) {
+    const fx = eq && eq.fx;
+    if (!fx || quality === 0) return;
+    const dir = d.dir || 1;
+    const s = Math.max(0, d.stier);
+    const n = (k) => Math.max(1, Math.round(k * q * (0.8 + s * 0.15)));
+    const R = Math.random;
+    const fan = (cnt, t, speed, life, size, cols, extra) => {
+      for (let i = 0; i < cnt; i++) {
+        const a = (dir > 0 ? 0 : Math.PI) + (R() - 0.5) * 2.4, v = speed * (0.35 + R() * 0.65);
+        spawn(Object.assign({ t, x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - speed * 0.25, life, max: life, s: size * (0.7 + R() * 0.6), col: cols[Math.floor(R() * cols.length)], rot: R() * 6, vr: (R() - 0.5) * 10, ph: R() * 6 }, extra || {}));
+      }
+    };
+    switch (fx) {
+      case 'splash':
+        fan(n(10), 'drop', 420, 0.7, 4, ['#9fd8ff', '#d8f2ff', '#5ab8ff']);
+        if (R() < 0.2) floatText(x - dir * 30, y - 50, 'ビチッ!', { size: 18, fill: '#bfe8ff', stroke: '#0a2a4a', vy: -60, life: 0.6 });
+        break;
+      case 'candy': fan(n(9), 'star', 360, 0.6, 4.5, ['#ff6ac8', '#7fd8ff', '#ffe14a', '#9dff7a']); break;
+      case 'pixel':
+        fan(n(12), 'pix', 380, 0.65, 6, ['#7aff6a', '#ffffff', '#ffe14a', '#5ab8ff']);
+        if (s >= 3 && R() < 0.3) floatText(x, y - 60, '+1UP', { size: 16, fill: '#7aff6a', stroke: '#002a00', vy: -70, life: 0.7 });
+        break;
+      case 'beam':
+        spawn({ t: 'slash', x, y, life: 0.2, max: 0.2, s: 170 + s * 20, w: 5, rot: (R() - 0.5) * 0.25, col: '60,230,255' });
+        fan(n(8), 'spark', 520, 0.3, 2.4, ['#7ff6ff', '#ffffff']);
+        break;
+      case 'petal': fan(n(10), 'petal', 260, 1.4, 5.5, ['#ffb7d5', '#ff8fbf', '#ffd6ea', '#ffffff']); break;
+      case 'moon':
+        for (let i = 0; i < 2; i++) spawn({ t: 'moon', x, y, vx: dir * (120 + i * 120), vy: -40 + i * 50, life: 0.45, max: 0.45, s: 34 + i * 16, rot: dir > 0 ? 0 : Math.PI, col: i ? '#ffffff' : '#a8c8ff' });
+        fan(n(5), 'star', 240, 0.6, 3, ['#ffffff', '#cfe0ff']);
+        break;
+      case 'crystal': fan(n(9), 'shard', 460, 0.55, 6, ['#a8f6ff', '#7fe8ff', '#e8fdff', '#c49bff']); break;
+      case 'gear': fan(n(6), 'gearp', 340, 0.7, 6, ['#e0aa48', '#cfd6e0', '#b07a20']); break;
+      case 'feather': fan(n(6), 'feather', 200, 1.5, 6, ['#ffffff', '#fff6d8', '#ffe9a8']); break;
+      case 'galaxy':
+        fan(n(12), 'star', 340, 0.8, 3.6, ['#ffffff', '#9fd0ff', '#ffb0e0', '#c8a0ff', '#fff0a0']);
+        spawn({ t: 'ring', x, y, life: 0.5, max: 0.5, s: 110, col: '#b39aff' });
+        break;
+      case 'bolt': {
+        const b = makeBolt(x, y);
+        b.pts = b.pts.map(([px, py], i, arr) => [x + dir * (i / (arr.length - 1)) * 140 + (R() - 0.5) * 22, y - 40 + (i / (arr.length - 1)) * 40 + (R() - 0.5) * 22]);
+        b.life = b.max = 0.16;
+        bolts.push(b);
+        fan(n(6), 'spark', 480, 0.3, 2.4, ['#fff6a8', '#bfe4ff']);
+        break;
+      }
+      case 'fire': fan(n(9), 'fire', 300, 0.6, 7, ['#ff7a1a'], { g: -120 }); break;
+      case 'void':
+        for (let i = 0; i < n(8); i++) {
+          const a = R() * Math.PI * 2, r = 70 + R() * 70;
+          spawn({ t: 'spark', x: x + Math.cos(a) * r, y: y + Math.sin(a) * r, vx: -Math.cos(a) * 380, vy: -Math.sin(a) * 380, life: 0.22, max: 0.22, s: 2.6, col: i % 2 ? '#ff9a4a' : '#b06aff' });
+        }
+        spawn({ t: 'implode', x, y, tx: x, ty: y, life: 0.32, max: 0.32, s: 90, col: '#ffb070' });
+        break;
+      case 'phoenix':
+        fan(n(7), 'fire', 320, 0.6, 7, ['#ff7a1a'], { g: -140 });
+        fan(n(3), 'feather', 220, 1.2, 6, ['#ffd060', '#ff7a2a']);
+        break;
+      case 'genesis':
+        spawn({ t: 'pillar', x, y, life: 0.35, max: 0.35, s: 46 + s * 6, col: '255,240,190' });
+        for (let i = 0; i < 2; i++) spawn({ t: 'ring', x, y, life: 0.5 + i * 0.15, max: 0.5 + i * 0.15, s: 120 + i * 80, col: `hsl(${(clock * 300 + i * 120) % 360},100%,70%)` });
+        fan(n(8), 'star', 380, 0.7, 4, ['#ffffff', '#ffe680', '#ff9ae6', '#9fe8ff']);
+        break;
+      case 'glitch':
+        for (let i = 0; i < n(5); i++) spawn({ t: 'glitch', x: x + (R() - 0.5) * 160, y: y + (R() - 0.5) * 120, life: 0.12 + R() * 0.12, max: 0.24, s: 8 + R() * 22, h: 3 + R() * 8, col: R() < 0.5 ? 'rgba(80,240,255,0.7)' : 'rgba(255,60,120,0.7)' });
+        if (R() < 0.15) floatText(x + (R() - 0.5) * 80, y - 70, ['ERR', '√-1', 'NaN', '0xDEAD'][Math.floor(R() * 4)], { size: 14, fill: '#ff4fd8', stroke: '#0a0014', vy: -40, life: 0.5, light: true });
+        break;
+    }
+    Sfx.axeHit(fx);
+  }
+  // 斧を持ち替えた瞬間（ガチャの後・図鑑から装備）
+  function onAxeChange(def) {
+    const ap = World.axeScreen();
+    if (!ap || blocked()) return;
+    const rank = G.RANK[def.r] || 0;
+    const col = def.glow && def.glow !== 'rainbow' ? def.glow : rank >= 5 ? '#ffffff' : '#ffe9a0';
+    spawn({ t: 'flare', x: ap.x, y: ap.y, life: 0.5, max: 0.5, s: 140 + rank * 30, col: hexRGB(col) });
+    spawn({ t: 'ring', x: ap.x, y: ap.y, life: 0.6, max: 0.6, s: 150 + rank * 20, col });
+    burst(ap.x, ap.y, 16 + rank * 6, { col: def.glow === 'rainbow' ? undefined : col, speed: 300 });
+    floatText(ap.x, ap.y - 70, def.name, { size: 18 + rank * 2, fill: rank >= 3 ? '#ffe14a' : '#ffffff', rainbow: rank >= 5, pop: 1.8, vy: -50, life: 1.3 });
+    if (rank >= 4) { focusLines(ap.x, ap.y, 0.45, '255,255,255', 0.6); addFlash(0.18, '255,240,200'); }
+    Sfx.equip(rank);
+    Sfx.vibrate(rank >= 3 ? [15, 30, 15] : 12);
   }
 
   // ------------------------------------------------------------- ★ 命中（メインの気持ちよさ）
@@ -466,7 +688,16 @@ const FX = (() => {
       hitStop = Math.max(hitStop, Math.min(0.17, hs * (0.85 + 0.12 * J)));
       World.punch(Math.min(0.12, 0.015 + 0.008 * s + (d.just ? 0.03 : 0) + d.tier * 0.012));
       World.shake((0.08 + 0.05 * s + (d.just ? 0.15 : 0)) * Math.min(1.6, J));
-      spawn({ t: 'flare', x, y, life: 0.16, max: 0.16, s: (34 + 11 * s + (d.just ? 30 : 0)) * Math.min(1.5, J), col: d.just ? '255,225,90' : d.gold ? '255,200,60' : '255,235,190' });
+      const eqx = G.stats().eq;
+      const gcol = eqx && eqx.glow && eqx.glow !== 'rainbow' ? hexRGB(eqx.glow) : eqx && eqx.glow === 'rainbow' ? '255,170,240' : '255,235,190';
+      spawn({ t: 'flare', x, y, life: 0.16, max: 0.16, s: (34 + 11 * s + (d.just ? 30 : 0)) * Math.min(1.5, J), col: d.just ? '255,225,90' : d.gold ? '255,200,60' : gcol });
+      // 斬った線: 速く振るほど長く太く
+      if (s >= 2 || d.just || d.tier) {
+        const tr = trail.length >= 2 ? trail[trail.length - 1] : null, tp = trail.length >= 4 ? trail[trail.length - 4] : null;
+        const rot = tr && tp ? U.clamp(Math.atan2(tr.y - tp.y, tr.x - tp.x), -0.5, 0.5) * (tr.x >= tp.x ? 1 : -1) : 0;
+        spawn({ t: 'slash', x, y, life: 0.17 + s * 0.012, max: 0.17 + s * 0.012, s: (90 + s * 26 + (d.just ? 40 : 0)) * Math.min(1.4, J), w: 2.4 + s * 0.7 + d.tier * 0.8, rot, col: d.just ? '255,215,70' : d.tier >= 3 ? '255,90,170' : gcol });
+      }
+      signature(eqx, x, y, d, q);
       if (s >= 2) {
         const nSp = Math.round((5 + 5 * (s - 2)) * J * q);
         for (let i = 0; i < nSp; i++) {
@@ -493,6 +724,7 @@ const FX = (() => {
       burst(x, y, [4, 8, 14][quality] * d.tier, { col: tierInfo.rainbow ? undefined : tierInfo.fill, speed: 220 + d.tier * 120 });
       if (d.tier >= 2) { addFlash(0.1 * d.tier, d.tier >= 4 ? '255,255,255' : '255,220,120'); World.flashLight(d.tier >= 4 ? '#ffffff' : '#ffe0a0', 0.4 * d.tier); }
       if (d.tier >= 3 || (lvM >= 10 && d.tier >= 1)) spawn({ t: 'ring', x, y, life: 0.45, max: 0.45, s: 130 + d.tier * 30, col: tierInfo.fill });
+      if (d.tier >= 3) focusLines(x, y, d.tier >= 4 ? 0.6 : 0.35, '255,255,255', d.tier >= 4 ? 1 : 0.5);
       if (d.tier >= 4) { confetti(90); UI.banner('GOD CRIT', '神が降りた ・ 💎+10', 'god'); UI.shakeHud(); }
     }
     if (d.just) {
@@ -505,8 +737,14 @@ const FX = (() => {
       }
       if (lvJ >= 25) slowmo = Math.max(slowmo, 0.22);
       addFlash(0.06 + Math.min(0.12, ch * 0.01), '255,225,120');
-      if (ch > 0 && ch % 10 === 0) { UI.banner(`JUST ×${ch}!!`, '見切りが止まらない', 'combo'); confetti(50); }
+      if (ch > 0 && ch % 10 === 0) { UI.banner(`JUST ×${ch}!!`, '見切りが止まらない', 'combo'); confetti(50); focusLines(x, y, 0.4, '255,240,160', 0.6); }
     }
+    // 擬音: 強く斬ったときだけ、斜めの描き文字がドンと出る
+    if (!tapLike && !calm && quality > 0 && (s >= 4 || d.tier >= 2 || (d.just && d.chain >= 5)) && Math.random() < 0.65) {
+      const w = U.pick(['ズバッ!!', 'ザシュッ!!', 'スパーン!!', 'ザンッ!!', 'バキィッ!!']);
+      floatText(x - dir * (70 + Math.random() * 30), y - 78 - Math.random() * 26, w, { size: 28 + s * 3 + d.tier * 4, fill: d.tier >= 3 ? '#ffe14a' : '#ffffff', stroke: '#1a0a00', rot: -dir * (0.18 + Math.random() * 0.16), pop: 2.3, vy: -18, vx: -dir * 20, life: 0.55 });
+    }
+    lastHit = { t: clock, tier: d.tier, stier: s, x, y };
     comboPop = 1;
     // 実況（コンボの節目）
     const word = D.ANNOUNCE[d.combo];
@@ -558,7 +796,7 @@ const FX = (() => {
       }
       floatText(x, y - 44, U.fmt(p.dmg), { size: 38, fill: '#ffd27a', stroke: '#4a1400', pop: 2.4, vy: -70, life: 1.2 });
       floatText(x, y - 88, nova ? '超新星!!!' : big ? '大爆裂!!' : '爆裂!', { size: 23, fill: '#ff8a3a', stroke: '#2a0a00', pop: 2, vy: -70, life: 1.2 });
-      if (nova) { confetti(80); UI.shakeHud(); }
+      if (nova) { confetti(80); UI.shakeHud(); focusLines(x, y, 0.45, '255,220,160', 0.8); }
     }
   }
 
@@ -575,6 +813,12 @@ const FX = (() => {
       World.finisher(big ? 1 : 0.35);
     }
     const cc = sceneCenter();
+    const finisher = clock - lastHit.t < 0.05 && (lastHit.tier >= 2 || lastHit.stier >= 5 || tree.boss);
+    if (finisher && !calm) {
+      floatText(lastHit.x, lastHit.y - 120, '一刀両断!!', { size: tree.boss ? 46 : 36, fill: '#ffffff', stroke: '#2a0a00', rainbow: tree.boss || lastHit.tier >= 4, rot: -0.12, pop: 2.6, vy: -16, life: 1.1 });
+      focusLines(lastHit.x, lastHit.y, 0.5, '255,255,255', 0.9);
+      Sfx.vibrate([20, 40, 30]);
+    }
     floatText(cc.x, cc.y - 10, '+' + U.fmt(d.reward), { size: big ? 40 : 28, fill: '#ffc04a', stroke: '#4a2400', vy: -70, life: 1.3, pop: 2 });
     coins(cc.x, cc.y, big ? 16 : 7, 'wood');
     if (d.gems) {
@@ -583,7 +827,7 @@ const FX = (() => {
     }
     if (d.chest) floatText(cc.x - 60, cc.y + 24, '📦 宝箱GET!', { size: 17, fill: '#ffe08a', stroke: '#4a2400', vy: -50, life: 1.4 });
     if (d.streak >= 3) floatText(cc.x, cc.y + 56, `🔗 ${d.streak}本連続`, { size: 15, fill: '#9dff4a', stroke: '#0a2a00', vy: -40, life: 1.1, light: true });
-    if (big) { confetti(tree.boss ? 80 : 36); addFlash(0.2, '255,230,150'); }
+    if (big) { confetti(tree.boss ? 80 : 36); addFlash(0.2, '255,230,150'); const np = notchPoint(); focusLines(np.x, np.y, tree.boss ? 0.7 : 0.4, '255,255,255', tree.boss ? 1 : 0.5); }
   }
   // 倒れた木が地面に着いた瞬間
   function landed(tree, pts) {
@@ -642,7 +886,7 @@ const FX = (() => {
       floatText(cc.x, cc.y - 120, `×${r.m}  +${U.fmt(r.wood)}`, { size: r.m >= 10 ? 34 : 24, fill: '#ffd23a', stroke: '#3a1a00', rainbow: r.m >= 100, pop: 2.2, vy: -50, life: 1.4 });
       coins(cc.x, cc.y - 100, Math.min(24, 4 + r.m), 'wood');
       if (r.m >= 10) { confetti(r.m >= 100 ? 160 : 60); addFlash(0.25, '255,220,120'); }
-      if (r.m >= 100) UI.banner('×100 JACKPOT!!!', `+${U.fmt(r.wood)} 木材`, 'god');
+      if (r.m >= 100) { UI.banner('×100 JACKPOT!!!', `+${U.fmt(r.wood)} 木材`, 'god'); focusLines(cc.x, cc.y - 100, 0.7, '255,230,120', 1); }
     });
     G.on('streak', (d) => {
       UI.banner(`${d.n}本連続伐採!!`, `💎+${d.gems}${d.chests ? ` ・ 📦+${d.chests}` : ''}`, 'streak');
@@ -672,13 +916,18 @@ const FX = (() => {
       const st = G.stats();
       if (st.dps > 0 && G.T.tree && G.T.tree.alive && !blocked() && quality >= 1) {
         const ti = trunkInfo();
-        if (ti) floatText(ti.cx + (Math.random() - 0.5) * 90, ti.bottom - 10, '+' + U.fmt(st.dps * 0.7), { size: 12, fill: '#ffe9c9', stroke: 'rgba(40,20,0,0.8)', vy: -45, life: 0.6, light: true });
+        if (ti) floatText(ti.cx + (Math.random() - 0.5) * 90, ti.bottom - 10, '+' + U.fmt(st.dps * 0.7 * G.gameSpeed()), { size: 12, fill: '#ffe9c9', stroke: 'rgba(40,20,0,0.8)', vy: -45, life: 0.6, light: true });
       }
     }
-    World.frame(dt, real);
+    World.frame(dt, real, blocked());
     drawOverlay(dt, real);
   }
 
+  function axeIcon(a, size = 48) {
+    const th = gl && typeof Axe3D !== 'undefined' ? Axe3D.thumb(a) : null;
+    if (th) return `<img class="axe-img${a.glow === 'rainbow' ? ' rainbow-glow' : ''}" src="${th.url}" width="${size}" height="${size}" alt="" draggable="false">`;
+    return axeIconSVG(a, size);
+  }
   function axeIconSVG(a, size = 48) {
     const P = D.AXE_PATHS;
     const id = 'ag-' + a.id + '-' + size;
@@ -695,7 +944,7 @@ const FX = (() => {
 
   return {
     init, resize, frame, setQuality, floatText, burst, confetti, coins, addShake, addFlash, spawn,
-    grab, drag, release, trunkInfo, unit, sceneCenter, axeIconSVG,
+    grab, drag, release, trunkInfo, unit, sceneCenter, axeIconSVG, axeIcon, focusLines,
     biomeName: () => World.palette(G.biomeIndex(G.S.stage)).name,
     get gl() { return gl; },
     get comboPop() { return comboPop; },

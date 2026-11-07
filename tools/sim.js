@@ -29,6 +29,8 @@ if (process.env.SIM_CFG) Object.assign(D.CFG, JSON.parse(process.env.SIM_CFG));
 
 G.init(null);
 const S = () => G.S;
+// SIM_SPEED=2 / 3 で倍速モードを試す（3倍速はステージ30到達で解放される）
+if (process.env.SIM_SPEED) S().settings.speed = Number(process.env.SIM_SPEED);
 const ev = { bossFail: 0, bossWin: 0, gacha: 0, fevers: 0 };
 G.on('bossFail', () => ev.bossFail++);
 G.on('bossWin', () => ev.bossWin++);

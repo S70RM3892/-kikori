@@ -1026,3 +1026,195 @@ body.night .buy.can, body.night .claim.can, body.night .badge, body.night #btn-b
   .buy { min-width: 84px; }
   .cur-wood b { font-size: 19px; }
 }
+
+/* ------------------------------------------------------------- 倍速ボタン */
+.speed-btn {
+  width: auto;
+  min-width: 46px;
+  padding: 0 7px;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  color: #d8e8f0;
+}
+.speed-btn i { font-style: normal; font-size: 9px; letter-spacing: -2px; line-height: 1; opacity: 0.55; }
+.speed-btn b { font-family: var(--font-d); font-weight: 400; font-size: 15px; line-height: 1; }
+.speed-btn.fast { border-color: #4fe3ff; color: #e8fbff; box-shadow: 0 0 14px rgba(79, 227, 255, 0.55), 0 3px 0 rgba(0, 0, 0, 0.5); }
+.speed-btn.fast i { opacity: 1; color: #4fe3ff; animation: speedArrows 0.5s linear infinite; }
+.speed-btn.x3 { border-color: #ffd23a; box-shadow: 0 0 16px rgba(255, 210, 58, 0.7), 0 3px 0 rgba(0, 0, 0, 0.5); }
+.speed-btn.x3 i { color: #ffd23a; animation-duration: 0.3s; }
+.speed-btn.capped { opacity: 0.6; }
+@keyframes speedArrows { from { transform: translateX(-2px); } to { transform: translateX(2px); } }
+
+/* ------------------------------------------------------------- コンボの合計と締め */
+.combo-total { display: flex; align-items: baseline; justify-content: flex-end; gap: 4px; margin-top: 2px; text-shadow: 0 2px 0 #000; }
+.combo-total small { font-size: 9px; font-weight: 800; color: var(--muted); }
+.combo-total b { font-family: var(--font-d); font-weight: 400; font-size: 15px; line-height: 1.1; color: #ffe9b0; font-variant-numeric: tabular-nums; }
+.combo-fin { display: none; font-family: var(--font-d); font-size: 18px; line-height: 1.1; color: #fff; -webkit-text-stroke: 1px #3a1200; paint-order: stroke fill; text-shadow: 0 0 12px rgba(255, 190, 60, 0.9), 0 3px 0 #000; }
+.combo-box.finish .combo-fin { display: block; animation: finPop 0.45s cubic-bezier(0.2, 1.6, 0.4, 1) both; }
+.combo-box.finish .combo-total b { font-size: 22px; color: #ffd23a; animation: finPop 0.45s cubic-bezier(0.2, 1.6, 0.4, 1) both; }
+.combo-box.finish .mult, .combo-box.finish .combo-win { opacity: 0.35; }
+@keyframes finPop { from { transform: scale(1.9); opacity: 0; } }
+
+/* ------------------------------------------------------------- 斧の絵（3Dモデルから描き出した画像） */
+.axe-img { display: block; object-fit: contain; image-rendering: auto; -webkit-user-drag: none; user-select: none; }
+.axe-card:not(.owned) .axe-img { filter: brightness(0) opacity(0.45) !important; }
+.ac-icon { height: 52px; }
+.ac-fan { display: inline-block; margin-left: 3px; padding: 0 3px; border-radius: 4px; font-style: normal; font-family: var(--font-b); font-weight: 800; font-size: 9px; line-height: 1.35; color: #1a0420; background: linear-gradient(90deg, #ff9ae6, #9fe8ff); vertical-align: 1px; }
+.axe-card.fan.owned { background: radial-gradient(circle at 50% 35%, rgba(196, 155, 255, 0.22), transparent 70%), var(--panel); }
+.ad-icon { width: 150px; height: 150px; }
+.ad-fan { margin: 2px 0 0; font-family: var(--font-d); font-size: 13px; letter-spacing: 0.1em; background: linear-gradient(90deg, #ff9ae6, #ffe680, #9fe8ff, #ff9ae6); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: shine 2.4s linear infinite; }
+
+/* ------------------------------------------------------------- EX（幻想級） */
+.rb.r-EX { color: #fff; background: linear-gradient(90deg, #12001e, #3a0050, #12001e); box-shadow: inset 0 0 0 1px #ff6ad5, 0 0 8px rgba(255, 106, 213, 0.7); text-shadow: 0 0 6px #ff6ad5; }
+.r-EX { --rc: #ff6ad5; --rc-glow: rgba(255, 60, 200, 0.75); }
+.axe-card.owned.r-EX { box-shadow: 0 0 14px var(--rc-glow); background: radial-gradient(circle at 50% 35%, rgba(255, 106, 213, 0.3), transparent 70%), #12001e; animation: hueGlow 1.6s linear infinite; }
+.g-card.r-EX .gc-in { background: linear-gradient(160deg, #2a0038, #05000a); animation: hueGlow 1.1s linear infinite; }
+.modal.r-EX { box-shadow: inset 0 0 0 1px var(--line), 0 0 50px var(--rc-glow); }
+
+/* ------------------------------------------------------------- ガチャ: ピックアップ */
+.gh-pu {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  margin: -4px 0 10px;
+  padding: 8px 12px 8px 8px;
+  border-radius: 14px;
+  border: 2px solid var(--rc);
+  background: radial-gradient(circle at 18% 50%, var(--rc-glow), transparent 55%), rgba(0, 0, 0, 0.45);
+  box-shadow: 0 0 18px var(--rc-glow);
+  color: var(--fg);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.gh-pu-img { display: grid; place-items: center; animation: puFloat 2.4s ease-in-out infinite; }
+@keyframes puFloat { 50% { transform: translateY(-5px) rotate(-3deg); } }
+.gh-pu-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.gh-pu-txt small { font-size: 10.5px; font-weight: 800; color: #ffe08a; letter-spacing: 0.06em; }
+.gh-pu-txt b { font-family: var(--font-d); font-weight: 400; font-size: 18px; line-height: 1.2; }
+.gh-pu-txt em { font-style: normal; font-weight: 800; font-size: 12px; color: #ff9ad0; animation: pulse 0.9s ease-in-out infinite; display: inline-block; }
+.gh-pu-txt .gh-pu-left { color: var(--muted); letter-spacing: 0; font-weight: 700; }
+.gh-fan { margin: -2px 0 4px; font-size: 12.5px; font-weight: 800; color: #f2e6ff; }
+.gh-fan b { color: #ff9ae6; }
+
+/* ------------------------------------------------------------- ガチャ: 昇格演出（青→紫→金→虹→白→暗転） */
+.gacha-ov { --gs: 1; transition: background 0.35s; }
+.gacha-ov.lv-0 { --ray: rgba(120, 190, 255, 0.75); }
+.gacha-ov.lv-1 { --ray: rgba(200, 120, 255, 0.9); background: radial-gradient(circle at 50% 45%, rgba(70, 24, 110, 0.96), rgba(8, 3, 16, 0.98)); }
+.gacha-ov.lv-2 { --ray: rgba(255, 210, 60, 0.98); background: radial-gradient(circle at 50% 45%, rgba(110, 70, 10, 0.95), rgba(14, 6, 0, 0.98)); }
+.gacha-ov.lv-3 { --ray: rgba(255, 90, 200, 0.98); background: radial-gradient(circle at 50% 45%, rgba(120, 20, 90, 0.95), rgba(12, 0, 20, 0.98)); }
+.gacha-ov.lv-4 { --ray: rgba(255, 255, 255, 1); background: radial-gradient(circle at 50% 45%, rgba(255, 240, 210, 0.9), rgba(40, 20, 50, 0.98)); }
+.gacha-ov.lv-5 { --ray: rgba(255, 40, 200, 1); background: radial-gradient(circle at 50% 45%, rgba(40, 0, 50, 0.97), #000); }
+.gacha-ov .g-rays { animation-duration: calc(1.6s / var(--gs)); }
+.gacha-ov.lv-3 .g-rays, .gacha-ov.lv-4 .g-rays { animation: spin calc(0.8s / var(--gs)) linear infinite, hue 0.8s linear infinite; }
+.gacha-ov.lv-5 .g-rays { animation: spin calc(0.5s / var(--gs)) linear infinite reverse, hue 0.4s linear infinite; }
+.g-ring { position: absolute; inset: 18%; border-radius: 50%; border: 4px solid var(--ray); opacity: 0; }
+.g-portal.pop { animation: portalPop calc(0.5s / var(--gs)) cubic-bezier(0.2, 1.6, 0.4, 1), shake 0.1s 0.5s infinite; }
+.g-portal.pop .g-ring { animation: ringOut calc(0.6s / var(--gs)) ease-out; }
+@keyframes portalPop { from { transform: scale(1.45); } }
+@keyframes ringOut { from { opacity: 1; transform: scale(0.6); } to { opacity: 0; transform: scale(2.4); } }
+.gacha-ov.lv-2 .g-core, .gacha-ov.lv-3 .g-core, .gacha-ov.lv-4 .g-core { animation-duration: 0.18s; }
+.gacha-ov.lv-4 .g-hype { color: #4a2a00; text-shadow: 0 0 18px #fff, 0 0 4px #fff; }
+.gacha-ov.crack .g-portal { filter: drop-shadow(0 0 30px #ff2ad0); }
+.gacha-ov.crack .g-core { animation: glitchCore 0.12s steps(2) infinite; }
+.gacha-ov.crack .g-hype { font-size: 34px; color: #ff6ad5; text-shadow: 3px 0 #2af0ff, -3px 0 #ff2a6a; animation: glitchCore 0.15s steps(2) infinite; }
+.gacha-ov.crack::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(115deg, transparent 47%, rgba(255, 255, 255, 0.85) 47.4%, transparent 48%),
+    linear-gradient(62deg, transparent 52%, rgba(255, 255, 255, 0.7) 52.3%, transparent 52.8%),
+    linear-gradient(160deg, transparent 38%, rgba(255, 255, 255, 0.6) 38.3%, transparent 38.8%),
+    linear-gradient(20deg, transparent 63%, rgba(255, 255, 255, 0.5) 63.3%, transparent 63.7%);
+  animation: fadeIn 0.08s;
+}
+@keyframes glitchCore { 50% { transform: translate(3px, -2px) skewX(8deg); filter: hue-rotate(90deg); } }
+.g-card .axe-img { margin: 0 auto; }
+.g-cards.n10 .axe-img { width: 100%; max-width: 54px; height: auto; }
+.g-card { animation-duration: calc(0.5s / var(--gs)); }
+.g-card.r-SSR .gc-in, .g-card.r-UR .gc-in, .g-card.r-LR .gc-in, .g-card.r-EX .gc-in { position: relative; overflow: hidden; }
+.g-card.r-SSR .gc-in::after, .g-card.r-UR .gc-in::after, .g-card.r-LR .gc-in::after, .g-card.r-EX .gc-in::after {
+  content: '';
+  position: absolute;
+  inset: -40% -60%;
+  background: linear-gradient(100deg, transparent 40%, rgba(255, 255, 255, 0.55) 50%, transparent 60%);
+  animation: cardShine 1.8s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes cardShine { from { transform: translateX(-60%); } 60%, to { transform: translateX(60%); } }
+.gc-pu, .gc-fan { position: absolute; top: 2px; right: 5px; font-weight: 800; font-size: 9px; padding: 0 4px; border-radius: 4px; line-height: 1.4; }
+.gc-pu { background: #ff3d8b; color: #fff; }
+.gc-fan { background: linear-gradient(90deg, #ff9ae6, #9fe8ff); color: #1a0420; }
+.g-btns.wait { visibility: hidden; }
+
+/* ------------------------------------------------------------- ガチャ: 1本ずつ見せる */
+.g-show {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 40%, var(--rc-glow), transparent 62%), rgba(8, 4, 14, 0.97);
+  animation: fadeIn 0.18s;
+  cursor: pointer;
+}
+.g-show.out { animation: showOut 0.22s forwards; }
+@keyframes showOut { to { opacity: 0; transform: scale(1.06); } }
+.gs-rays {
+  position: absolute;
+  left: 50%;
+  top: 38%;
+  width: 180vmax;
+  height: 180vmax;
+  margin: -90vmax 0 0 -90vmax;
+  background: repeating-conic-gradient(var(--rc-glow) 0 6deg, transparent 6deg 18deg);
+  -webkit-mask: radial-gradient(circle, #000 8%, transparent 45%);
+  mask: radial-gradient(circle, #000 8%, transparent 45%);
+  animation: spin 9s linear infinite;
+}
+.g-show.r-UR .gs-rays, .g-show.r-LR .gs-rays, .g-show.r-EX .gs-rays { animation: spin 5s linear infinite, hue 3s linear infinite; }
+.gs-in { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; max-width: 420px; text-align: center; }
+.gs-rar { display: flex; gap: 6px; align-items: center; animation: finPop 0.4s 0.05s cubic-bezier(0.2, 1.6, 0.4, 1) both; }
+.gs-rar .rb { font-size: 20px; padding: 2px 12px; border-radius: 8px; }
+.gs-tag { font-weight: 800; font-size: 11px; padding: 2px 8px; border-radius: 999px; }
+.gs-tag.fan { background: linear-gradient(90deg, #ff9ae6, #ffe680, #9fe8ff); color: #1a0420; }
+.gs-tag.pu { background: #ff3d8b; color: #fff; }
+.gs-img { width: min(62vw, 230px); aspect-ratio: 1; display: grid; place-items: center; animation: showIn 0.7s cubic-bezier(0.2, 1.4, 0.4, 1) both, puFloat 2.6s 0.7s ease-in-out infinite; filter: drop-shadow(0 0 24px var(--rc-glow)); }
+.gs-img .axe-img, .gs-img svg { width: 100%; height: 100%; }
+@keyframes showIn { from { transform: translateY(-60px) scale(0.2) rotate(-200deg); opacity: 0; } }
+.gs-name { font-family: var(--font-d); font-size: clamp(22px, 7vw, 32px); line-height: 1.2; color: #fff; text-shadow: 0 0 18px var(--rc-glow), 0 3px 0 #000; animation: finPop 0.5s 0.35s cubic-bezier(0.2, 1.6, 0.4, 1) both; }
+.g-show.r-LR .gs-name, .g-show.r-EX .gs-name { background: linear-gradient(90deg, #fff6a0, #ff9ae6, #9fe8ff, #fff6a0); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: none; animation: finPop 0.5s 0.35s cubic-bezier(0.2, 1.6, 0.4, 1) both, shine 2s linear infinite; }
+.gs-desc { color: #e8d8f8; font-size: 13px; font-weight: 700; }
+.gs-sp { font-size: 12.5px; font-weight: 800; color: #ffe08a; }
+.gs-new { font-family: var(--font-d); font-size: 22px; color: #ff6ab0; text-shadow: 0 0 12px rgba(255, 60, 140, 0.8), 0 2px 0 #000; animation: finPop 0.4s 0.55s cubic-bezier(0.2, 1.6, 0.4, 1) both, pulse 0.8s 1s ease-in-out infinite; }
+.gs-btns { display: flex; gap: 10px; margin-top: 6px; align-items: center; }
+.gs-eq { font-weight: 800; color: var(--go); }
+
+@media (prefers-reduced-motion: reduce) {
+  .gs-rays, .gh-pu-img, .gs-img, .g-card .gc-in::after, .speed-btn i { animation: none !important; }
+}
+body.night .gs-rays { animation: none; }
+
+/* 狭い画面: 右上のボタンと通貨を詰めて、木材の数字の幅を確保する */
+@media (max-width: 400px) {
+  .hud-right { max-width: 54vw; }
+  .hud-btns { gap: 4px; }
+  .icon-btn { width: 34px; height: 34px; font-size: 15px; border-radius: 10px; }
+  .speed-btn { min-width: 38px; padding: 0 5px; }
+  .speed-btn b { font-size: 13px; }
+  .cur { padding: 2px 9px 2px 5px; gap: 4px; }
+  .cur b { font-size: 13px; }
+  .cur-wood { padding: 4px 10px 4px 6px; }
+  .cur-wood .ico { font-size: 22px; }
+}
