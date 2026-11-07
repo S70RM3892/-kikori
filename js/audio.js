@@ -10,8 +10,15 @@ const Sfx = (() => {
   // BGM: スタイルランクが上がるほど楽器が重なる（0 = 無音 … 7 = 全部）。小節の頭で切り替える
   const BPM = 132, STEP = 60 / BPM / 4;
   const mus = { timer: null, next: 0, t0: 0, step: 0, level: 0, target: 0, enabled: true };
-  const ROOT = [0, 0, 3, -2]; // ラ・ラ・ド・ソ（ラの短調）
-  const ARP = [0, 7, 12, 7, 15, 12, 7, 3];
+  let ROOT = [0, 0, 3, -2]; // ラ・ラ・ド・ソ（ラの短調）
+  let ARP = [0, 7, 12, 7, 15, 12, 7, 3];
+  let MODE = 'forest';
+  // 菌斬り次元: 半音で揺れる妖しい音階（フリギア風）と速い刻み
+  const MODES = {
+    forest: { root: [0, 0, 3, -2], arp: [0, 7, 12, 7, 15, 12, 7, 3] },
+    germ: { root: [0, 1, 0, -2], arp: [0, 3, 7, 13, 12, 7, 3, 1] },
+  };
+  function setMode(m) { if (!MODES[m]) return; MODE = m; ROOT = MODES[m].root; ARP = MODES[m].arp; }
 
   function ensure() {
     if (!enabled) return false;
@@ -291,6 +298,7 @@ const Sfx = (() => {
       const root = ROOT[bar];
       if (L >= 1 && s % 4 === 0) tone(150, 0.16, 'sine', 0.26, w, 45); // キック
       if (L >= 2 && s % 4 === 2) noise(0.03, 0.035, 'highpass', 8000, 0.7, w); // ハイハット
+      if (MODE === 'germ' && L >= 2 && s % 2 === 1) noise(0.02, 0.018, 'highpass', 10000, 0.7, w); // 細かい刻み
       if (L >= 3 && s % 2 === 0) tone(note(root + (s % 8 === 6 ? 12 : 0), 110), STEP * 1.7, 'triangle', 0.08, w); // ベース
       if (L >= 4 && (s === 4 || s === 12)) noise(0.12, 0.1, 'bandpass', 1500, 1.2, w); // クラップ
       if (L >= 5) tone(note(root + ARP[mus.step % 8], 440), STEP * 0.9, 'square', 0.016, w); // アルペジオ
@@ -492,6 +500,73 @@ const Sfx = (() => {
     [0, 4, 7, 11, 14, 18].forEach((s, i) => tone(note(s, 698), 0.5, 'sine', 0.05, i * 0.09));
   }
 
+  // ------------------------------------------------------------- 菌斬り次元（刀）
+  function kWhoosh(sp) {
+    if (!ok() || throttle('kwhoosh', 110)) return;
+    noise(0.12, 0.05 + Math.min(0.08, sp * 0.008), 'bandpass', 2500 + sp * 300, 1.6, 0, 7000);
+  }
+  // シャキン: 金属の鳴りと鋭い風切り。芯・会心で高く澄む
+  function kSlice(stier, core, crit, n = 1) {
+    if (!ok() || throttle('kslice', 28)) return;
+    const up = Math.min(12, (n - 1) * 2);
+    noise(0.06, 0.16, 'highpass', 5000, 0.8);
+    tone(note(up + (core ? 7 : 0), 1760), 0.22 + stier * 0.04, 'sine', 0.06 + stier * 0.01, 0.005, note(up, 1600));
+    tone(note(up + 12, 2349), 0.12, 'triangle', 0.025, 0.01);
+    if (core) tone(3520, 0.3, 'sine', 0.04, 0.02);
+    if (crit) { tone(note(up + 19, 1046), 0.25, 'square', 0.03, 0.02); noise(0.2, 0.08, 'bandpass', 3000, 3, 0.02); }
+  }
+  // ぷちゅっ: 菌が割れる音。一閃で続けて斬るほど音が上がる
+  function kSplit(n = 1, big) {
+    if (!ok() || throttle('ksplit', 35)) return;
+    const up = Math.min(14, (n - 1) * 2);
+    noise(0.14, 0.18, 'lowpass', 1800, 1.4, 0, 260);
+    tone(note(up, 330), 0.16, 'triangle', 0.1, 0, note(up - 12, 330));
+    tone(note(PENTA[(n - 1) % 5] + 12 * Math.floor((n - 1) / 5), 880), 0.14, 'square', 0.035, 0.02);
+    if (big) { tone(70, 0.6, 'sine', 0.4, 0, 30); noise(0.5, 0.25, 'lowpass', 600, 0.8, 0, 80); }
+  }
+  // チン: 刀を鞘に納める音（一閃の締め）
+  function sheath(n = 2) {
+    if (!ok() || throttle('sheath', 120)) return;
+    tone(3135, 0.9, 'sine', 0.08, 0.02);
+    tone(4699, 0.5, 'sine', 0.03, 0.02);
+    noise(0.04, 0.08, 'highpass', 6000, 1, 0);
+    if (n >= 5) [0, 4, 7, 12].forEach((st, i) => tone(note(st, 784), 0.3, 'triangle', 0.04, 0.12 + i * 0.05));
+    if (n >= 10) [0, 4, 7, 11, 14].forEach((st) => tone(note(st, 392), 1.2, 'sawtooth', 0.025, 0.3));
+  }
+  function deflect() {
+    if (!ok() || throttle('deflect', 80)) return;
+    tone(2400, 0.08, 'square', 0.06);
+    tone(1800, 0.25, 'triangle', 0.05, 0.01, 1500);
+    noise(0.1, 0.12, 'bandpass', 4000, 4);
+  }
+  function cellBite() {
+    if (!ok() || throttle('bite', 90)) return;
+    tone(520, 0.08, 'square', 0.03, 0, 260);
+    noise(0.05, 0.05, 'lowpass', 900, 1);
+  }
+  function dnaTick() {
+    if (!ok() || throttle('dna', 45)) return;
+    tone(1400 + Math.random() * 300, 0.06, 'sine', 0.035);
+  }
+  function outbreak() {
+    if (!ok()) return;
+    for (let i = 0; i < 4; i++) tone(i % 2 ? 620 : 880, 0.22, 'sawtooth', 0.05, i * 0.22);
+    noise(0.9, 0.12, 'bandpass', 500, 0.8, 0, 3000);
+  }
+  function outbreakEnd() { if (!ok()) return; [7, 4, 0].forEach((st, i) => tone(note(st, 523), 0.18, 'triangle', 0.05, i * 0.07)); }
+  function gBoss() {
+    if (!ok()) return;
+    tone(55, 1.4, 'sawtooth', 0.12, 0, 40);
+    tone(82, 1.4, 'square', 0.04, 0.1, 60);
+    for (let i = 0; i < 3; i++) tone(988, 0.16, 'square', 0.04, 0.2 + i * 0.32);
+  }
+  function dimWarp(toGerm) {
+    if (!ok()) return;
+    tone(toGerm ? 80 : 1600, 1.1, 'sawtooth', 0.08, 0, toGerm ? 1600 : 80);
+    noise(1.2, 0.18, 'bandpass', toGerm ? 200 : 6000, 1.2, 0, toGerm ? 6000 : 200);
+    (toGerm ? [0, 1, 7, 13, 12] : [0, 4, 7, 12, 16]).forEach((st, i) => tone(note(st, 392), 0.5, 'triangle', 0.05, 0.6 + i * 0.07));
+  }
+
   function setEnabled(v) { enabled = v; if (!v) { stopLoop(); musicStop(); } if (ctx && master) master.gain.value = v ? vol * 0.55 : 0; }
   function setVolume(v) { vol = v; if (master) master.gain.value = enabled ? vol * 0.55 : 0; }
   function setVibe(v) { vibe = !!v; }
@@ -510,5 +585,6 @@ const Sfx = (() => {
     feverStart, feverEnd, boss, bossWin, bossFail, tick, stage, ach, squirrel, chest, gachaRoll, gachaReveal,
     prestige, goddess, gachaUp, showcase, equip, speed, comboFinish, axeHit, spawn, carry, multi,
     cutin, skillStart, skillHit, rollTick, musicLevel, beatPhase, musicOn, setBgm, rankUp, rankDown, twinkle, shatter,
+    kWhoosh, kSlice, kSplit, sheath, deflect, cellBite, dnaTick, outbreak, outbreakEnd, gBoss, dimWarp, setMode,
   };
 })();

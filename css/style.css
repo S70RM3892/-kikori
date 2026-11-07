@@ -1518,3 +1518,103 @@ body.night #hud[data-rank] .w-btn { animation: none; }
   .ci-motif { display: none; }
 }
 body.night .ci-motif { display: none; }
+
+/* =====================================================================
+   菌斬り次元（転生で開く、刀で菌を斬るもう一つの世界）
+   ===================================================================== */
+body:not(.dim-germ) .g-only { display: none !important; }
+body.dim-germ .tree-box, body.dim-germ .combo-box, body.dim-germ .rank-box, body.dim-germ #skill-box,
+body.dim-germ #dock, body.dim-germ .f-rail, body.dim-germ #btn-boss, body.dim-germ #critter, body.dim-germ #cur-wood,
+body.dim-germ .fever, body.dim-germ #hint { display: none !important; }
+
+.cur-dna { border-radius: 16px; padding: 5px 14px 5px 8px; max-width: 360px; border-color: rgba(90, 255, 176, 0.45); }
+.cur-dna .ico { font-size: 28px; }
+.cur-dna b { display: block; font-size: 25px; line-height: 1.1; color: #7affb8; text-shadow: 0 0 14px rgba(90, 255, 176, 0.45); }
+.cur-dna small { display: block; color: var(--muted); font-size: 10.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cur-factor b { color: #d8b0ff; }
+.cur.bump { animation: bump 0.25s ease-out; }
+
+/* 次元移動ボタン */
+.dim-btn { position: relative; overflow: hidden; }
+.dim-btn::before { content: ''; position: absolute; inset: -40%; background: conic-gradient(#5affb0, #c06aff, #ff6ad5, #4fe3ff, #5affb0); animation: spin 3s linear infinite; opacity: 0.55; }
+.dim-btn .dim-ico { position: relative; }
+.dim-btn.pulse { animation: dimPulse 1s ease-in-out infinite; }
+@keyframes dimPulse { 50% { transform: scale(1.18); box-shadow: 0 0 22px #5affb0; } }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ウェーブとボス */
+.wave-box { position: absolute; left: 50%; top: calc(var(--top) + 100px); transform: translateX(-50%); width: min(430px, calc(100% - 32px)); text-align: center; }
+@media (min-width: 900px) { .wave-box { top: calc(var(--top) + 12px); } }
+.wave-box .stage-line small { color: #b8ffd8; }
+.wave-prog { position: relative; height: 10px; margin-top: 4px; border-radius: 6px; background: rgba(0, 0, 0, 0.6); border: 2px solid rgba(0, 0, 0, 0.75); overflow: hidden; }
+.wave-prog i { position: absolute; inset: 0; transform-origin: left; transform: scaleX(0); background: linear-gradient(90deg, #3affa0, #7affe8); transition: transform 0.15s; }
+.wave-prog span { position: absolute; inset: -3px 0 0; font-size: 10px; font-weight: 800; line-height: 14px; text-shadow: 0 1px 0 #000; }
+.wave-box.farm .wave-prog i { background: repeating-linear-gradient(45deg, #3a8a6a 0 8px, #2a6a50 8px 16px); }
+.gboss-name { min-height: 0; font-family: var(--font-d); font-size: 15px; color: #ff8a9a; text-shadow: 0 2px 0 #000; margin-top: 2px; }
+.gboss-hp { display: none; }
+.wave-box.boss .gboss-hp { display: block; }
+.wave-box.boss .wave-prog { display: none; }
+.gboss-hp .hp-fill { background: linear-gradient(90deg, #ff2a5a, #ff8a3a); }
+.gboss-hp span { position: absolute; inset: -2px 0 0; font-size: 10px; font-weight: 800; text-shadow: 0 1px 0 #000; }
+#btn-gboss { position: absolute; left: 50%; top: calc(var(--top) + 168px); transform: translateX(-50%); padding: 8px 16px; border-radius: 999px; border: 2px solid #000; background: linear-gradient(#c06aff, #6a1aa8); color: #fff; font-weight: 800; font-size: 14px; box-shadow: 0 3px 0 #000, 0 0 18px rgba(192, 106, 255, 0.6); cursor: pointer; animation: bossPulse 1.1s ease-in-out infinite; }
+@media (min-width: 900px) { #btn-gboss { top: calc(var(--top) + 86px); } }
+
+/* 連斬 */
+.gcombo-box { position: absolute; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(var(--top) + 186px); text-align: right; opacity: 0; pointer-events: none; }
+@media (min-width: 900px) { .gcombo-box { top: calc(var(--top) + 118px); } }
+.gcombo-box .combo-n { color: #b8ffe0; }
+.gcombo-box.hot .combo-n { color: #ff8ad0; animation: hueSpin 0.8s linear infinite; }
+.gcombo-box .combo-l { color: #7affb8; }
+.gc-mult small { display: block; font-size: 9px; font-weight: 800; color: var(--muted); letter-spacing: 0.1em; }
+.gc-mult b { font-family: var(--font-d); font-weight: 400; font-size: 15px; color: #fff; text-shadow: 0 2px 0 #000; }
+.ougi-box b { color: #b8ffe0; }
+.ougi-box .sk-g i { background: linear-gradient(90deg, #5affb0, #c06aff); }
+
+/* 大発生 */
+.out-bar { position: absolute; left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(var(--bot) + 100px); max-width: 680px; margin: 0 auto; display: flex; align-items: center; gap: 8px; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+.out-bar.show { opacity: 1; }
+.out-bar span { font-family: var(--font-d); font-size: 12px; color: #9affb8; text-shadow: 0 2px 0 #000; white-space: nowrap; animation: pulse 0.4s infinite; }
+.out-bar .fbar i { background: linear-gradient(90deg, #2aff6a, #d8ff3a, #2aff6a); animation: hueSpin 1.4s linear infinite; }
+body.outbreak #app::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 5; box-shadow: inset 0 0 120px 30px rgba(60, 255, 120, 0.45); animation: outPulse 0.5s ease-in-out infinite alternate; }
+@keyframes outPulse { from { opacity: 0.45; } to { opacity: 1; } }
+
+/* 次元のクイック購入 */
+.g-dock .dk { border-color: rgba(90, 255, 176, 0.35); }
+.g-dock .dk.can { border-color: #5affb0; box-shadow: 0 0 14px rgba(90, 255, 176, 0.45); }
+.g-rail .w-btn em { filter: drop-shadow(0 0 6px rgba(90, 255, 176, 0.6)); }
+
+/* 次元移動の演出 */
+#dim-warp { position: fixed; inset: 0; z-index: 96; pointer-events: all; display: grid; place-items: center; overflow: hidden; opacity: 0; transition: opacity 0.35s; background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.9), rgba(120, 40, 200, 0.85) 30%, rgba(8, 0, 20, 0.96) 70%); }
+#dim-warp.to-forest { background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.9), rgba(60, 200, 90, 0.85) 30%, rgba(4, 20, 6, 0.96) 70%); }
+#dim-warp.on { opacity: 1; }
+#dim-warp.out { opacity: 0; transition: opacity 0.6s; }
+#dim-warp::before { content: ''; position: absolute; inset: -60%; background: conic-gradient(from 0deg, transparent, rgba(90, 255, 176, 0.5), transparent 25%, rgba(192, 106, 255, 0.55), transparent 50%, rgba(255, 106, 213, 0.5), transparent 75%, rgba(79, 227, 255, 0.5), transparent); animation: spin 0.9s linear infinite; }
+.dw-ring { position: absolute; width: 40vmin; height: 40vmin; border-radius: 50%; border: 6px solid rgba(255, 255, 255, 0.85); box-shadow: 0 0 40px #fff, inset 0 0 40px #fff; animation: dwRing 0.9s ease-out infinite; }
+.dw-ring.r2 { animation-delay: 0.45s; }
+@keyframes dwRing { from { transform: scale(0.1); opacity: 1; } to { transform: scale(3); opacity: 0; } }
+.dw-t { position: relative; font-family: var(--font-d); font-size: clamp(28px, 8vw, 56px); color: #fff; text-shadow: 0 0 20px #c06aff, 0 4px 0 #000; animation: finPop 0.6s cubic-bezier(0.2, 1.6, 0.4, 1) both; }
+
+/* 転生タブの次元の案内・解放のモーダル */
+.germ-gate-card { position: relative; margin: 12px 0; padding: 14px; border-radius: 16px; overflow: hidden; border: 2px solid rgba(192, 106, 255, 0.45); background: linear-gradient(135deg, rgba(40, 10, 60, 0.9), rgba(10, 40, 30, 0.9)); text-align: center; }
+.germ-gate-card b { position: relative; font-family: var(--font-d); font-weight: 400; font-size: 18px; color: #d8b0ff; }
+.germ-gate-card p { position: relative; font-size: 12px; margin: 6px 0 10px; }
+.germ-gate-card .btn { position: relative; }
+.germ-gate-card.open { border-color: #5affb0; box-shadow: 0 0 22px rgba(90, 255, 176, 0.35); }
+.ggc-ring, .gu-ring { position: absolute; left: 50%; top: 50%; width: 220px; height: 220px; margin: -110px; border-radius: 50%; background: conic-gradient(#5affb0, #c06aff, #ff6ad5, #4fe3ff, #5affb0); opacity: 0.18; filter: blur(8px); animation: spin 6s linear infinite; pointer-events: none; }
+.ggc-lock { position: relative; display: inline-block; font-weight: 800; font-size: 12px; color: var(--muted); }
+.gu-ring { position: relative; display: block; left: auto; top: auto; margin: 0 auto 8px; width: 90px; height: 90px; opacity: 0.8; }
+.g-tut { margin: 0; padding-left: 20px; font-size: 13px; line-height: 1.6; text-align: left; }
+.g-tut b { color: #7affb8; }
+.off-germ { font-size: 12px; margin-top: 8px; }
+.off-germ b { color: #7affb8; }
+
+/* 刀タブ */
+.kat-hero { display: flex; align-items: center; gap: 12px; width: 100%; margin: 4px 0 10px; padding: 10px 12px; border-radius: 16px; border: 2px solid rgba(255, 255, 255, 0.15); background: linear-gradient(135deg, rgba(20, 30, 50, 0.9), rgba(40, 10, 50, 0.9)); color: inherit; text-align: left; cursor: pointer; }
+.kat-hero .kh-img { flex: none; width: 96px; height: 96px; display: grid; place-items: center; }
+.kat-hero .kh-t { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.kat-hero small { font-size: 10px; font-weight: 800; color: var(--muted); letter-spacing: 0.1em; }
+.kat-hero b { font-family: var(--font-d); font-weight: 400; font-size: 18px; }
+.kat-hero em { font-style: normal; font-size: 12px; font-weight: 800; color: #b8ffe0; }
+.tab-note { margin: 4px 2px 8px; }
+.mut-row .r-desc { color: #d8c8ff; }
+.dim-box .pb-t { color: #9aff9a; }

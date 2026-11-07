@@ -715,6 +715,117 @@ const Axe3D = (() => {
       handle(P, def.handle, { rings: '#e8e8f0', ringsAt: [44, 48, 52, 56, 60], pommel: '#ffd45a' });
       P.glow(def.glow, 50, 12, 46, 0.4);
     },
+    // 刀（菌斬り次元）: 柄・鍔・はばき・反りのある刀身。刃文は頂点色、特殊な刀身は def.k.fx
+    blade(P, def) {
+      const K = def.k || {};
+      const rank = RANKS[def.r] || 0;
+      const L = 92 * (K.len || 1), curve = K.curve == null ? 1 : K.curve;
+      const wood = !!K.wood, fx = K.fx || '';
+      const N = 22;
+      const cx = (t) => 32 - curve * 7 * t * t;
+      const wd = (t) => 3.5 - 0.9 * t;
+      const spine = [], edge = [];
+      for (let i = 0; i <= N; i++) {
+        const t = i / N, y = 36 - t * L;
+        spine.push([cx(t) - wd(t) / 2, y]);
+        // 切っ先: 刃の側が丸く峰へ回り込む
+        const k = t < 0.86 ? 1 : Math.cos(((t - 0.86) / 0.14) * (Math.PI / 2));
+        edge.push([cx(t) - wd(t) / 2 + wd(t) * Math.max(0.05, k), y]);
+      }
+      const bladeShape = (pts) => { const sh = new T3.Shape(); sh.moveTo(pts[0][0], -pts[0][1]); for (let i = 1; i < pts.length; i++) sh.lineTo(pts[i][0], -pts[i][1]); sh.closePath(); return sh; };
+      const outline = spine.concat(edge.slice().reverse());
+      const mkBlade = () => {
+        const g = extrude(bladeShape(outline), wood ? 2.2 : 1.1, wood ? 0.6 : 0.45, 4);
+        // 刃文: 刃先側は明るく、波打つ境目から地の色
+        const p = g.attributes.position, arr = new Float32Array(p.count * 3);
+        const cEdge = col(K.hamon || def.blade[0]), cBody = col(def.blade[1]), cHi = col(def.blade[0]), tc = new T3.Color();
+        for (let i = 0; i < p.count; i++) {
+          const x = p.getX(i), y = -p.getY(i);
+          const t = Math.max(0, Math.min(1, (36 - y) / L));
+          const left = cx(t) - wd(t) / 2;
+          const u = (x - left) / wd(t); // 0 = 峰 1 = 刃
+          const line = 0.58 - 0.1 * Math.sin(t * 38) * (wood ? 0 : 1);
+          const k = wood ? 0.5 + u * 0.4 : u > line ? 1 : u > line - 0.12 ? (u - line + 0.12) / 0.12 : 0;
+          tc.copy(cBody).lerp(cHi, 0.25 + 0.25 * (1 - t)).lerp(cEdge, k);
+          arr[i * 3] = tc.r; arr[i * 3 + 1] = tc.g; arr[i * 3 + 2] = tc.b;
+        }
+        g.setAttribute('color', new T3.BufferAttribute(arr, 3));
+        return g;
+      };
+      const glowC = def.glow && def.glow !== 'rainbow' ? def.glow : '#ffffff';
+      let bladeMat;
+      if (fx === 'beam') bladeMat = P.basic({ color: glowC, transparent: true, opacity: 0.85, blending: T3.AdditiveBlending, depthWrite: false });
+      else if (fx === 'void' || fx === 'galaxy') bladeMat = P.std({ color: '#ffffff', vertexColors: true, metalness: 0.6, roughness: 0.25, emissive: fx === 'void' ? '#3a0a5a' : '#1a2a6a', emissiveIntensity: 0.9 });
+      else if (fx === 'crystal') bladeMat = P.std({ color: '#ffffff', vertexColors: true, metalness: 0.2, roughness: 0.05, transparent: true, opacity: 0.88, emissive: glowC, emissiveIntensity: 0.35 });
+      else bladeMat = P.std({ color: '#ffffff', vertexColors: true, flatShading: false, metalness: wood ? 0 : 0.92, roughness: wood ? 0.75 : 0.14, emissive: glowC, emissiveIntensity: def.glow ? 0.12 : 0.05 });
+      const blades = [];
+      const addBlade = (rot) => {
+        const holder = new T3.Group();
+        holder.position.set(32, -37, 0);
+        holder.rotation.z = rot;
+        P.grp.add(holder);
+        const inner = new T3.Group();
+        inner.position.set(-32, 37, 0);
+        holder.add(inner);
+        const m = P.add(mkBlade(), bladeMat, 0, 0, 0, fx === 'beam' ? false : true, inner);
+        blades.push(m);
+        if (fx === 'beam') {
+          // 光る芯
+          const core = new T3.Mesh(m.geometry, P.basic({ color: '#ffffff', transparent: true, opacity: 0.9, depthWrite: false }));
+          core.scale.set(0.55, 1, 0.5);
+          core.position.x = 14.5;
+          m.add(core);
+        }
+        return holder;
+      };
+      if (K.twin) { addBlade(0.2); addBlade(-0.2); } else addBlade(0);
+      // はばき・鍔・柄
+      const gold = rank >= 3 ? '#ffd45a' : '#c8a050';
+      P.add(new T3.BoxGeometry(3.6, 3.2, 3.2), P.std({ color: gold, metalness: 0.95, roughness: 0.2 }), 32, 37.6, 0, false);
+      const tsubaCol = rank >= 5 ? gold : rank >= 3 ? '#3a3040' : '#2a2a2a';
+      const tsubaMat = P.std({ color: tsubaCol, metalness: 0.85, roughness: 0.3, emissive: rank >= 6 ? glowC : '#000000', emissiveIntensity: rank >= 6 ? 0.3 : 0 });
+      const ts = K.tsuba || 'round';
+      const star = (n, r1, r2) => { const sh = new T3.Shape(); for (let i = 0; i < n * 2; i++) { const a = (i / (n * 2)) * Math.PI * 2, r = i % 2 ? r2 : r1; if (i) sh.lineTo(Math.cos(a) * r, Math.sin(a) * r); else sh.moveTo(Math.cos(a) * r, Math.sin(a) * r); } sh.closePath(); return sh; };
+      const flower = (n, r) => { const sh = new T3.Shape(); for (let i = 0; i <= 96; i++) { const a = (i / 96) * Math.PI * 2, rr = r * (0.78 + 0.22 * Math.abs(Math.cos((a * n) / 2))); if (i) sh.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); else sh.moveTo(Math.cos(a) * rr, Math.sin(a) * rr); } return sh; };
+      let tg = null;
+      if (ts === 'round') tg = new T3.CylinderGeometry(6.4, 6.4, 1.6, 28);
+      else if (ts === 'square') { tg = new T3.BoxGeometry(11, 1.6, 9.5); }
+      else if (ts === 'ring') { tg = new T3.TorusGeometry(5.4, 1.2, 8, 28); tg.rotateX(Math.PI / 2); }
+      else if (ts === 'flower' || ts === 'star' || ts === 'gear') {
+        const sh = ts === 'flower' ? flower(5, 7) : ts === 'star' ? star(5, 7.4, 3.6) : star(12, 6.8, 5.6);
+        tg = new T3.ExtrudeGeometry(sh, { depth: 1.6, bevelEnabled: false, curveSegments: 4 });
+        tg.translate(0, 0, -0.8);
+        tg.rotateX(Math.PI / 2);
+      }
+      if (tg) P.add(tg, tsubaMat, 32, 39.8, 0);
+      P.add(new T3.CylinderGeometry(2.3, 2.5, 22, 12), P.std({ color: def.handle, roughness: 0.8, metalness: 0.05 }), 32, 51.5, 0);
+      const wrap = P.std({ color: lighten(def.handle, 0.35), roughness: 0.7 });
+      for (let y = 43; y <= 60; y += 3.4) {
+        const d = new T3.OctahedronGeometry(1.6, 0);
+        d.scale(1, 1.2, 1.9);
+        P.add(d, wrap, 32, y, 0, false);
+      }
+      P.add(new T3.CylinderGeometry(2.7, 2.6, 2.2, 12), P.std({ color: gold, metalness: 0.9, roughness: 0.25 }), 32, 63.4, 0);
+      // 光・炎・星
+      const tipY = 36 - L * 0.55;
+      if (def.glow) for (let i = 0; i < 3; i++) P.glow(glowC, cx(0.3 + i * 0.25) + 1, 36 - L * (0.3 + i * 0.25), 30 + rank * 3, 0.32);
+      if (fx === 'flame') {
+        const fl = [];
+        for (let i = 0; i < 7; i++) fl.push(P.glow(i % 2 ? '#ffb02e' : '#ff5a1f', cx(i / 7) + 2, 36 - L * (0.1 + i * 0.12), 14, 0.7, 2));
+        P.ticks.push((t) => fl.forEach((f, i) => { const k = 0.7 + 0.5 * Math.sin(t * 13 + i * 1.7); f.scale.set(14 * k, 20 * k, 1); f.material.opacity = 0.45 + 0.3 * k; }));
+      }
+      if (fx === 'void' || fx === 'galaxy') {
+        const st2 = [];
+        for (let i = 0; i < 9; i++) st2.push(P.glow(i % 3 ? '#ffffff' : glowC, cx(i / 9) + (Math.random() - 0.5) * 3, 36 - L * (0.08 + i * 0.1), 5, 0.9, 2));
+        P.ticks.push((t) => st2.forEach((f, i) => { f.material.opacity = 0.3 + 0.7 * Math.abs(Math.sin(t * 3 + i * 1.3)); }));
+      }
+      if (fx === 'rainbow') {
+        const c2 = new T3.Color();
+        P.ticks.push((t) => { if (bladeMat.emissive) { bladeMat.emissive.copy(c2.setHSL((t * 0.25) % 1, 1, 0.5)); bladeMat.emissiveIntensity = 0.45; } });
+      }
+      if (fx === 'beam') P.glow(glowC, cx(0.5), tipY, 70, 0.45);
+      P.blade = { L, tip: [cx(1), 36 - L] };
+    },
     // 虚数斧イマジナリ: 現実に存在しないホログラム。ときどきバグる
     imaginary(P) {
       const holo = (c) => {
@@ -886,6 +997,7 @@ const Axe3D = (() => {
   // 3Dモデルを斜めに構えた絵にして返す（{ url, canvas }）。WebGL が無ければ null。
   // opts（{ env, rot }）を渡すと映り込みの強さや向きを変えた試し描き（キャッシュしない）
   const THUMB_ROT = [-0.2, -0.3, -0.62];
+  const KATANA_ROT = [-0.12, -0.35, -0.8];
   function thumb(def, px = 224, opts) {
     if (!renderer || !def) return null;
     const hit = !opts && thumbs.get(def.id);
@@ -900,7 +1012,7 @@ const Axe3D = (() => {
       // 斜めに構えると正面の照明を強く拾って白飛びするので、映り込みを弱める
       const envK = opts && opts.env != null ? opts.env : 0.85;
       for (const m of P.mats) if (m.isMeshStandardMaterial) m.envMapIntensity = (m.envMapIntensity == null ? 1 : m.envMapIntensity) * envK;
-      const rot = (opts && opts.rot) || THUMB_ROT;
+      const rot = (opts && opts.rot) || (def.kind === 'katana' ? KATANA_ROT : THUMB_ROT);
       const holder = new T3.Group();
       P.grp.position.set(-32, 34, 0);
       holder.add(P.grp);
@@ -963,7 +1075,7 @@ const Axe3D = (() => {
   let warmList = null;
   function warmStep() {
     if (!renderer) return false;
-    if (!warmList) warmList = D.AXES.slice();
+    if (!warmList) warmList = D.AXES.slice().concat(typeof GD !== 'undefined' ? GD.KATANAS : []);
     while (warmList.length) {
       const a = warmList.shift();
       if (!thumbs.has(a.id)) { thumb(a); return true; }

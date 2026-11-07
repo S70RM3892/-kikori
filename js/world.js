@@ -1261,6 +1261,7 @@ const World = (() => {
 
   return {
     get ok() { return ok; },
+    get renderer() { return renderer; },
     init, resize, frame, setQuality, palette, trunkInfo, canopyScreen, notchScreen, toScreen,
     reset, onSpawn, onHit, onProc, onFell, onBossFail, finisher, flashLight, shake, punch, roll, setRank, skill, grab, drag, release,
     set onLanded(fn) { onLanded = fn; },

@@ -19,6 +19,8 @@ const Input = (() => {
     wrap.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 
+  // 菌斬り次元: 刀で菌を斬る（線分と円の当たり判定）
+  const germ = () => G.S.dim === 'germ' && typeof GM !== 'undefined' && typeof Micro !== 'undefined' && Micro.ok;
   const blade = (e, type) => ({ x: e.clientX, y: e.clientY - (type === 'mouse' ? 0 : TOUCH_LIFT), t: e.timeStamp || performance.now() });
 
   function down(e) {
@@ -30,6 +32,7 @@ const Input = (() => {
     try { wrap.setPointerCapture(e.pointerId); } catch (err) { /* 古いブラウザ */ }
     const p = blade(e, e.pointerType);
     held = { id: e.pointerId, type: e.pointerType, pts: [p], start: p, moved: 0, lastSide: 0, lastOut: p, whoosh: 0 };
+    if (germ()) { GM.strokeStart(); FX.grab(p); return; }
     held.lastSide = sideOf(p, FX.trunkInfo());
     FX.grab(p);
   }
@@ -52,7 +55,8 @@ const Input = (() => {
     const ti = FX.trunkInfo();
     const sp = speedNow(ti);
     FX.drag(p, sp);
-    if (sp >= 2.5 && p.t - held.whoosh > 140) { held.whoosh = p.t; Sfx.whoosh(sp); }
+    if (sp >= 2.5 && p.t - held.whoosh > 140) { held.whoosh = p.t; if (germ()) Sfx.kWhoosh(sp); else Sfx.whoosh(sp); }
+    if (germ()) { germCut(prev, p, sp); return; }
     if (!ti) { held.lastSide = 0; return; }
     const side = sideOf(p, ti);
     if (side === 0) return;
@@ -104,7 +108,49 @@ const Input = (() => {
     const tapLike = held.moved < 14 && dur < 350;
     held = null;
     FX.release();
+    if (germ()) {
+      if (tapLike) germTap(e.clientX, e.clientY - (e.pointerType === 'mouse' ? 0 : TOUCH_LIFT * 0.5));
+      GM.strokeEnd();
+      return;
+    }
     if (tapLike) UI.tapSwing(e.clientX, e.clientY);
+  }
+  // 線分 a→b が菌の円を通ったら斬る。中心の近くを通ったら「芯」
+  function germCut(a, b, sp) {
+    if (UI.blocked()) return;
+    const st = GM.stats();
+    const dx = b.x - a.x, dy = b.y - a.y, L2 = dx * dx + dy * dy;
+    if (L2 < 4) return;
+    // 時刻がまとめて届いて速さが測れないときは、動いた距離で振ったとみなす
+    if (sp === 0 && L2 >= 100) sp = 1.5;
+    if (sp < 0.7) return;
+    const ang = Math.atan2(-dy, dx);
+    const list = GM.T.germs.slice();
+    for (const ge of list) {
+      if (!ge.alive || ge.flee) continue;
+      const s = Micro.germScreen(ge);
+      const rr = s.r * st.reach * (ge.boss ? 0.92 : 1.08) + 6;
+      let t = ((s.x - a.x) * dx + (s.y - a.y) * dy) / L2;
+      t = Math.max(0, Math.min(1, t));
+      const cx = a.x + dx * t, cy = a.y + dy * t;
+      const dist = Math.hypot(s.x - cx, s.y - cy);
+      if (dist > rr) continue;
+      const r = GM.slice(ge.id, { speed: sp, core: dist <= s.r * st.core, ang, x: cx, y: cy });
+      if (r && !r.miss) Sfx.vibrate(r.killed ? (r.n >= 3 ? 20 : 12) : 6);
+    }
+  }
+  // タップ（突き）: 指の下の菌を弱く斬る
+  function germTap(x, y) {
+    if (UI.blocked()) return;
+    let best = null, bd = 1e9;
+    for (const ge of GM.T.germs) {
+      if (!ge.alive || ge.flee) continue;
+      const s = Micro.germScreen(ge);
+      const d = Math.hypot(s.x - x, s.y - y);
+      if (d < s.r * 1.2 && d < bd) { bd = d; best = { ge, s }; }
+    }
+    if (!best) return;
+    GM.slice(best.ge.id, { speed: 0.9, core: bd <= best.s.r * GM.stats().core, ang: Math.random() < 0.5 ? 0.7 : -0.7, x, y });
   }
 
   return { init, get holding() { return !!held; } };

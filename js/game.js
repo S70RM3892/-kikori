@@ -20,6 +20,19 @@ const G = (() => {
   // 日替わりピックアップの候補（SSR以上の幻想の斧）
   const PICKUPS = D.AXES.filter((a) => a.fantasy && RANK[a.r] >= 3);
   const SAVE_KEY = 'dopadopa-kikori-save-v1';
+  // 菌斬り次元の変異: mul は重ねがけ、add は足し算、それ以外は 1 + k×Lv
+  const HAS_GD = typeof GD !== 'undefined';
+  const MUT = {};
+  if (HAS_GD) GD.MUTATIONS.forEach((m) => (MUT[m.id] = m));
+  function mutv(id) {
+    const m = MUT[id];
+    const l = (m && S.germ && S.germ.muts && S.germ.muts[id]) || 0;
+    if (!m) return 1;
+    if (m.add) return m.k * l;
+    return m.mul ? Math.pow(1 + m.k, l) : 1 + m.k * l;
+  }
+  const germOpen = () => HAS_GD && (S.stats.prestiges || 0) >= GD.CFG.UNLOCK_PRESTIGE;
+  const katKinds = () => (S.germ && S.germ.kat ? Object.keys(S.germ.kat).length : 0);
   const COMBO_MS = [50, 100, 200, 300, 500, 777, 1000, 2000, 3000, 5000, 10000];
 
   function fresh() {
@@ -38,8 +51,10 @@ const G = (() => {
         justs: 0, maxChain: 0, greats: 0, maxSpeeds: 0, echoes: 0, thunders: 0, blasts: 0,
         goldens: 0, roulettes: 0, bestRoulette: 0, bestStreak: 0, rouletteWood: 0, multiKills: 0, bestMulti: 0, bestRank: 0,
         skills: 0, rolls: 0, rareRolls: 0, gotMYTH: 0, gotGOD: 0, gotOMEGA: 0, bestAxeLv: 0, bestRoll: 0, bestRollAxe: '', shopBuys: 0,
+        ...(HAS_GD ? GD.freshStats() : {}),
       },
       daily: { last: '' },
+      dim: 'forest', germ: HAS_GD ? GD.freshGerm() : {},
       settings: { sound: true, bgm: true, vol: 0.7, vibe: true, fx: 2, shake: true, flash: true, num: 'jp', night: true, buyAmt: 1, speed: 1 },
       study: null,
       tut: 0,
@@ -106,24 +121,26 @@ const G = (() => {
     for (const set of st.sets) for (const k in set.bonus) sp[k] = (sp[k] || 0) + set.bonus[k];
     st.sp = sp; st.eq = eq; st.eqLv = eqLv;
     const gl = (S.gachaLv || 1) - 1;
-    st.rollBase = (C.ROLL_BASE + C.ROLL_STEP * lv('rollspd') + C.GLV_ROLL * gl) * (1 + (sp.roll || 0));
-    st.luckBase = (1 + C.LUCK_STEP * lv('luck') + C.GLV_LUCK * gl) * (1 + (sp.luck || 0));
+    st.rollBase = (C.ROLL_BASE + C.ROLL_STEP * lv('rollspd') + C.GLV_ROLL * gl) * (1 + (sp.roll || 0)) * mutv('m_roll');
+    st.luckBase = (1 + C.LUCK_STEP * lv('luck') + C.GLV_LUCK * gl) * (1 + (sp.luck || 0)) * mutv('m_luck');
     st.achMult = 1 + Object.keys(S.ach).length * C.ACH_BONUS;
-    st.spiritMult = 1 + S.spirits * C.SPIRIT_BONUS;
+    st.spiritMult = 1 + S.spirits * C.SPIRIT_BONUS * mutv('m_spirit');
     st.axeMult = 1 + pas;
     st.levelMult = 1 + C.LEVEL_BONUS * ((S.lvl || 1) - 1);
-    st.global = st.achMult * st.spiritMult * st.axeMult * st.levelMult * (1 + (sp.all || 0));
+    // 菌斬り次元から: 集めた刀の種類と「完全変異」が森の全ダメージに効く
+    st.katMult = 1 + (HAS_GD ? GD.CFG.KAT_SYNERGY * katKinds() : 0);
+    st.global = st.achMult * st.spiritMult * st.axeMult * st.levelMult * (1 + (sp.all || 0)) * st.katMult * mutv('m_all');
     const guild = Math.pow(1.3, lv('guild'));
     st.wdps = {};
     let dps = 0;
     for (const w of D.WORKERS) {
       const n = S.workers[w.id] || 0;
-      const d = n * w.dps * milestoneMult(n) * guild * (1 + (sp.dps || 0)) * st.global;
+      const d = n * w.dps * milestoneMult(n) * guild * (1 + (sp.dps || 0)) * st.global * mutv('m_photo');
       st.wdps[w.id] = d;
       dps += d;
     }
     st.dps = dps;
-    st.tapBase = tapBase(lv('tap'));
+    st.tapBase = tapBase(lv('tap')) * mutv('m_tap');
     st.soul = C.SOUL_BASE + 0.005 * lv('soul');
     st.axeTap = eq ? D.RARITY[eq.r].tap * (1 + 0.1 * (eqLv - 1)) : 1;
     st.tap = (st.tapBase * st.global + dps * st.soul) * st.axeTap;
@@ -147,19 +164,19 @@ const G = (() => {
     st.blastMult = 8 + bl;
     // 演出の強さ（斬撃系の強化レベルが上がるほど派手になる）
     st.juice = 1 + 0.02 * (lv('swing') + lv('just') + ec + th + bl + lv('critc') + lv('critm'));
-    st.comboWin = C.COMBO_WINDOW + 0.1 * lv('combo') + (sp.combo || 0);
+    st.comboWin = C.COMBO_WINDOW + 0.1 * lv('combo') + (sp.combo || 0) + mutv('m_combo');
     st.comboCap = C.COMBO_CAP + 50 * lv('combocap');
-    st.feverTime = C.FEVER_TIME + 0.25 * lv('fever') + (sp.fever || 0);
+    st.feverTime = C.FEVER_TIME + 0.25 * lv('fever') + (sp.fever || 0) + mutv('m_fever');
     st.feverMult = C.FEVER_MULT + 0.5 * lv('fever');
     st.guild = guild;
     st.market = Math.pow(1.2, lv('market'));
-    st.reward = st.market * (1 + (sp.reward || 0));
-    st.boss = 1 + (sp.boss || 0);
-    st.gem = C.GEM_DROP + 0.005 * lv('gem') + (sp.gem || 0);
+    st.reward = st.market * (1 + (sp.reward || 0)) * mutv('m_wood');
+    st.boss = (1 + (sp.boss || 0)) * mutv('m_boss');
+    st.gem = (C.GEM_DROP + 0.005 * lv('gem') + (sp.gem || 0)) * mutv('m_gem');
     st.chest = C.CHEST_DROP + 0.004 * lv('chest');
     st.rare = 1 + 0.15 * lv('rare');
     st.sqInterval = Math.pow(0.92, lv('squirrel'));
-    st.offline = Math.min(1, C.OFFLINE_BASE + 0.05 * lv('night') + (perk(5) ? 0.25 : 0));
+    st.offline = Math.min(1, C.OFFLINE_BASE + 0.05 * lv('night') + (perk(5) ? 0.25 : 0) + (mutv('m_offline') - 1));
     st.pity = perk(10) ? 40 : C.PITY;
     let rar = 1 - D.TREE_RARITY.slice(1).reduce((a, r) => a + r.p * st.rare, 0);
     for (const r of D.TREE_RARITY.slice(1)) rar += r.p * st.rare * r.mult;
@@ -240,6 +257,7 @@ const G = (() => {
   const xpNeed = (l) => Math.floor(25 * Math.pow(l, 1.55) + 25);
   function gainXp(n) {
     if (!(n > 0)) return;
+    n *= mutv('m_xp');
     S.xp += n;
     while (S.xp >= xpNeed(S.lvl)) {
       S.xp -= xpNeed(S.lvl);
@@ -743,12 +761,14 @@ const G = (() => {
   function buyShop(id) {
     const it = D.SHOP.find((x) => x.id === id);
     if (!it || S.study) return { error: 'none' };
+    if (it.act === 'outbreak' && (S.dim !== 'germ' || typeof GM === 'undefined' || GM.T.outbreak > 0 || GM.T.boss)) return { error: 'dim' };
     if (S.gems < it.gems) return { error: 'gems' };
     S.gems -= it.gems;
     S.stats.shopBuys = (S.stats.shopBuys || 0) + 1;
     if (it.buff) addBuff('shop_' + it.id, it.buff[0], it.buff[1], it.buff[2], it.name, it.icon);
     if (it.act === 'fever' && T.fever <= 0) startFever();
     if (it.act === 'golden') { T.golden = C.GOLDEN_TIME * 2; T.goldenMax = T.golden; S.stats.goldens++; emit('golden', { time: T.golden }); }
+    if (it.act === 'outbreak') GM.startOutbreak();
     emit('shop', it);
     return { ok: true };
   }
@@ -844,7 +864,7 @@ const G = (() => {
 
   // ------------------------------------------------------------- ミッション
   function newMission(exclude) {
-    const types = D.MISSIONS.filter((m) => exclude.indexOf(m.t) < 0);
+    const types = D.MISSIONS.filter((m) => exclude.indexOf(m.t) < 0 && (!m.germ || germOpen()));
     const def = types[Math.floor(Math.random() * types.length)];
     const l = S.missionLv;
     let target;
@@ -857,7 +877,7 @@ const G = (() => {
     };
   }
   function ensureMissions() {
-    S.missions = S.missions.filter((m) => m && MS[m.t]);
+    S.missions = S.missions.filter((m) => m && MS[m.t] && (!MS[m.t].germ || germOpen()));
     while (S.missions.length < 3) S.missions.push(newMission(S.missions.map((m) => m.t)));
   }
   function missionProgress(m) {
@@ -936,6 +956,7 @@ const G = (() => {
     dirty();
     spawnTree();
     emit('prestige', { gain: g });
+    if (HAS_GD && S.stats.prestiges === GD.CFG.UNLOCK_PRESTIGE) emit('germUnlock');
     save();
     return g;
   }
@@ -976,6 +997,21 @@ const G = (() => {
     emit('studyAbort', { sec, wood });
   }
 
+  // 菌斬り次元にいる間の斧ガチャのまとめ（森に戻ったときに知らせる）
+  function awayRolls(res) {
+    const a = T.away || (T.away = { n: 0, best: null, news: [], ups: 0 });
+    a.n += res.n;
+    if (res.best && (!a.best || RANK[res.best.r] > RANK[a.best.r])) a.best = res.best;
+    for (const o of res.notable) if (o.isNew && a.news.length < 12) a.news.push(o);
+    a.ups += res.levelUps;
+  }
+  function takeAway() {
+    const a = T.away;
+    const wood = T.awayWood || 0;
+    T.away = null; T.awayWood = 0;
+    return { rolls: a, wood };
+  }
+
   // ------------------------------------------------------------- オフライン
   function applyOffline(now = Date.now()) {
     let from = S.lastSave;
@@ -992,7 +1028,8 @@ const G = (() => {
     if (slept) { gain *= C.SLEEP_BONUS; S.stats.sleeps++; }
     gainWood(gain, true);
     const rolls = autoRoll(Math.min(C.OFFLINE_ROLL_MAX, Math.floor(st.rollBase * sec * st.offline)), st.luckBase, true);
-    emit('offline', { sec, gain, slept, eff: st.offline, rolls });
+    const germ = typeof GM !== 'undefined' ? GM.offline(sec, st.offline, slept) : null;
+    emit('offline', { sec, gain, slept, eff: st.offline, rolls, germ });
     if (rolls) for (const set of rolls.newSets) emit('setDone', set);
   }
 
@@ -1074,8 +1111,13 @@ const G = (() => {
         if (alive) hit(p.dmg);
       }
     }
-    if (!T.tree) spawnTree();
-    if (T.tree.alive) {
+    const away = S.dim === 'germ';
+    if (away) {
+      // 森は留守番: 木こりの稼ぎ（放置収入と同じ計算）だけ入れる
+      const inc = incomeRate() * buffMult('all') * buffOf('dps') * gdt;
+      if (inc > 0) { gainWood(inc); T.awayWood = (T.awayWood || 0) + inc; }
+    } else if (!T.tree) spawnTree();
+    if (away) { /* 木は動かさない */ } else if (T.tree.alive) {
       if (st.dps > 0) {
         let d = st.dps * comboMult() * buffMult('all') * buffOf('dps') * (T.fever > 0 ? st.feverMult : 1) * gdt;
         if (T.tree.boss) d *= st.boss;
@@ -1101,10 +1143,11 @@ const G = (() => {
     if (T.rollAcc >= 1) {
       const n = Math.min(C.ROLL_TICK_MAX, Math.floor(T.rollAcc));
       T.rollAcc = Math.min(T.rollAcc - n, C.ROLL_TICK_MAX);
-      autoRoll(n, luckNow());
+      const res = autoRoll(n, luckNow(), away);
+      if (away && res) awayRolls(res);
     }
 
-    if (T.squirrel) {
+    if (away) { /* リスも出ない */ } else if (T.squirrel) {
       T.squirrel.life -= dt;
       if (T.squirrel.life <= 0) { T.squirrel = null; T.squirrelTimer = nextSquirrelTime(); emit('sqGone'); }
     } else {
@@ -1180,6 +1223,7 @@ const G = (() => {
       for (const id in S.axes) S.stats.bestAxeLv = Math.max(S.stats.bestAxeLv || 0, axeLv(id));
       if (S.equip && !S.axes[S.equip]) S.equip = null;
       if (S.study && !(S.study.end > 0)) S.study = null;
+      if (S.dim !== 'germ' || !germOpen()) S.dim = 'forest';
       return true;
     } catch (e) {
       return false;
@@ -1232,6 +1276,7 @@ const G = (() => {
     startStudy, abortStudy, finishStudy, studyLeft, applyOffline, checkDaily,
     save, serialize, loadFrom, init, exportSave, importSave, hardReset,
     hpFor, biomeIndex, isBossStage, incomeRate, milestoneMult, nextMilestone, buffMult, comboMult, tapBase,
+    gainGems, addBuff, rollRarity, mutv, germOpen, takeAway, katKinds,
     AX, WK, UP, RANK, COMBO_MS,
   };
 })();

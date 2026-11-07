@@ -9,7 +9,9 @@
     started = true;
     G.init(hotData && hotData.save ? hotData.save : null);
     FX.init({ blocked: () => UI.blocked() });
+    if (typeof GFX !== 'undefined') GFX.init();
     UI.init();
+    if (typeof GUI !== 'undefined') GUI.init();
     G.applyOffline(Date.now());
     G.checkDaily();
     G.save();
@@ -21,7 +23,9 @@
       last = now;
       try {
         G.tick(dt);
+        if (typeof GM !== 'undefined') GM.tick(dt);
         FX.frame(dt);
+        if (typeof GFX !== 'undefined') GFX.frame(dt);
         UI.frame(dt);
       } catch (e) {
         console.error(e);

@@ -40,6 +40,7 @@ const FX = (() => {
   const ONO_COL = [['#ffffff', '#1a0a00'], ['#ffe14a', '#3a1400'], ['#7fe8ff', '#002a3a'], ['#ff6ab0', '#3a0018'], ['#9dff4a', '#0a2a00']];
   const streaks = [];
   let focusCool = 0;
+  const drawers = []; // 菌斬り次元などが足す描画（菌の体力バーなど）
 
   const FONT_D = '"Dela Gothic One", "Hiragino Sans", "Yu Gothic", system-ui, sans-serif';
   const FONT_B = '"M PLUS Rounded 1c", "Hiragino Maru Gothic ProN", "Hiragino Sans", system-ui, sans-serif';
@@ -51,6 +52,9 @@ const FX = (() => {
     { label: 'GOD CRIT!!!!', fill: '#ffffff', size: 62, rainbow: true },
   ];
   const SPEED_COL = ['#aab4c0', '#ffffff', '#9dff4a', '#ffd23a', '#ff8a1a', '#ffffff'];
+  // 菌斬り次元にいるときは、3Dの描画と手元の刀を micro.js に切り替える
+  const gdim = () => G.S.dim === 'germ' && typeof Micro !== 'undefined' && Micro.ok;
+  const W3 = () => (gdim() ? Micro : World);
   const ROUL = [2, 3, 5, 10, 100];
 
   // ------------------------------------------------------------- 準備
@@ -61,6 +65,7 @@ const FX = (() => {
     P2 = {};
     for (const k in D.AXE_PATHS) P2[k] = new Path2D(D.AXE_PATHS[k]);
     gl = World.init(document.getElementById('gl'));
+    if (gl && typeof Micro !== 'undefined') { try { Micro.init(World.renderer); } catch (e) { console.warn('菌斬り次元の3Dを作れない', e); } }
     World.onLanded = landed;
     World.onAxeChange = onAxeChange;
     resize();
@@ -77,8 +82,9 @@ const FX = (() => {
     oc.style.width = OW + 'px';
     oc.style.height = OH + 'px';
     const c = (el) => { if (!el) return null; const b = el.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; };
-    targets = { wood: c(document.querySelector('#cur-wood .ico')), gem: c(document.querySelector('#cur-gem .ico')) };
+    targets = { wood: c(document.querySelector('#cur-wood .ico')), gem: c(document.querySelector('#cur-gem .ico')), dna: c(document.querySelector('#cur-dna .ico')), factor: c(document.querySelector('#cur-factor .ico')) };
     World.resize();
+    if (typeof Micro !== 'undefined' && Micro.ok) Micro.resize();
     reel.t = 1;
   }
   function setQuality(settings) {
@@ -89,6 +95,7 @@ const FX = (() => {
     quality = night ? Math.min(1, settings.fx) : settings.fx;
     allowFlash = settings.flash && !night;
     World.setQuality(settings);
+    if (typeof Micro !== 'undefined' && Micro.ok) Micro.setQuality(settings);
   }
 
   // ------------------------------------------------------------- 2D粒子・文字
@@ -146,11 +153,11 @@ const FX = (() => {
     n = Math.max(1, Math.round(n * [0.4, 0.7, 1][quality]));
     for (let i = 0; i < n; i++) {
       const sx0 = x + (Math.random() - 0.5) * 50, sy0 = y + (Math.random() - 0.5) * 40;
-      spawn({ t: kind === 'gem' ? 'gem' : 'coin', x: sx0, y: sy0, sx: sx0, sy: sy0, cx: sx0 + (Math.random() - 0.5) * 240, cy: Math.min(sy0, tgt.y) - 60 - Math.random() * 120, tx: tgt.x, ty: tgt.y, life: 0.7 + i * 0.03, max: 0.7 + i * 0.03, home: true, s: kind === 'gem' ? 7 : 8, rot: 0, cb: i === n - 1 ? onArrive : null, kind });
+      spawn({ t: kind === 'gem' ? 'gem' : kind === 'dna' ? 'dna' : 'coin', x: sx0, y: sy0, sx: sx0, sy: sy0, cx: sx0 + (Math.random() - 0.5) * 240, cy: Math.min(sy0, tgt.y) - 60 - Math.random() * 120, tx: tgt.x, ty: tgt.y, life: 0.7 + i * 0.03, max: 0.7 + i * 0.03, home: true, s: kind === 'gem' ? 7 : 8, rot: 0, cb: i === n - 1 ? onArrive : null, kind });
     }
   }
   function addFlash(v, rgb = '255,255,255') { flash = Math.min(0.7, Math.max(flash, v)); flashRGB = rgb; }
-  function addShake(v) { World.shake(v); }
+  function addShake(v) { W3().shake(v); }
   function star4(c, x, y, r) {
     c.beginPath();
     c.moveTo(x, y - r * 2); c.quadraticCurveTo(x, y, x + r * 2, y); c.quadraticCurveTo(x, y, x, y + r * 2);
@@ -196,19 +203,45 @@ const FX = (() => {
 
   // ------------------------------------------------------------- 手持ちの斧・軌跡
   const hexRGB = (h) => { const n = parseInt(h.slice(1), 16); return `${n >> 16},${(n >> 8) & 255},${n & 255}`; };
-  function grab(p) { held = { x: p.x, y: p.y, sp: 0 }; trail.length = 0; World.grab(p); Sfx.grab(); }
+  function grab(p) { held = { x: p.x, y: p.y, sp: 0 }; trail.length = 0; W3().grab(p); Sfx.grab(); }
   function drag(p, sp) {
     if (!held) return;
     held.x = p.x; held.y = p.y; held.sp = sp;
     trail.push({ x: p.x, y: p.y, t: performance.now(), sp });
     if (trail.length > 80) trail.shift();
-    World.drag(p);
+    W3().drag(p);
   }
-  function release() { held = null; World.release(); }
+  function release() { held = null; W3().release(); }
+  // 刀の軌跡: 細く鋭い白い芯＋刀の光の色。連斬が伸びるほど太く、大発生中は毒々しい虹
+  function drawKatanaTrail(c, now) {
+    const st = GM.stats(), eq = st.eq;
+    const glowRGB = eq && eq.glow && eq.glow !== 'rainbow' ? hexRGB(eq.glow) : '170,220,255';
+    const rb = (eq && eq.glow === 'rainbow') || GM.T.outbreak > 0;
+    const heat = Math.min(1, GM.T.combo / 60);
+    c.save();
+    c.lineCap = 'round';
+    c.globalCompositeOperation = 'lighter';
+    for (const wm of [3.2, 1.6, 0.7]) {
+      for (let i = 1; i < trail.length; i++) {
+        const a = trail[i - 1], b = trail[i];
+        const f = i / (trail.length - 1);
+        const age = U.clamp((now - b.t) / TRAIL_MS, 0, 1);
+        const alpha = (1 - age) * f * (wm > 2 ? 0.22 : wm > 1 ? 0.5 : 1);
+        if (alpha <= 0.01) continue;
+        const w = (1.5 + Math.min(1, b.sp / 7) * (6 + heat * 6)) * f * wm;
+        const col = wm < 1 ? '255,255,255' : null;
+        c.strokeStyle = col ? `rgba(${col},${alpha})` : rb ? `hsla(${(clock * 500 + i * 30) % 360},100%,${wm > 2 ? 55 : 70}%,${alpha})` : `rgba(${glowRGB},${alpha})`;
+        c.lineWidth = w;
+        c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke();
+      }
+    }
+    c.restore();
+  }
   function drawTrail(c) {
     const now = performance.now();
     while (trail.length && now - trail[0].t > TRAIL_MS) trail.shift();
     if (trail.length < 2) return;
+    if (gdim()) { drawKatanaTrail(c, now); return; }
     const lv = G.S.upg.swing || 0;
     const style = lv >= 40 ? 'flame' : lv >= 25 || G.T.fever > 0 ? 'rainbow' : G.T.golden > 0 ? 'gold' : lv >= 1 ? 'glow' : 'plain';
     const eq = G.stats().eq;
@@ -371,7 +404,7 @@ const FX = (() => {
     c.fillStyle = 'rgba(255,225,74,0.4)';
     c.fillRect(v.cx - 30, v.notchY - v.justHalf, 60, v.justHalf * 2);
   }
-  const trunkInfo = () => (gl ? World.trunkInfo() : G.T.tree && G.T.tree.alive ? virtualTrunk() : null);
+  const trunkInfo = () => (gdim() ? null : gl ? World.trunkInfo() : G.T.tree && G.T.tree.alive ? virtualTrunk() : null);
   const sceneCenter = () => (gl ? World.canopyScreen() : { x: OW / 2, y: OH * 0.32 });
   const notchPoint = () => { if (gl) return World.notchScreen(); const v = virtualTrunk(); return { x: v.cx, y: v.notchY }; };
   const unit = () => U.clamp(Math.min(OW, OH) * 0.92, 220, 520);
@@ -407,14 +440,15 @@ const FX = (() => {
     c.setTransform(DPR, 0, 0, DPR, 0, 0);
     c.clearRect(0, 0, OW, OH);
     drawVignette(c, real);
-    if (!gl) drawFallbackTree(c);
+    if (!gl && !gdim()) drawFallbackTree(c);
+    for (const f of drawers) { try { f(c, dt, real); } catch (e) { console.error(e); } }
     drawTrail(c);
     for (let i = parts.length - 1; i >= 0; i--) {
       const p = parts[i];
       if (p.delay > 0) { p.delay -= dt; continue; }
       p.life -= dt;
       if (p.life <= 0) {
-        if (p.home) { if (p.kind === 'gem') Sfx.gem(); else Sfx.coin(); UI.bump(p.kind); if (p.cb) p.cb(); }
+        if (p.home) { if (p.kind === 'gem') Sfx.gem(); else if (p.kind === 'dna') Sfx.dnaTick(); else Sfx.coin(); UI.bump(p.kind); if (p.cb) p.cb(); }
         parts.splice(i, 1);
         continue;
       }
@@ -509,6 +543,14 @@ const FX = (() => {
           c.beginPath();
           for (const seg of p.pts) { c.moveTo(seg[0], seg[1]); for (let k = 2; k < seg.length; k += 2) c.lineTo(seg[k], seg[k + 1]); }
           c.stroke();
+          break;
+        case 'dna':
+          c.rotate(clock * 6 + (p.ph || 0));
+          c.fillStyle = '#5affb0'; c.strokeStyle = '#0a4a2a'; c.lineWidth = 1.5;
+          c.beginPath(); c.arc(0, 0, p.s, 0, 7); c.fill(); c.stroke();
+          c.strokeStyle = '#ffffff'; c.lineWidth = 1.6;
+          c.beginPath(); c.moveTo(-p.s * 0.5, -p.s * 0.6); c.bezierCurveTo(p.s * 0.6, -p.s * 0.2, -p.s * 0.6, p.s * 0.2, p.s * 0.5, p.s * 0.6); c.stroke();
+          c.beginPath(); c.moveTo(p.s * 0.5, -p.s * 0.6); c.bezierCurveTo(-p.s * 0.6, -p.s * 0.2, p.s * 0.6, p.s * 0.2, -p.s * 0.5, p.s * 0.6); c.stroke();
           break;
         case 'rcoin':
         case 'coin':
@@ -1438,13 +1480,14 @@ const FX = (() => {
     if (dpsT > 0.7) {
       dpsT = 0;
       const st = G.stats();
-      if (st.dps > 0 && G.T.tree && G.T.tree.alive && !blocked() && quality >= 1) {
+      if (!gdim() && st.dps > 0 && G.T.tree && G.T.tree.alive && !blocked() && quality >= 1) {
         const ti = trunkInfo();
         if (ti) floatText(ti.cx + (Math.random() - 0.5) * 90, ti.bottom - 10, '+' + U.fmt(st.dps * 0.7 * G.gameSpeed()), { size: 12, fill: '#ffe9c9', stroke: 'rgba(40,20,0,0.8)', vy: -45, life: 0.6, light: true });
       }
     }
     beatPulse();
-    World.frame(dt, real, blocked());
+    if (gdim()) Micro.frame(dt, real, blocked());
+    else World.frame(dt, real, blocked());
     drawOverlay(dt, real);
     drawTwinkles(ox, real);
     drawReel(real);
@@ -1474,6 +1517,19 @@ const FX = (() => {
     grab, drag, release, trunkInfo, unit, sceneCenter, axeIconSVG, axeIcon, focusLines,
     biomeName: () => World.palette(G.biomeIndex(G.S.stage)).name,
     get gl() { return gl; },
+    // 菌斬り次元の演出（germfx.js）から使う道具
+    lib: {
+      floatText, mergeText, spawn, burst, confetti, coins, addFlash, focusLines,
+      rain: (...a) => rain(...a), radial: (...a) => radial(...a), waves: (...a) => waves(...a), pillar: (...a) => pillar(...a),
+      boltsAt: (...a) => boltsAt(...a), slashes: (...a) => slashes(...a), implode: (...a) => implode(...a), bigTxt: (...a) => bigTxt(...a),
+      crackAt: (...a) => crackAt(...a), ribbon: (...a) => ribbon(...a), OV: () => OV, hexRGB, hslRGB,
+      hitStop: (v) => { hitStop = Math.max(hitStop, v); }, slowmo: (v) => { slowmo = Math.max(slowmo, v); }, pulse: (v) => { vPulse = Math.max(vPulse, v); },
+      comboPop: (v) => { comboPop = Math.max(comboPop, v); },
+      get quality() { return quality; }, get W() { return OW; }, get H() { return OH; }, get clock() { return clock; },
+      blocked: () => blocked(),
+      addDrawer: (f) => drawers.push(f),
+      get calm() { return calm; },
+    },
     get comboPop() { return comboPop; },
   };
 })();

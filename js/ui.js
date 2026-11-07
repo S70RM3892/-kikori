@@ -76,6 +76,7 @@ const UI = (() => {
   let tapOnly = 0;
   function doTap(x, y) {
     if (modalCur || overlayBusy || G.S.study) return;
+    if (gdim()) { if (typeof GUI !== 'undefined') GUI.keySlash(); return; }
     const r = G.tap(x, y);
     if (!r) return;
     Sfx.vibrate(r.tier >= 2 ? 25 : 6);
@@ -114,6 +115,14 @@ const UI = (() => {
     setCls('hud', 'speedy', eff > 1);
   }
   function updateRollStrip() {
+    if (gdim()) {
+      const r = GM.kRollRate();
+      setText('rs-rate', r < 100 ? r.toFixed(1) : fmt(r));
+      setText('rs-luck', `×${GM.kLuckNow().toFixed(2)}`);
+      setText('rs-lv', String(S().germ.kgLv || 1));
+      setCls('roll-strip', 'boost', GM.T.outbreak > 0 || GM.T.combo >= 30 || G.gameSpeed() > 1);
+      return;
+    }
     const T = G.T, rate = G.rollRate();
     const boost = T.fever > 0 || T.rank >= 3 || G.gameSpeed() > 1 || G.buffOf('roll') > 1 || G.buffOf('luck') > 1 || T.golden > 0;
     setText('rs-rate', rate < 100 ? rate.toFixed(1) : fmt(rate));
@@ -122,7 +131,7 @@ const UI = (() => {
     setCls('roll-strip', 'boost', boost);
   }
   function bump(kind) {
-    const e = kind === 'gem' ? $('#cur-gem') : $('#cur-wood');
+    const e = kind === 'gem' ? $('#cur-gem') : kind === 'dna' ? $('#cur-dna') : kind === 'factor' ? $('#cur-factor') : $('#cur-wood');
     if (!e) return;
     e.classList.remove('bump');
     void e.offsetWidth;
@@ -450,6 +459,7 @@ const UI = (() => {
     setBadge('ach', Math.max(0, Object.keys(s.ach).length - (s.achSeen || 0)));
     const g = G.spiritGain();
     setBadge('prestige', g > 0 && g >= Math.max(10, s.spirits * 0.5) ? true : 0);
+    if (typeof GUI !== 'undefined') GUI.badges(setBadge);
   }
 
   // --- 木こりタブ
@@ -661,6 +671,10 @@ const UI = (() => {
 
   // --- ガチャタブ（オートガチャが主役。プレミアム・ショップ・セット・図鑑）
   const RLAB = (r) => D.RARITY[r].label || r;
+  // 斧の必殺技・刀の奥義（カットインはどちらも同じ形）
+  const skOf = (a) => (a && (D.SKILLS[a.id] || (typeof GD !== 'undefined' && GD.OUGI[a.id]))) || null;
+  const seedOf = (a) => (a.kind === 'katana' ? 100 + GD.KATANAS.indexOf(a) : D.AXES.indexOf(a));
+  const gdim = () => G.S.dim === 'germ';
   const oneIn = (p) => '1/' + (p >= 1 ? '1' : U.fmt(Math.round(1 / p)));
   const feed = []; // 最近の当たり
   function bonusText(b) { return Object.keys(b).map((k) => D.SP_TEXT[k](b[k])).join(' ・ '); }
@@ -703,6 +717,7 @@ const UI = (() => {
         b.addEventListener('click', () => {
           const r = G.buyShop(it.id);
           if (r.error === 'gems') { toast('💎', 'ジェムが足りない', 'ボス・実績・ガチャLvで集めよう'); Sfx.error(); failShake(b); return; }
+          if (r.error === 'dim') { toast('☣️', '菌斬り次元で使う', 'ボス戦・大発生の最中は使えない'); Sfx.error(); failShake(b); return; }
           if (r.ok) { Sfx.unlockFx(); sparkAt(b, '#5ee8ff'); toast(it.icon, `${it.name}！`, it.desc, 'gold'); }
         });
         shop.appendChild(b);
@@ -826,7 +841,7 @@ const UI = (() => {
   const ciQ = [];
   let ciBusy = false;
   function cutIn(a, mode, o = {}) {
-    if (!a || !D.SKILLS[a.id]) return;
+    if (!a || !skOf(a)) return;
     if (mode === 'skill') { playCutIn(a, mode, o); return; }
     if (ciQ.length >= 3) ciQ.shift();
     ciQ.push({ a, mode, o });
@@ -839,10 +854,10 @@ const UI = (() => {
     playCutIn(it.a, it.mode, it.o, nextCut);
   }
   function cutInHTML(a, mode, o) {
-    const sk = D.SKILLS[a.id], R = D.RARITY[a.r];
+    const sk = skOf(a), R = D.RARITY[a.r];
     const motifs = Array.from({ length: 8 }, (_, i) => `<i style="--d:${(i * 0.13).toFixed(2)}s;--y:${(i * 37) % 90}%">${sk.motif}</i>`).join('');
     const txt = mode === 'skill'
-      ? `<small>必殺技</small><b class="ci-name">${esc(sk.name)}</b><span class="ci-line">${esc(a.name)}</span>`
+      ? `<small>${a.kind === 'katana' ? '奥義' : '必殺技'}</small><b class="ci-name">${esc(sk.name)}</b><span class="ci-line">${esc(a.name)}</span>`
       : `<div class="ci-top"><span class="rb r-${a.r}">${RLAB(a.r)}</span>${o.isNew ? '<em class="ci-new">NEW!!</em>' : o.lvUp ? `<em class="ci-new">Lv${o.lv}↑</em>` : ''}<small>${oneIn(R.p)}</small></div><b class="ci-name">${esc(a.name)}</b><span class="ci-line">「${esc(sk.line)}」</span>`;
     return `<div class="ci-band"><div class="ci-pat"></div><div class="ci-motif">${motifs}</div><div class="ci-img">${FX.axeIcon(a, mode === 'skill' ? 120 : 150)}</div><div class="ci-txt">${txt}</div><div class="ci-stamp">${esc(sk.stamp)}</div></div>`;
   }
@@ -855,13 +870,13 @@ const UI = (() => {
     const root = $('#cutins');
     if (!root) { if (done) done(); return; }
     if (mode === 'skill') root.querySelectorAll('.ci-skill').forEach((x) => x.remove());
-    const sk = D.SKILLS[a.id];
+    const sk = skOf(a);
     const e = el('div', `cutin ci-${mode} pat-${sk.pat}${a.glow === 'rainbow' ? ' rbw' : ''} r-${a.r}`, cutInHTML(a, mode, o || {}));
     ciVars(e, a);
     const dur = mode === 'skill' ? 1050 : 1900;
     e.style.setProperty('--dur', dur + 'ms');
     root.appendChild(e);
-    if (mode !== 'skill') { Sfx.cutin(G.RANK[a.r], D.AXES.indexOf(a)); Sfx.vibrate(G.RANK[a.r] >= 4 ? [15, 25, 30] : 12); }
+    if (mode !== 'skill') { Sfx.cutin(G.RANK[a.r], seedOf(a)); Sfx.vibrate(G.RANK[a.r] >= 4 ? [15, 25, 30] : 12); }
     setTimeout(() => { e.remove(); if (done) done(); }, dur);
   }
 
@@ -897,13 +912,13 @@ const UI = (() => {
     if (overlayBusy || modalCur) { setTimeout(playCut, 600); return; }
     const rk = G.RANK[o.r];
     overlayBusy = true;
-    const sk = D.SKILLS[o.axe.id];
+    const sk = skOf(o.axe);
     const ov = el('div', `cut-ov r-${o.r}${rk >= 7 ? ' myth' : ''}${sk ? ' pat-' + sk.pat : ''}`);
     ciVars(ov, o.axe);
-    ov.innerHTML = `${sk ? '<div class="ci-pat full"></div>' : ''}<div class="gs-rays"></div>${sk ? `<div class="ci-stamp full">${esc(sk.stamp)}</div>` : ''}<div class="cut-in"><div class="cut-odds">${oneIn(D.RARITY[o.r].p)}</div><div class="gs-rar"><span class="rb r-${o.r}">${RLAB(o.r)}</span>${o.isNew ? '<span class="gs-tag pu">NEW</span>' : ''}</div><div class="gs-img">${FX.axeIcon(o.axe, 210)}</div><div class="gs-name">${esc(o.axe.name)}</div>${sk ? `<div class="gs-line">「${esc(sk.line)}」</div>` : ''}<div class="gs-desc">${o.isNew ? esc(o.axe.desc) : o.lvUp ? `Lv${o.lv} に上がった！` : `${fmt(o.copies)}枚目`}</div>${sk ? `<div class="gs-sk">必殺技「${esc(sk.name)}」</div>` : ''}</div>`;
+    ov.innerHTML = `${sk ? '<div class="ci-pat full"></div>' : ''}<div class="gs-rays"></div>${sk ? `<div class="ci-stamp full">${esc(sk.stamp)}</div>` : ''}<div class="cut-in"><div class="cut-odds">${oneIn(D.RARITY[o.r].p)}</div><div class="gs-rar"><span class="rb r-${o.r}">${RLAB(o.r)}</span>${o.isNew ? '<span class="gs-tag pu">NEW</span>' : ''}</div><div class="gs-img">${FX.axeIcon(o.axe, 210)}</div><div class="gs-name">${esc(o.axe.name)}</div>${sk ? `<div class="gs-line">「${esc(sk.line)}」</div>` : ''}<div class="gs-desc">${o.isNew ? esc(o.axe.desc) : o.lvUp ? `Lv${o.lv} に上がった！` : `${fmt(o.copies)}枚目`}</div>${sk ? `<div class="gs-sk">${o.axe.kind === 'katana' ? '奥義' : '必殺技'}「${esc(sk.name)}」</div>` : ''}</div>`;
     document.body.appendChild(ov);
     Sfx.showcase(o.r);
-    if (sk) Sfx.cutin(rk, D.AXES.indexOf(o.axe));
+    if (sk) Sfx.cutin(rk, seedOf(o.axe));
     Sfx.vibrate(rk >= 7 ? [40, 40, 80] : [20, 30, 40]);
     FX.confetti(rk >= 7 ? 220 : rk >= 6 ? 160 : 100);
     FX.addFlash(rk >= 7 ? 0.7 : 0.4, rk >= 7 ? '255,255,255' : '255,240,200');
@@ -919,10 +934,12 @@ const UI = (() => {
   }
   // 画面を止める演出は「初めての LR 以上」と「MYTH 以上」だけ。続けて出すぎないように間をあける
   let lastCut = 0;
+  const kfeed = []; // 刀ガチャの最近の当たり
   function onAutoRoll(d) {
+    const fd = d.kind === 'katana' ? kfeed : feed;
     for (const o of d.notable) {
-      feed.unshift(o);
-      if (feed.length > 30) feed.length = 30;
+      fd.unshift(o);
+      if (fd.length > 30) fd.length = 30;
       const rk = G.RANK[o.r];
       if (blocked() && !overlayBusy) continue;
       const now = performance.now();
@@ -1184,6 +1201,13 @@ const UI = (() => {
         `<div class="pb-next"></div><button type="button" class="btn primary big pb-go">転生する</button>`;
       box.querySelector('.pb-go').addEventListener('click', confirmPrestige);
       root.appendChild(box);
+      if (typeof GD !== 'undefined') {
+        const open = G.germOpen();
+        const gb = el('div', `germ-gate-card${open ? ' open' : ''}`, `<div class="ggc-ring" aria-hidden="true"></div><b>🧫 菌斬り次元</b><p>${open ? '刀で菌を斬るもう一つの世界。変異因子で買う「変異」は森にも効く。' : `転生${GD.CFG.UNLOCK_PRESTIGE}回で開く。刀で菌を斬るもう一つの世界へ行けるようになる。`}</p>${open ? '<button type="button" class="btn primary">次元を移動する</button>' : '<span class="ggc-lock">🔒 転生すると開く</span>'}`);
+        const b = gb.querySelector('button');
+        if (b) b.addEventListener('click', () => { closeDrawer(); if (typeof GUI !== 'undefined') GUI.travel('germ'); });
+        root.appendChild(gb);
+      }
       root.appendChild(el('div', 'sec-title', `転生ボーナス <span>転生 ${s.stats.prestiges}回</span>`));
       const ul = el('ul', 'perks');
       for (const p of D.PERKS) ul.appendChild(el('li', G.perk(p.n) ? 'on' : '', `<b>${p.n}回</b>${esc(p.text)}`));
@@ -1232,6 +1256,16 @@ const UI = (() => {
         }, 600);
       }, 500);
     }, 1300);
+  }
+
+  // 1回目の転生のあと: 新しい次元が開いた
+  function germUnlockModal() {
+    if (typeof GUI === 'undefined') return;
+    modal({
+      title: '🧫 新しい次元が開いた！',
+      body: `<div class="gu-ring" aria-hidden="true"></div><p><b class="hl">菌斬り次元</b>へ行けるようになった。</p><p>刀をドラッグして、ただよう菌を斬る。一振りで何体も斬ると<b>一閃</b>。ボスの病原体を倒すと<b>🧪変異因子</b>が手に入り、「変異」で森の木こりや斧ガチャも強くなる。</p><p class="muted">左上の 🧫 ボタンでいつでも行き来できる。</p>`,
+      buttons: [{ text: '菌斬り次元へ！', cls: 'primary', onClick: () => GUI.travel('germ') }, { text: 'あとで' }],
+    });
   }
 
   // ------------------------------------------------------------- モーダル
@@ -1569,8 +1603,10 @@ const UI = (() => {
         for (const o of ro.notable) { feed.unshift(o); }
         if (feed.length > 30) feed.length = 30;
       }
+      const gm = d.germ;
+      const germHtml = gm && gm.dna > 0 ? `<p class="off-germ">🧫 菌斬り次元では免疫細胞が戦った: <b>🧬+${fmt(gm.dna)}</b>${gm.krolls ? ` ・ 刀ガチャ ${fmt(gm.krolls.n)}回` : ''}</p>` : '';
       body.innerHTML = `<p>${U.fmtTime(d.sec)}の間に木こり達が働いた（効率 ${Math.round(d.eff * 100)}%）</p><div class="big-num wood-num">+0</div>` +
-        (d.slept ? `<p class="sleep-bonus">😴 睡眠ボーナス ×${D.CFG.SLEEP_BONUS}！ よく寝た。</p>` : '') + rollHtml;
+        (d.slept ? `<p class="sleep-bonus">😴 睡眠ボーナス ×${D.CFG.SLEEP_BONUS}！ よく寝た。</p>` : '') + rollHtml + germHtml;
       modal({
         title: 'おかえり！', body, buttons: [{ text: '受け取る', cls: 'primary', onClick: () => { const c = FX.sceneCenter(); FX.coins(c.x, c.y, 16, 'wood'); } }],
         onOpen: (box) => countUp(box.querySelector('.wood-num'), d.gain),
@@ -1598,6 +1634,8 @@ const UI = (() => {
     });
     G.on('equip', () => { if (tab === 'upgrades' || tab === 'gacha') rebuild(); });
     G.on('autoRoll', onAutoRoll);
+    G.on('kRoll', onAutoRoll);
+    G.on('germUnlock', () => setTimeout(germUnlockModal, 2600));
     G.on('skill', () => { const b = $('#skill-box'); if (b) { b.classList.remove('fire'); void b.offsetWidth; b.classList.add('fire'); } });
     G.on('setDone', (set) => {
       banner('セット完成!!', `${set.icon} ${set.name} ・ ${bonusText(set.bonus)}`, 'unlock');
@@ -1637,6 +1675,7 @@ const UI = (() => {
   // ------------------------------------------------------------- フレーム
   function frame(dt) {
     updateHud(dt);
+    if (typeof GUI !== 'undefined') GUI.frame(dt);
     upT += dt;
     if (upT > 0.12) {
       upT = 0;
@@ -1658,5 +1697,12 @@ const UI = (() => {
     }
   }
 
-  return { init, frame, bump, banner, toast, modal, rebuild, blocked, nightCheck, afterHit, tapSwing: doTap, shakeHud, wave, beat, cutIn, openDrawer, closeDrawer, get tab() { return tab; } };
+  // 菌斬り次元の画面（germui.js）から使う道具
+  const _ = {
+    $, el, esc, fmt, S, modal, toast, banner, setText, setScale, setCls, holdButton, failShake, sparkAt, countUp, rebuild, TABS, TITLES, LEFT,
+    RLAB, oneIn, rareCard, cutIn, cutscene, kfeed, skOf, closeDrawer, openDrawer,
+    get overlayBusy() { return overlayBusy; }, set overlayBusy(v) { overlayBusy = v; },
+    get drawerOpen() { return drawerOpen; },
+  };
+  return { init, frame, bump, banner, toast, modal, rebuild, blocked, nightCheck, afterHit, tapSwing: doTap, shakeHud, wave, beat, cutIn, openDrawer, closeDrawer, get tab() { return tab; }, _ };
 })();

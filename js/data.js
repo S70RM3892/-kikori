@@ -100,6 +100,11 @@ const D = (() => {
     { id: 'w18', icon: '🌳', name: '世界樹の化身', desc: '木が木を伐る。哲学。', cost: 1.8e23, dps: 5e14 },
     { id: 'w19', icon: '👁️', name: '全知の伐採神', desc: '伐られる前から伐れている。', cost: 7e24, dps: 5.5e15 },
     { id: 'w20', icon: '🌠', name: '多元宇宙の斧', desc: 'すべての世界線で同時に一振り。', cost: 3e26, dps: 6e16 },
+    { id: 'w21', icon: '🧫', name: '次元樵', desc: '菌斬り次元から出張してきた刀の達人。', cost: 1.2e28, dps: 6.6e17 },
+    { id: 'w22', icon: '⚖️', name: '因果律の伐採者', desc: '伐ったという結果から先に作る。', cost: 5e29, dps: 7.4e18 },
+    { id: 'w23', icon: '🏛️', name: '神々の木こり組合', desc: 'オリュンポスの十二神が交代で伐る。', cost: 2.1e31, dps: 8.4e19 },
+    { id: 'w24', icon: '🔁', name: '無限ループ木こり', desc: '伐った木が生え、また伐る。永遠に。', cost: 9e32, dps: 9.6e20 },
+    { id: 'w25', icon: '🌲', name: '森そのもの', desc: '森が自分で自分を伐りはじめた。', cost: 4e34, dps: 1.1e22 },
   ];
   // 所持数マイルストーン [所持数, 倍率]
   const MILESTONES = [[25, 2], [50, 2], [100, 2], [150, 2], [200, 2], [250, 2], [300, 2], [400, 2], [500, 3],
@@ -220,6 +225,27 @@ const D = (() => {
     { id: 'x_chaos', r: 'GOD', fantasy: true, model: 'blackhole', fx: 'void', name: '混沌斧カオス', desc: 'はじまりの前の闇。触れたものは無に還る。', blade: ['#c0a0ff', '#10002a'], handle: '#000000', glow: '#b06aff', sp: { all: 3.5, critm: 10 } },
     { id: 'x_omega', r: 'OMEGA', fantasy: true, model: 'genesis', fx: 'genesis', name: '終焉斧Ω', desc: '百万回に一度。すべての森がひれ伏す。', blade: ['#ffffff', '#ff40ff'], handle: '#000000', glow: 'rainbow', double: true, sp: { all: 8, critm: 20, luck: 2, roll: 1 } },
     { id: 'x_imag', r: 'EX', fantasy: true, model: 'imaginary', fx: 'glitch', name: '虚数斧イマジナリ', desc: '実在しない。でも確かに伐れる。√-1。', blade: ['#5ff4ff', '#ff3a6a'], handle: '#0a0014', glow: '#ff4fd8', double: true, sp: { all: 1.5, critc: 0.1, echo: 0.5 } },
+    // --- 追加の斧
+    { id: 'a_branch', r: 'N', name: '木の枝の斧', desc: '拾った枝に石をくくりつけた。', blade: ['#bfa27a', '#7a5a3a'], handle: '#6a4a2a' },
+    { id: 'a_shell', r: 'N', name: '貝がらの斧', desc: '海辺で見つけた。波の音がする。', blade: ['#fff0e6', '#e0a890'], handle: '#c8a080' },
+    { id: 'a_bronze', r: 'R', name: '青銅の斧', desc: '古代の技術でできている。', blade: ['#e0b070', '#8a5a20'], handle: '#4a3020' },
+    { id: 'a_bone', r: 'R', name: '骨の斧', desc: '何の骨かは聞かないでほしい。', blade: ['#fffaf0', '#c8bca8'], handle: '#8a7a6a', sp: { critc: 0.01 } },
+    { id: 'a_coral', r: 'SR', name: '珊瑚の斧', desc: '海の森から来た。', blade: ['#ffb0c0', '#e0406a'], handle: '#ffe0e8', glow: '#ff8aa8', sp: { reward: 0.3 } },
+    { id: 'a_amber', r: 'SR', name: '琥珀の斧', desc: '中に太古の虫が眠っている。', blade: ['#ffe08a', '#c87a10'], handle: '#5a3a10', glow: '#ffc04a', sp: { gem: 0.003 } },
+    { id: 'a_moss', r: 'SR', name: '苔むした古斧', desc: '千年使われ続けてきた。', blade: ['#c8e0a0', '#5a7a3a'], handle: '#3a4a2a', glow: '#a0e06a', sp: { dps: 0.4 } },
+    { id: 'a_meteor', r: 'SSR', name: '隕鉄の斧', desc: '空から落ちてきた鉄で打った。', blade: ['#d8d0e8', '#4a4060'], handle: '#1a1428', glow: '#b0a0ff', sp: { critm: 2, boss: 0.5 } },
+    { id: 'x_icedragon', r: 'SSR', fantasy: true, model: 'dragon', fx: 'crystal', name: '氷竜斧グラキエス', desc: '氷の竜が凍った息で幹を砕く。', blade: ['#e8fbff', '#2a7ab0'], handle: '#0a2a4a', glow: '#7fe0ff', pal: ['#0a3a6a', '#bff4ff'], sp: { combo: 0.5, critm: 1.5 } },
+    { id: 'x_neon', r: 'SSR', fantasy: true, model: 'beam', fx: 'beam', name: 'ネオン斧サイバー', desc: '夜の街の光を刃にした。', blade: ['#fff0ff', '#ff3af0'], handle: '#14002a', glow: '#ff5af0', sp: { speed: 0.5, roll: 0.1 } },
+    { id: 'x_honey', r: 'SSR', fantasy: true, model: 'candy', fx: 'candy', name: 'ハチミツ斧ハニー', desc: 'とろーり甘い。木材がどんどん集まる。', blade: ['#fff0a0', '#e0a000'], handle: '#6a4a10', glow: '#ffd84a', sp: { reward: 0.8 } },
+    { id: 'x_thunderbird', r: 'UR', fantasy: true, model: 'phoenix', fx: 'bolt', name: '雷鳥斧サンダーバード', desc: '羽ばたくたびに雷が落ちる。', blade: ['#fffbe0', '#3a8aff'], handle: '#0a1a3a', glow: '#7ab8ff', pal: ['#fffbe0', '#3a8aff'], sp: { thunder: 0.15, all: 0.4 } },
+    { id: 'x_mirror', r: 'UR', fantasy: true, model: 'crystal', fx: 'crystal', name: '鏡面斧ミラージュ', desc: '映った木も一緒に伐れる。', blade: ['#ffffff', '#c8d0e0'], handle: '#8a90a0', glow: '#e8f0ff', sp: { echo: 0.3, all: 0.3 } },
+    { id: 'x_stardust', r: 'UR', fantasy: true, model: 'galaxy', fx: 'galaxy', name: '星屑斧スターダスト', desc: '流れ星のかけらを集めて固めた。', blade: ['#fff6d0', '#ff8ad0'], handle: '#2a0a2a', glow: '#ffb0e0', sp: { luck: 0.3, gem: 0.004 } },
+    { id: 'x_kraken', r: 'LR', fantasy: true, model: 'trident', fx: 'splash', name: '深海斧クラーケン', desc: '深海の主の触手でできている。', blade: ['#c0ffe8', '#0a4a5a'], handle: '#021a20', glow: '#3affd0', sp: { all: 0.8, boss: 1 } },
+    { id: 'x_starfall', r: 'LR', fantasy: true, model: 'bolt', fx: 'galaxy', name: '流星斧スターフォール', desc: '振り下ろすと流星群が降る。', blade: ['#ffffff', '#9a7aff'], handle: '#14082a', glow: '#c0a8ff', sp: { all: 0.7, critc: 0.05 } },
+    { id: 'x_yggdrasil', r: 'EX', fantasy: true, model: 'sakura', fx: 'petal', name: '世界樹斧ユグドラシル', desc: '世界樹の枝そのもの。伐るほど森が育つ。', blade: ['#f0ffe0', '#3aa84a'], handle: '#3a2a10', glow: '#9aff6a', sp: { all: 1.5, dps: 1 } },
+    { id: 'x_timeeater', r: 'MYTH', fantasy: true, model: 'gear', fx: 'gear', name: '時喰い斧クロノファージ', desc: '時間を食べて刃を研ぐ。', blade: ['#fff0c0', '#8a5a00'], handle: '#2a1a00', glow: '#ffd27a', sp: { all: 2, combo: 1, roll: 0.3 } },
+    { id: 'x_icephoenix', r: 'MYTH', fantasy: true, model: 'phoenix', fx: 'phoenix', name: '氷翼斧フロストウィング', desc: '凍てつく炎の翼。溶けない、消えない。', blade: ['#ffffff', '#3ad0ff'], handle: '#0a2a4a', glow: '#bff4ff', pal: ['#ffffff', '#3ad0ff'], sp: { all: 1.6, fever: 5 } },
+    { id: 'x_bigbang', r: 'GOD', fantasy: true, model: 'sun', fx: 'genesis', name: '創世斧ビッグバン', desc: '宇宙が始まった瞬間の光。', blade: ['#ffffff', '#ff8a3a'], handle: '#ffffff', glow: 'rainbow', sp: { all: 4, luck: 0.8 } },
   ];
   // 斧のシルエット（64x64、握りは下端 (32,62)）。Canvas の Path2D と SVG で共用。
   const AXE_PATHS = {
@@ -289,6 +315,19 @@ const D = (() => {
     x_amaterasu: { name: '天照・日輪斬', motion: 'giant', ov: 'sunpillar', stamp: '照', line: '夜は、もう来ない', pat: 'rays', motif: '☀️', fx: 'amaterasu' },
     x_chaos: { name: 'カオス・ゼロ', motion: 'vortex', ov: 'chaos', stamp: '混沌', line: 'すべては、無に還る', pat: 'cosmic', motif: '🌑', fx: 'chaos' },
     x_omega: { name: 'Ω・ファイナルエンド', motion: 'omega', ov: 'omega', stamp: 'Ω', line: '一千万回に一度の、終焉', pat: 'cosmic', motif: '💠', fx: 'omega' },
+    a_meteor: { name: '隕鉄落とし', motion: 'giant', ov: 'meteor', stamp: '隕', line: '空から降ってきた、一撃', pat: 'stars', motif: '☄️' },
+    x_icedragon: { name: '氷竜の咆哮', motion: 'rise', ov: 'snow', stamp: '氷竜', line: '凍てつけ、根まで', pat: 'waves', motif: '🐲' },
+    x_neon: { name: 'ネオン・スラッシュ', motion: 'dash', ov: 'glitchstorm', stamp: '光', line: '夜の街は、眠らない', pat: 'grid', motif: '💜' },
+    x_honey: { name: 'ハニー・ドロップ', motion: 'spin', ov: 'coinrain', stamp: '蜜', line: 'とろけるほど、甘い一撃', pat: 'dots', motif: '🍯' },
+    x_thunderbird: { name: '雷鳥の羽ばたき', motion: 'rise', ov: 'thunderstorm', stamp: '雷鳥', line: '雲を裂いて、舞い降りる', pat: 'lightning', motif: '🦅' },
+    x_mirror: { name: 'ミラー・リフレクト', motion: 'spin', ov: 'shardrain', stamp: '鏡', line: '映ったものは、全部斬る', pat: 'grid', motif: '🪞' },
+    x_stardust: { name: 'スターダスト・シャワー', motion: 'throw', ov: 'meteor', stamp: '星屑', line: '願いごとは、斬ってから', pat: 'stars', motif: '✨' },
+    x_kraken: { name: 'クラーケン・タイド', motion: 'vortex', ov: 'tsunami', stamp: '海魔', line: '深海から、すべてを引きずり込む', pat: 'waves', motif: '🦑' },
+    x_starfall: { name: 'スターフォール', motion: 'throw', ov: 'galaxy', stamp: '流星', line: '夜空ごと、降らせる', pat: 'cosmic', motif: '🌠' },
+    x_yggdrasil: { name: '世界樹の鼓動', motion: 'orbit', ov: 'leafstorm', stamp: '世界樹', line: '伐るほどに、森は育つ', pat: 'rays', motif: '🌳' },
+    x_timeeater: { name: 'クロノ・イーター', motion: 'dash', ov: 'clockstop', stamp: '時喰', line: '一秒を、千回斬る', pat: 'grid', motif: '⌛' },
+    x_icephoenix: { name: '氷炎の舞', motion: 'rise', ov: 'snow', stamp: '氷翼', line: '凍てつく炎は、消えない', pat: 'flames', motif: '❄️' },
+    x_bigbang: { name: 'ビッグバン', motion: 'omega', ov: 'genesis', stamp: '創世', line: 'すべては、ここから始まった', pat: 'rays', motif: '💥' },
   };
   // レアごとの必殺技: need = ゲージ（1撃+1、JUST+1、会心+2）、mult = 斬撃の何倍か
   const SKILL_TIER = { SSR: { need: 30, mult: 8 }, UR: { need: 26, mult: 12 }, LR: { need: 22, mult: 18 }, EX: { need: 20, mult: 25 }, MYTH: { need: 18, mult: 35 }, GOD: { need: 16, mult: 50 }, OMEGA: { need: 12, mult: 80 } };
@@ -306,6 +345,11 @@ const D = (() => {
     { id: 'gods', icon: '🌈', name: '神々の斧', axes: ['a_ragna', 'a_shinra', 'a_inf', 'x_genesis'], bonus: { all: 0.5, luck: 0.2 } },
     { id: 'myth', icon: '🐉', name: '神話の斧', axes: ['x_ryujin', 'x_houou', 'x_olympus'], bonus: { all: 1, luck: 0.3 } },
     { id: 'divine', icon: '☀️', name: '神の領域', axes: ['x_amaterasu', 'x_chaos', 'x_omega'], bonus: { all: 3, luck: 0.5, roll: 0.5 } },
+    { id: 'sea', icon: '🌊', name: '海の斧', axes: ['a_shell', 'a_coral', 'x_trident', 'x_kraken', 'x_tuna'], bonus: { reward: 0.2, luck: 0.1 } },
+    { id: 'ancient', icon: '🦴', name: '古代の斧', axes: ['a_stone', 'a_bronze', 'a_bone', 'a_amber', 'a_moss'], bonus: { dps: 0.3 } },
+    { id: 'thunder', icon: '⚡', name: '雷の斧', axes: ['a_thunder', 'x_kera', 'x_thunderbird', 'x_neon'], bonus: { critc: 0.03, speed: 0.3 } },
+    { id: 'cosmos', icon: '🌠', name: '星の斧', axes: ['a_meteor', 'x_stardust', 'x_starfall', 'x_galaxy'], bonus: { all: 0.4, gem: 0.003 } },
+    { id: 'time', icon: '⏳', name: '時の斧', axes: ['a_chrono', 'x_gear', 'x_timeeater'], bonus: { combo: 0.5, roll: 0.2 } },
   ];
 
   // ---------------------------------------------------------------- ジェムショップ（効き目は時間制）
@@ -318,6 +362,9 @@ const D = (() => {
     { id: 'tap5', icon: '💪', name: '剛力ドリンク', desc: '斬撃 ×5（3分）', gems: 50, buff: ['tap', 5, 180] },
     { id: 'fever', icon: '🎉', name: 'フィーバー薬', desc: 'いますぐフィーバー', gems: 30, act: 'fever' },
     { id: 'golden', icon: '✨', name: '黄金の果実', desc: 'いますぐゴールデンタイム', gems: 40, act: 'golden' },
+    { id: 'dna2', icon: '🧬', name: 'DNA増殖剤', desc: '菌斬り次元のDNA ×2（10分）', gems: 50, buff: ['dna', 2, 600] },
+    { id: 'blade3', icon: '🗡️', name: '天然砥石', desc: '刀のダメージ ×3（3分）', gems: 50, buff: ['kdmg', 3, 180] },
+    { id: 'outbreak', icon: '☣️', name: '培養液', desc: 'いますぐ菌の大発生（菌斬り次元で）', gems: 40, act: 'outbreak' },
   ];
 
   // ---------------------------------------------------------------- バイオーム（10ステージ毎）
@@ -338,6 +385,14 @@ const D = (() => {
     { name: '氷河の果て', sky: ['#bfe8ff', '#f4fbff'], hills: ['#e6f6ff', '#cfe8f8'], ground: '#eaf6ff', trunk: '#7fb8d8', leaves: ['#bff4ff', '#8fe0ff', '#ffffff'], shape: 'crystal', deco: 'snow', amb: 'snow', tree: '氷樹', boss: '氷河樹グレイシア' },
     { name: '冥府の森', sky: ['#120818', '#3a1040'], hills: ['#24102e', '#180a20'], ground: '#1a0c22', trunk: '#2a1a2e', leaves: ['#7aff6a', '#3aff9a', '#b0ff3a'], shape: 'mushroom', amb: 'spore', tree: '鬼火の木', boss: '冥王樹ハデス', night: true },
     { name: '虹の果て', sky: ['#7ab8ff', '#ffe6fa'], hills: ['#ffb0e0', '#b0e0ff'], ground: '#c8f0b0', trunk: '#a07a5a', leaves: ['#ff6a6a', '#ffd84a', '#6aff8a'], shape: 'round', deco: 'cloud', amb: 'sparkle', tree: '虹の木', boss: '虹霓樹アルカンシエル' },
+    { name: '竹林の里', sky: ['#9fe0b0', '#f0fff0'], hills: ['#6ab07a', '#4a8a5a'], ground: '#5a9a4a', trunk: '#8ab04a', leaves: ['#7ad04a', '#5ab03a', '#a0e06a'], shape: 'conifer', amb: 'leaf', tree: '大竹', boss: '竹取の翁樹カグヤ' },
+    { name: '霧の湿原', sky: ['#8a9aa8', '#d8e0e8'], hills: ['#5a6a5a', '#3a4a3a'], ground: '#3a4a3a', trunk: '#4a3a2a', leaves: ['#5a7a5a', '#3a5a4a', '#7a9a7a'], shape: 'round', amb: 'spore', tree: '湿原のヤナギ', boss: '霧の主ミストレント' },
+    { name: '嵐の荒野', sky: ['#2a2a3a', '#6a6a8a'], hills: ['#4a4a3a', '#2a2a20'], ground: '#4a4030', trunk: '#3a2a1a', leaves: ['#6a7a4a', '#4a5a2a', '#8a9a5a'], shape: 'conifer', amb: 'leaf', tree: '雷に打たれた木', boss: '嵐王テンペスト', night: true },
+    { name: '機械仕掛けの森', sky: ['#5a4a3a', '#d8b88a'], hills: ['#7a6a5a', '#5a4a3a'], ground: '#6a5a4a', trunk: '#b08a4a', leaves: ['#d8a040', '#b08030', '#f0c060'], shape: 'crystal', amb: 'sparkle', tree: '歯車の木', boss: '機巧樹メカトレント' },
+    { name: '月面の森', sky: ['#000008', '#1a1a2a'], hills: ['#8a8a90', '#5a5a60'], ground: '#9a9aa0', trunk: '#c8c8d0', leaves: ['#e8e8f0', '#b0b0c0', '#ffffff'], shape: 'crystal', deco: 'stars', amb: 'star', tree: '月の木', boss: '月影樹セレーネ', night: true },
+    { name: '溶岩の滝', sky: ['#3a0a00', '#ff6a1a'], hills: ['#5a1a0a', '#3a0a00'], ground: '#2a0a00', trunk: '#1a0a00', leaves: ['#ff8a1a', '#ffd23a', '#ff4a0a'], shape: 'palm', deco: 'ember', amb: 'ember', tree: '溶岩ヤシ', boss: '熔岩樹マグマロス', night: true },
+    { name: 'ネオンの都', sky: ['#0a0020', '#3a0a5a'], hills: ['#1a0a3a', '#0a0020'], ground: '#140a2a', trunk: '#ff3af0', leaves: ['#3affff', '#ff3af0', '#ffe14a'], shape: 'round', deco: 'stars', amb: 'sparkle', tree: 'ネオンツリー', boss: '電脳樹サイバートレント', night: true },
+    { name: '光の神殿', sky: ['#fff6d0', '#ffffff'], hills: ['#fff0c0', '#f0d890'], ground: '#f8f0d8', trunk: '#e8d8a8', leaves: ['#ffffff', '#fff6c0', '#ffe8a0'], shape: 'round', deco: 'cloud', amb: 'sparkle', tree: '光の樹', boss: '神樹ルミナス' },
   ];
 
   // レア木（ボス以外）
@@ -522,6 +577,14 @@ const D = (() => {
   ach('study1', '📚', '勉強もできる木こり', '勉強ブーストを完走', (S) => st(S, 'studies') >= 1, 50);
   ach('study10', '🎓', '合格する木こり', '勉強ブーストを10回完走', (S) => st(S, 'studies') >= 10, 300);
   ach('sleep1', '😴', '寝る子は育つ', '6時間以上休んで戻ってくる', (S) => st(S, 'sleeps') >= 1, 50);
+  [400, 500, 750, 1000].forEach((n, i) => ach('stageX' + i, '🗺️', `ステージ${n}`, `ステージ${n}に到達`, (S) => st(S, 'bestStage') >= n, 200 + i * 100));
+  [[50, '輪廻の達人'], [100, '永劫回帰']].forEach(([n, nm], i) => ach('presX' + i, '🌀', nm, `転生を${n}回`, (S) => st(S, 'prestiges') >= n, [600, 1200][i]));
+  [[200, 'レベル200'], [500, 'レベル500']].forEach(([n, nm], i) => ach('lvlX' + i, '⭐', nm, `伐採レベル${n}に到達`, (S) => (S.lvl || 1) >= n, [300, 800][i]));
+  ach('killX', '🌲', '地球の森林管理人', '木を1000万本伐採', (S) => st(S, 'kills') >= 1e7, 400);
+  [[5000, '指が分身する'], [10000, '連撃の神']].forEach(([n, nm], i) => ach('comboX' + i, '🔥', nm, `${n}コンボ達成`, (S) => st(S, 'maxCombo') >= n, [300, 600][i]));
+  ach('travel10', '🌀', '次元の旅人', '菌斬り次元に10回入る', (S) => st(S, 'gVisits') >= 10, 60);
+  ach('both', '⚔️', '斧と刀の達人', '斧を50種類・刀を30種類集める', (S) => Object.keys(S.axes).length >= 50 && Object.keys((S.germ && S.germ.kat) || {}).length >= 30, 300);
+  ach('setsAll', '🗂️', 'セットマスター', `斧のセットを${SETS.length}個すべてそろえる`, (S) => SETS.every((x) => x.axes.every((id) => S.axes[id])), 800);
 
   // 斬撃系の強化で解放される演出（レベル到達でバナー表示）
   const SLASH_FX = {
