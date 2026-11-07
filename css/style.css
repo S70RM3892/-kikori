@@ -1269,3 +1269,163 @@ body.night .gs-rays { animation: none; }
   #hud.wave .w-btn, #hud.wave .dk, #hud.beat .rk-l, #hud.beat .combo-n, .rank-box.slam .rk-l { animation: none !important; }
 }
 body.night #hud[data-rank] .w-btn { animation: none; }
+
+/* ------------------------------------------------------------- 神話・神・Ω のレア色 */
+.rb.r-MYTH { color: #002a22; background: linear-gradient(90deg, #3affd0, #b0fff0, #3affd0); box-shadow: 0 0 8px rgba(58, 255, 208, 0.8); }
+.rb.r-GOD { color: #3a2400; background: linear-gradient(90deg, #ffd700, #fff6c0, #ffd700); box-shadow: 0 0 10px rgba(255, 215, 0, 0.9); }
+.rb.r-OMEGA { color: #fff; background: linear-gradient(90deg, #ff40ff, #40c0ff, #ffe040, #ff40ff); background-size: 200% 100%; animation: shine 1.2s linear infinite; box-shadow: 0 0 12px rgba(255, 64, 255, 0.9); }
+.r-MYTH { --rc: #3affd0; --rc-glow: rgba(58, 255, 208, 0.7); }
+.r-GOD { --rc: #ffd700; --rc-glow: rgba(255, 215, 0, 0.8); }
+.r-OMEGA { --rc: #ff40ff; --rc-glow: rgba(255, 64, 255, 0.85); }
+.axe-card.owned.r-MYTH, .axe-card.owned.r-GOD, .axe-card.owned.r-OMEGA { box-shadow: 0 0 16px var(--rc-glow); animation: hueGlow 2.4s linear infinite; }
+.ac-lv small { font-weight: 700; color: var(--muted); }
+
+/* ------------------------------------------------------------- オートガチャの帯（フィーバーの上） */
+.roll-strip {
+  position: absolute;
+  left: max(16px, env(safe-area-inset-left, 0px));
+  right: max(16px, env(safe-area-inset-right, 0px));
+  bottom: calc(var(--bot) + 122px);
+  max-width: 680px;
+  margin: 0 auto;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px 0 8px;
+  border-radius: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(10, 6, 16, 0.6);
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.5);
+}
+.rs-l { flex: none; font-size: 11px; font-weight: 800; white-space: nowrap; text-shadow: 0 1px 0 #000; }
+.rs-l b { font-family: var(--font-d); font-weight: 400; font-size: 13px; color: #ffe14a; }
+.rs-l small { font-size: 9px; color: var(--muted); margin: 0 2px; }
+.rs-reel { flex: 1; min-width: 0; height: 22px; display: block; }
+.roll-strip.boost { border-color: #ff6ad5; box-shadow: 0 0 12px rgba(255, 106, 213, 0.6), 0 2px 0 rgba(0, 0, 0, 0.5); }
+.roll-strip.boost .rs-l b { color: #ff9ae6; }
+.roll-strip.lvup { animation: stripUp 0.6s ease-out; }
+@keyframes stripUp { 30% { transform: scale(1.06); box-shadow: 0 0 24px #ffe14a; } }
+@media (min-width: 900px) { .roll-strip { height: 30px; } .rs-reel { height: 26px; } }
+
+/* ------------------------------------------------------------- レアを引いたときのカード（下から出てくる） */
+#rare-cards {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--bot) + 156px);
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 6px;
+  width: min(270px, calc(100% - 150px));
+  pointer-events: none;
+}
+.rare-card {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  padding: 4px 10px 4px 4px;
+  border-radius: 12px;
+  border: 2px solid var(--rc);
+  background: radial-gradient(circle at 15% 50%, var(--rc-glow), transparent 60%), rgba(12, 6, 20, 0.88);
+  box-shadow: 0 0 16px var(--rc-glow);
+  animation: cardSlide 0.35s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+.rare-card.out { animation: fadeOutDown 0.3s forwards; }
+@keyframes cardSlide { from { transform: translateY(30px) scale(0.6); opacity: 0; } }
+@keyframes fadeOutDown { to { transform: translateY(20px); opacity: 0; } }
+.rc-img { display: grid; place-items: center; }
+.rc-t { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
+.rc-t small { font-size: 10px; color: var(--muted); font-weight: 800; }
+.rc-t b { font-size: 12.5px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rc-t em { font-style: normal; font-family: var(--font-d); font-size: 12px; color: #ff6ab0; }
+
+/* ------------------------------------------------------------- 超レアの演出（自動で閉じる） */
+.cut-ov {
+  position: fixed;
+  inset: 0;
+  z-index: 86;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 40%, var(--rc-glow), transparent 62%), rgba(6, 3, 12, 0.9);
+  animation: fadeIn 0.15s;
+  cursor: pointer;
+}
+.cut-ov.out { animation: showOut 0.25s forwards; }
+.cut-ov .gs-rays { animation: spin 5s linear infinite, hue 3s linear infinite; }
+.cut-in { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; padding: 16px; }
+.cut-odds { font-family: var(--font-d); font-size: clamp(30px, 10vw, 56px); line-height: 1; color: #fff; text-shadow: 0 0 20px var(--rc-glow), 0 4px 0 #000; animation: finPop 0.5s cubic-bezier(0.2, 1.6, 0.4, 1) both; }
+.cut-ov.myth .cut-odds { background: linear-gradient(90deg, #fff6a0, #ff9ae6, #9fe8ff, #fff6a0); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: none; animation: finPop 0.5s cubic-bezier(0.2, 1.6, 0.4, 1) both, shine 1.5s linear infinite; }
+.cut-ov .gs-desc { color: #ffe08a; }
+
+/* ------------------------------------------------------------- ガチャタブ: オートガチャのカード */
+.auto-card {
+  border-radius: 16px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  border: 2px solid #000;
+  background: radial-gradient(circle at 15% 0%, rgba(255, 106, 213, 0.35), transparent 55%), linear-gradient(160deg, #2a1440, #120820);
+}
+.ac-top { display: flex; align-items: center; gap: 10px; }
+.ac-spin { font-size: 36px; display: inline-block; animation: spinWob 0.6s linear infinite; }
+@keyframes spinWob { 50% { transform: rotate(-10deg) scale(1.06); } }
+.ac-top small { font-size: 11px; font-weight: 800; color: #e9d8ff; }
+.ac-rate { font-weight: 800; font-size: 14px; }
+.ac-rate b { font-family: var(--font-d); font-weight: 400; font-size: 30px; color: #ffe14a; text-shadow: 0 0 14px rgba(255, 225, 74, 0.6); font-variant-numeric: tabular-nums; }
+.ac-boost { min-height: 1.3em; margin-top: 4px; font-size: 11px; font-weight: 800; color: #ff9ae6; }
+.ac-stats { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 4px; font-size: 12px; font-weight: 700; }
+.ac-stats b { font-family: var(--font-d); font-weight: 400; }
+.ac-lv { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; }
+.ac-lv .bar { flex: 1; height: 8px; border-radius: 4px; background: rgba(0, 0, 0, 0.6); overflow: hidden; }
+.ac-lv .bar i { display: block; height: 100%; background: linear-gradient(90deg, #ff6ad5, #ffd23a); transform-origin: left; transform: scaleX(0); transition: transform 0.15s; }
+.ac-lv small { font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ac-feed { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; }
+.fd { display: flex; align-items: center; gap: 6px; font-size: 12px; animation: cardSlide 0.3s; }
+.fd b { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fd small { color: #ff6ab0; font-weight: 800; }
+.fd-empty { font-size: 11px; color: var(--muted); }
+
+/* ジェムショップ */
+.shop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px; }
+.shop-it {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  grid-template-rows: auto auto auto;
+  gap: 0 6px;
+  padding: 7px 8px;
+  border-radius: 12px;
+  border: 2px solid #000;
+  background: #2a2030;
+  color: #a8968a;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.shop-it .si-ico { grid-row: 1 / 4; font-size: 24px; align-self: center; }
+.shop-it b { font-size: 12px; font-weight: 800; }
+.shop-it small { font-size: 10px; line-height: 1.3; }
+.shop-it em { font-style: normal; font-family: var(--font-d); font-size: 12px; color: var(--gem); }
+.shop-it.can { background: linear-gradient(160deg, #2a3a5a, #1a1a40); color: var(--fg); border-color: #4fe3ff; }
+
+/* セット */
+.set-list { display: flex; flex-direction: column; gap: 6px; }
+.set-row { padding: 8px 10px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); }
+.set-row.done { border-color: var(--go); box-shadow: 0 0 12px rgba(157, 255, 74, 0.25); }
+.set-h { display: flex; justify-content: space-between; font-size: 13px; }
+.set-h span { font-family: var(--font-d); font-size: 12px; color: var(--muted); }
+.set-axes { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
+.set-ax { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 8px; background: rgba(0, 0, 0, 0.35); border: 1px solid var(--rc, var(--line)); }
+.set-ax:not(.own) .axe-img, .set-ax:not(.own) .axe-svg { filter: brightness(0) opacity(0.45); }
+.set-b { font-size: 11px; font-weight: 800; color: #ffe08a; }
+
+/* おかえり: 離れている間のガチャ */
+.off-rolls { margin-top: 10px; padding: 8px; border-radius: 12px; background: rgba(255, 106, 213, 0.12); border: 1px solid rgba(255, 106, 213, 0.4); }
+.off-rolls p { margin: 0 0 4px; }
+.off-r { display: flex; flex-wrap: wrap; gap: 4px 10px; justify-content: center; font-weight: 800; font-size: 13px; }
+.off-new { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 6px; }
+.off-new span { display: flex; flex-direction: column; align-items: center; font-size: 9px; font-weight: 800; color: #ff6ab0; }

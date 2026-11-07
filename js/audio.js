@@ -374,7 +374,7 @@ const Sfx = (() => {
     while (t < dur) { noise(0.06, 0.25, 'bandpass', 180 + t * 300, 1.5, t); t += gap; gap = Math.max(0.035, gap * 0.9); }
     tone(110, dur, 'sawtooth', 0.05, 0, 440);
   }
-  const RANKS = { N: 0, R: 1, SR: 2, SSR: 3, UR: 4, LR: 5, EX: 6 };
+  const RANKS = { N: 0, R: 1, SR: 2, SSR: 3, UR: 4, LR: 5, EX: 6, MYTH: 7, GOD: 8, OMEGA: 9 };
   // 昇格演出: 光の色が変わるたびに鳴る（5 = EX の暗転）
   function gachaUp(step) {
     if (!ok()) return;
@@ -439,8 +439,13 @@ const Sfx = (() => {
       case 'glitch': for (let i = 0; i < 4; i++) tone(200 + Math.random() * 2400, 0.03, 'square', 0.04, i * 0.025); break;
     }
   }
+  // オートガチャの帯でレアが流れたときの小さな音
+  function rollTick(rank) {
+    if (!ok() || throttle('rtick2', 70)) return;
+    tone(1200 + rank * 180, 0.04, 'square', 0.012 + rank * 0.004);
+  }
   function gachaReveal(r) {
-    if (!ok()) return;
+    if (!ok() || throttle('greveal', 90)) return;
     const rank = Math.min(5, RANKS[r] || 0);
     if (rank <= 1) { tone(rank ? 880 : 660, 0.15, 'triangle', 0.08); return; }
     const seq = rank === 2 ? [0, 4, 7] : rank === 3 ? [0, 4, 7, 12, 16] : [0, 4, 7, 12, 16, 19, 24, 28];
@@ -476,6 +481,6 @@ const Sfx = (() => {
     crash, rouletteTick, rouletteWin, golden, streak, levelUp, chop, crit, fell, coin, gem, buy, milestone, error,
     feverStart, feverEnd, boss, bossWin, bossFail, tick, stage, ach, squirrel, chest, gachaRoll, gachaReveal,
     prestige, goddess, gachaUp, showcase, equip, speed, comboFinish, axeHit, spawn, carry, multi,
-    musicLevel, beatPhase, musicOn, setBgm, rankUp, rankDown, twinkle, shatter,
+    rollTick, musicLevel, beatPhase, musicOn, setBgm, rankUp, rankDown, twinkle, shatter,
   };
 })();

@@ -11,7 +11,12 @@ const G = (() => {
   D.WORKERS.forEach((w) => (WK[w.id] = w));
   D.UPGRADES.forEach((u) => (UP[u.id] = u));
   D.MISSIONS.forEach((m) => (MS[m.t] = m));
-  const RANK = { N: 0, R: 1, SR: 2, SSR: 3, UR: 4, LR: 5, EX: 6 };
+  const RANK = { N: 0, R: 1, SR: 2, SSR: 3, UR: 4, LR: 5, EX: 6, MYTH: 7, GOD: 8, OMEGA: 9 };
+  const POOL = {};
+  D.RARITY_ORDER.forEach((r) => (POOL[r] = D.AXES.filter((a) => a.r === r)));
+  // 斧は「枚数」で持ち、Lv は 1 + log2(枚数)。同じ斧を引くほどゆっくり強くなる
+  const lvOf = (copies) => (copies > 0 ? 1 + Math.floor(Math.log2(copies) + 1e-9) : 0);
+  const axeLv = (id) => lvOf(S.axes[id] || 0);
   // 日替わりピックアップの候補（SSR以上の幻想の斧）
   const PICKUPS = D.AXES.filter((a) => a.fantasy && RANK[a.r] >= 3);
   const SAVE_KEY = 'dopadopa-kikori-save-v1';
@@ -19,8 +24,8 @@ const G = (() => {
 
   function fresh() {
     return {
-      v: 1,
-      lvl: 1, xp: 0, freePullAt: 0,
+      v: 2,
+      lvl: 1, xp: 0, freePullAt: 0, gachaLv: 1, gachaXp: 0,
       wood: 0, gems: 0, tickets: 10, chests: 0, spirits: 0,
       stage: 1, maxStage: 1, kills: 0, farming: false,
       workers: {}, upg: {}, axes: {}, equip: null, pity: 0,
@@ -32,6 +37,7 @@ const G = (() => {
         gotSSR: 0, gotUR: 0, gotLR: 0, gotEX: 0, playTime: 0, gemsAll: 0, bestSpirits: 0, bestBoss: 0, bestComboDmg: 0,
         justs: 0, maxChain: 0, greats: 0, maxSpeeds: 0, echoes: 0, thunders: 0, blasts: 0,
         goldens: 0, roulettes: 0, bestRoulette: 0, bestStreak: 0, rouletteWood: 0, multiKills: 0, bestMulti: 0, bestRank: 0,
+        rolls: 0, rareRolls: 0, gotMYTH: 0, gotGOD: 0, gotOMEGA: 0, bestAxeLv: 0, bestRoll: 0, bestRollAxe: '', shopBuys: 0,
       },
       daily: { last: '' },
       settings: { sound: true, bgm: true, vol: 0.7, vibe: true, fx: 2, shake: true, flash: true, num: 'jp', night: true, buyAmt: 1, speed: 1 },
@@ -51,7 +57,7 @@ const G = (() => {
     checkT: 0, dirty: true, st: null,
     justChain: 0, blastCount: 0, pending: [],
     treeStreak: 0, golden: 0, goldenMax: 1, comboDmg: 0, speedCap: 3, carry: null, carryNext: null,
-    style: 0, rank: 0, styleSig: '', styleVar: false,
+    style: 0, rank: 0, styleSig: '', styleVar: false, rollAcc: 0,
   };
 
   // ------------------------------------------------------------- イベント
@@ -90,12 +96,18 @@ const G = (() => {
   function calc() {
     const st = {};
     let pas = 0;
-    for (const id in S.axes) { const a = AX[id]; if (a) pas += D.RARITY[a.r].pas * S.axes[id]; }
+    for (const id in S.axes) { const a = AX[id]; if (a) pas += D.RARITY[a.r].pas * axeLv(id); }
     const eq = S.equip && S.axes[S.equip] ? AX[S.equip] : null;
-    const eqLv = eq ? S.axes[eq.id] : 0;
+    const eqLv = eq ? axeLv(eq.id) : 0;
     const sp = {};
     if (eq && eq.sp) for (const k in eq.sp) sp[k] = eq.sp[k] * (1 + 0.2 * (eqLv - 1));
+    // そろえたセットのボーナス
+    st.sets = D.SETS.filter((x) => x.axes.every((id) => S.axes[id]));
+    for (const set of st.sets) for (const k in set.bonus) sp[k] = (sp[k] || 0) + set.bonus[k];
     st.sp = sp; st.eq = eq; st.eqLv = eqLv;
+    const gl = (S.gachaLv || 1) - 1;
+    st.rollBase = (C.ROLL_BASE + C.ROLL_STEP * lv('rollspd') + C.GLV_ROLL * gl) * (1 + (sp.roll || 0));
+    st.luckBase = (1 + C.LUCK_STEP * lv('luck') + C.GLV_LUCK * gl) * (1 + (sp.luck || 0));
     st.achMult = 1 + Object.keys(S.ach).length * C.ACH_BONUS;
     st.spiritMult = 1 + S.spirits * C.SPIRIT_BONUS;
     st.axeMult = 1 + pas;
@@ -187,6 +199,13 @@ const G = (() => {
       if (b.end <= now) continue;
       if (b.scope === 'all' || (scope === 'tap' && b.scope === 'tap')) m *= b.mult;
     }
+    return m;
+  }
+  // 範囲がぴったり一致するバフだけ（幸運・回転・木こり）
+  function buffOf(scope) {
+    let m = 1;
+    const now = Date.now();
+    for (const b of S.buffs) if (b.end > now && b.scope === scope) m *= b.mult;
     return m;
   }
   function addBuff(k, scope, mult, sec, name, icon) {
@@ -571,20 +590,101 @@ const G = (() => {
   }
 
   // ------------------------------------------------------------- ガチャ
-  function rollRarity() {
-    const r = Math.random();
-    let acc = 0;
-    for (let i = D.RARITY_ORDER.length - 1; i >= 0; i--) {
+  // レアから順に「1/N × 幸運」で判定する（どれにも当たらなければ N）
+  function rollRarity(luck = 1) {
+    for (let i = D.RARITY_ORDER.length - 1; i > 0; i--) {
       const k = D.RARITY_ORDER[i];
-      acc += D.RARITY[k].rate;
-      if (r < acc) return k;
+      if (Math.random() < D.RARITY[k].p * luck) return k;
     }
     return 'N';
+  }
+  // いまの幸運（ランク・ゴールデン・お守りで上がる）と毎秒の回転数（フィーバー・ランク・倍速・オイルで上がる）
+  function luckNow() {
+    return stats().luckBase * (1 + 0.06 * T.rank) * (T.golden > 0 ? 2 : 1) * buffOf('luck');
+  }
+  function rollRate() {
+    if (S.study) return 0;
+    return stats().rollBase * (T.fever > 0 ? 2 : 1) * (1 + 0.1 * T.rank) * buffOf('roll') * gameSpeed();
+  }
+  const pickFrom = (arr) => arr[Math.floor(Math.random() * arr.length)];
+  function pickAxe(r, pu, onlyFan) {
+    if (pu && pu.r === r && Math.random() < C.PICKUP_SHARE) return pu;
+    const pool = onlyFan ? POOL[r].filter((a) => a.fantasy) : POOL[r];
+    return pickFrom(pool.length ? pool : POOL[r]);
+  }
+  // 1枚ふやす。新しい斧か、Lv が上がったかを返す
+  function grant(axe, r) {
+    const had = S.axes[axe.id] || 0;
+    const now = had + 1;
+    S.axes[axe.id] = now;
+    const lvUp = had > 0 && lvOf(now) > lvOf(had);
+    const lv = lvOf(now);
+    if (lv > (S.stats.bestAxeLv || 0)) S.stats.bestAxeLv = lv;
+    const k = 'got' + r;
+    if (k in S.stats) S.stats[k]++;
+    return { axe, r, isNew: !had, lvUp, lv, copies: now, gems: 0 };
+  }
+  // ガチャレベル: 回した回数が経験値。上がるとジェム、5Lvごとにチケット
+  const gachaNeed = (l) => Math.floor(C.GLV_BASE * Math.pow(C.GLV_GROW, l - 1));
+  function gachaXp(n, quiet) {
+    S.gachaXp = (S.gachaXp || 0) + n;
+    const ups = [];
+    while (S.gachaXp >= gachaNeed(S.gachaLv || 1)) {
+      S.gachaXp -= gachaNeed(S.gachaLv || 1);
+      S.gachaLv = (S.gachaLv || 1) + 1;
+      const gems = 3 + Math.floor(S.gachaLv / 2);
+      const tickets = S.gachaLv % 5 === 0 ? 2 : 0;
+      gainGems(gems);
+      S.tickets += tickets;
+      ups.push({ lv: S.gachaLv, gems, tickets });
+    }
+    if (ups.length) { dirty(); if (!quiet) emit('gachaLevel', ups[ups.length - 1]); }
+    return ups;
+  }
+  function setsDone() { return D.SETS.filter((x) => x.axes.every((id) => S.axes[id])).map((x) => x.id); }
+  // 装備中より高レアなら自動で持ち替える
+  function autoEquip(best) {
+    const cur = S.equip && AX[S.equip];
+    if (best && (!cur || RANK[best.r] > RANK[cur.r])) S.equip = best.axe.id;
+  }
+  // オートガチャ: n 回まとめて回す（quiet = 離れている間の分）
+  function autoRoll(n, luck, quiet) {
+    if (!(n > 0)) return null;
+    const pu = pickup();
+    const counts = D.RARITY_ORDER.map(() => 0);
+    const notable = [];
+    let best = null, changed = false, rare = 0;
+    const before = setsDone();
+    for (let i = 0; i < n; i++) {
+      const r = rollRarity(luck);
+      const ri = RANK[r];
+      const o = grant(pickAxe(r, pu), r);
+      counts[ri]++;
+      if (ri >= 4) rare++;
+      if (o.isNew || o.lvUp) changed = true;
+      if (!best || ri > RANK[best.r] || (ri === RANK[best.r] && o.isNew && !best.isNew)) best = o;
+      if ((ri >= 4 || (o.isNew && ri >= 2) || (o.lvUp && ri >= 5)) && notable.length < 40) notable.push(o);
+    }
+    S.stats.rolls += n;
+    S.stats.rareRolls += rare;
+    const ups = gachaXp(n, quiet);
+    if (RANK[best.r] > (S.stats.bestRoll || 0)) { S.stats.bestRoll = RANK[best.r]; S.stats.bestRollAxe = best.axe.id; }
+    const eqBefore = S.equip;
+    autoEquip(best);
+    if (changed || S.equip !== eqBefore) dirty();
+    const newSets = D.SETS.filter((x) => !before.includes(x.id) && x.axes.every((id) => S.axes[id]));
+    const res = { n, counts, best, notable, luck, newSets, levelUps: ups.length, gachaLv: S.gachaLv };
+    if (!quiet) {
+      emit('autoRoll', res);
+      for (const set of newSets) emit('setDone', set);
+    }
+    return res;
   }
   const freeLeft = () => Math.max(0, ((S.freePullAt || 0) - Date.now()) / 1000);
   function canPull(n) {
     return S.tickets >= n || S.gems >= (n === 10 ? C.GACHA_10 : C.GACHA_1);
   }
+  // プレミアムガチャ（ジェム・チケット）: 幸運 ×5、10連は SR 以上確定、天井あり
   function pull(n, opts = {}) {
     if (S.study) return { error: 'study' };
     const cost = n === 10 ? C.GACHA_10 : C.GACHA_1;
@@ -595,42 +695,47 @@ const G = (() => {
     else if (S.gems >= cost) S.gems -= cost;
     else return { error: 'gems' };
     const st = stats();
+    const luck = C.PREMIUM_LUCK * (1 + C.GLV_LUCK * ((S.gachaLv || 1) - 1));
+    const pu = pickup();
     const res = [];
     // 初めての10連は幻想の斧が1本確定
     const firstTen = n === 10 && !(S.stats.pulls > 0);
+    const before = setsDone();
     for (let i = 0; i < n; i++) {
       S.pity++;
-      let r = rollRarity();
+      let r = rollRarity(luck);
       const forceFan = firstTen && i === n - 1 && !res.some((x) => x.axe.fantasy);
       if (forceFan && RANK[r] < 2) r = 'SR';
       if (n === 10 && i === n - 1 && !res.some((x) => RANK[x.r] >= 2) && RANK[r] < 2) r = 'SR';
       if (S.pity >= st.pity && RANK[r] < 3) r = 'SSR';
       if (RANK[r] >= 3) S.pity = 0;
-      const pu = pickup();
-      let axe;
-      if (pu && pu.r === r && Math.random() < C.PICKUP_SHARE) axe = pu;
-      else { const pool = D.AXES.filter((a) => a.r === r && (!forceFan || a.fantasy)); axe = pool[Math.floor(Math.random() * pool.length)]; }
-      const had = S.axes[axe.id] || 0;
-      const out = { axe, r, isNew: !had, lvUp: false, gems: 0, lv: 1, pickup: axe === pu };
-      if (!had) S.axes[axe.id] = 1;
-      else if (had < C.AXE_MAX_LV) { S.axes[axe.id] = had + 1; out.lvUp = true; }
-      else { out.gems = D.RARITY[r].gem; gainGems(out.gems); }
-      out.lv = S.axes[axe.id];
-      if (r === 'SSR') S.stats.gotSSR++;
-      if (r === 'UR') S.stats.gotUR++;
-      if (r === 'LR') S.stats.gotLR++;
-      if (r === 'EX') S.stats.gotEX++;
+      const axe = pickAxe(r, pu, forceFan);
+      const out = grant(axe, r);
+      out.pickup = axe === pu;
       res.push(out);
     }
     S.stats.pulls += n;
-    // 未装備、または装備中より高レアなら自動装備
+    gachaXp(n * 5);
     let best = null;
     for (const o of res) if (!best || RANK[o.r] > RANK[best.r]) best = o;
-    const cur = S.equip && AX[S.equip];
-    if (!cur || RANK[best.r] > RANK[cur.r]) S.equip = best.axe.id;
+    autoEquip(best);
     dirty();
     emit('gacha', { res, n });
+    for (const set of D.SETS.filter((x) => !before.includes(x.id) && x.axes.every((id) => S.axes[id]))) emit('setDone', set);
     return { res };
+  }
+  // ジェムショップ
+  function buyShop(id) {
+    const it = D.SHOP.find((x) => x.id === id);
+    if (!it || S.study) return { error: 'none' };
+    if (S.gems < it.gems) return { error: 'gems' };
+    S.gems -= it.gems;
+    S.stats.shopBuys = (S.stats.shopBuys || 0) + 1;
+    if (it.buff) addBuff('shop_' + it.id, it.buff[0], it.buff[1], it.buff[2], it.name, it.icon);
+    if (it.act === 'fever' && T.fever <= 0) startFever();
+    if (it.act === 'golden') { T.golden = C.GOLDEN_TIME * 2; T.goldenMax = T.golden; S.stats.goldens++; emit('golden', { time: T.golden }); }
+    emit('shop', it);
+    return { ok: true };
   }
   function equip(id) {
     if (!S.axes[id]) return false;
@@ -871,7 +976,9 @@ const G = (() => {
     const slept = sec >= C.SLEEP_H * 3600;
     if (slept) { gain *= C.SLEEP_BONUS; S.stats.sleeps++; }
     gainWood(gain, true);
-    emit('offline', { sec, gain, slept, eff: st.offline });
+    const rolls = autoRoll(Math.min(C.OFFLINE_ROLL_MAX, Math.floor(st.rollBase * sec * st.offline)), st.luckBase, true);
+    emit('offline', { sec, gain, slept, eff: st.offline, rolls });
+    if (rolls) for (const set of rolls.newSets) emit('setDone', set);
   }
 
   // ------------------------------------------------------------- メインティック
@@ -946,7 +1053,7 @@ const G = (() => {
     if (!T.tree) spawnTree();
     if (T.tree.alive) {
       if (st.dps > 0) {
-        let d = st.dps * comboMult() * buffMult('all') * (T.fever > 0 ? st.feverMult : 1) * gdt;
+        let d = st.dps * comboMult() * buffMult('all') * buffOf('dps') * (T.fever > 0 ? st.feverMult : 1) * gdt;
         if (T.tree.boss) d *= st.boss;
         T.dpsAcc += d;
         hit(d);
@@ -963,6 +1070,14 @@ const G = (() => {
         if (T.carryNext && T.tree && T.tree.alive) T.pending.push(Object.assign({ t: T.time + C.CARRY_DELAY, kind: 'carry', x: null, y: null }, T.carryNext));
         T.carryNext = null;
       }
+    }
+
+    // オートガチャ（ずっと回っている）
+    T.rollAcc += rollRate() * dt;
+    if (T.rollAcc >= 1) {
+      const n = Math.min(C.ROLL_TICK_MAX, Math.floor(T.rollAcc));
+      T.rollAcc = Math.min(T.rollAcc - n, C.ROLL_TICK_MAX);
+      autoRoll(n, luckNow());
     }
 
     if (T.squirrel) {
@@ -1033,6 +1148,12 @@ const G = (() => {
       if (!o || typeof o !== 'object' || !o.stats) return false;
       S = merge(fresh(), o);
       for (const id in S.axes) if (!AX[id]) delete S.axes[id];
+      if (!(S.v >= 2)) {
+        // v1 は Lv（1〜10）を持っていた。同じ Lv になる枚数（2^(Lv-1)）に直す
+        for (const id in S.axes) S.axes[id] = Math.pow(2, Math.max(0, (S.axes[id] | 0) - 1));
+        S.v = 2;
+      }
+      for (const id in S.axes) S.stats.bestAxeLv = Math.max(S.stats.bestAxeLv || 0, axeLv(id));
       if (S.equip && !S.axes[S.equip]) S.equip = null;
       if (S.study && !(S.study.end > 0)) S.study = null;
       return true;
@@ -1081,6 +1202,7 @@ const G = (() => {
     unitDps, previewUpgrade, buyWorker, buyAmount, workerCost, maxAffordable, buyUpgrade, upgCost, upgMaxed,
     pull, canPull, freeLeft, xpNeed, gainXp, equip, openChest, claimMission, missionProgress, missionText,
     pickup, pickupLeft, gameSpeed, speedMax, cycleSpeed, PICKUPS, styleMult,
+    rollRate, luckNow, axeLv, lvOf, buyShop, buffOf, setsDone, autoRoll, gachaNeed,
     catchSquirrel, goddessAnswer, challengeBoss, prestige, spiritGain, startStage, perk,
     startStudy, abortStudy, finishStudy, studyLeft, applyOffline, checkDaily,
     save, serialize, loadFrom, init, exportSave, importSave, hardReset,

@@ -79,6 +79,7 @@ const FX = (() => {
     const c = (el) => { if (!el) return null; const b = el.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; };
     targets = { wood: c(document.querySelector('#cur-wood .ico')), gem: c(document.querySelector('#cur-gem .ico')) };
     World.resize();
+    reel.t = 1;
   }
   function setQuality(settings) {
     const night = document.body.classList.contains('night');
@@ -758,6 +759,79 @@ const FX = (() => {
     }
   }
 
+  // ------------------------------------------------------------- オートガチャの帯: 引いた結果がレアの色のチップになって流れ続ける
+  const reel = { cv: null, cx: null, w: 0, h: 0, chips: [], acc: 0, best: -1, n: 0, t: 1 };
+  const RCOL = D.RARITY_ORDER.map((k) => D.RARITY[k].col);
+  const RLABS = D.RARITY_ORDER.map((k) => D.RARITY[k].label || k);
+  function reelFit() {
+    const cv = document.getElementById('rs-reel');
+    if (!cv) return;
+    const b = cv.getBoundingClientRect();
+    if (b.width < 10) return;
+    reel.cv = cv;
+    reel.cx = cv.getContext('2d');
+    if (reel.w !== b.width || reel.h !== b.height) {
+      reel.w = b.width; reel.h = b.height;
+      cv.width = Math.round(b.width * DPR); cv.height = Math.round(b.height * DPR);
+    }
+  }
+  function onRolls(d) {
+    for (let i = d.counts.length - 1; i >= 0; i--) if (d.counts[i] > 0) { reel.best = Math.max(reel.best, i); break; }
+    reel.n += d.n;
+  }
+  function drawReel(real) {
+    reel.t += real;
+    if (reel.t > 1) { reel.t = 0; reelFit(); }
+    const c = reel.cx;
+    if (!c) return;
+    const W = reel.w, H = reel.h;
+    reel.acc += real;
+    if (reel.acc >= 1 / 14 && reel.n > 0) {
+      reel.acc = 0;
+      const ri = reel.best;
+      reel.chips.push({ x: W + 20, ri, n: reel.n, born: clock });
+      if (ri >= 2) Sfx.rollTick(ri);
+      reel.best = -1;
+      reel.n = 0;
+    }
+    const sp = 60 + Math.min(300, G.rollRate() * 5);
+    c.setTransform(DPR, 0, 0, DPR, 0, 0);
+    c.clearRect(0, 0, W, H);
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    for (let i = reel.chips.length - 1; i >= 0; i--) {
+      const ch = reel.chips[i];
+      ch.x -= sp * real;
+      if (ch.x < -40) { reel.chips.splice(i, 1); continue; }
+      const ri = ch.ri, w = ri >= 5 ? 40 : ri >= 3 ? 32 : ri >= 2 ? 26 : 20, h = H - 6;
+      const age = clock - ch.born, pop = ri >= 3 ? 1 + Math.max(0, 0.4 - age) * 1.2 : 1;
+      c.save();
+      c.translate(ch.x, H / 2);
+      c.scale(pop, pop);
+      const col = ri >= 9 ? `hsl(${(clock * 300) % 360},100%,65%)` : RCOL[ri];
+      // 光彩は影ぼかしを使わず、ひとまわり大きい半透明の角丸で描く（軽い）
+      if (ri >= 3) {
+        c.globalAlpha = 0.35;
+        c.fillStyle = col;
+        c.beginPath();
+        if (c.roundRect) c.roundRect(-w / 2 - 3, -h / 2 - 3, w + 6, h + 6, 8); else c.rect(-w / 2 - 3, -h / 2 - 3, w + 6, h + 6);
+        c.fill();
+      }
+      c.globalAlpha = ri <= 0 ? 0.45 : ri === 1 ? 0.7 : 1;
+      c.fillStyle = ri >= 4 ? col : 'rgba(0,0,0,0.55)';
+      c.strokeStyle = col;
+      c.lineWidth = ri >= 2 ? 2 : 1;
+      c.beginPath();
+      if (c.roundRect) c.roundRect(-w / 2, -h / 2, w, h, 6); else c.rect(-w / 2, -h / 2, w, h);
+      c.fill();
+      c.stroke();
+      c.fillStyle = ri >= 4 ? '#1a0a1a' : col;
+      c.font = `${ri >= 3 ? 12 : 10}px ${FONT_D}`;
+      c.fillText(RLABS[ri], 0, 1);
+      c.restore();
+    }
+  }
+
   // ------------------------------------------------------------- 幻想の斧: 斧ごとの斬撃演出
   function signature(eq, x, y, d, q) {
     const fx = eq && eq.fx;
@@ -1116,6 +1190,7 @@ const FX = (() => {
     G.on('prestige', () => { Sfx.prestige(); confetti(160); addFlash(0.6); });
     G.on('load', () => { World.reset(); parts.length = 0; texts.length = 0; roulettes.length = 0; twinkles.length = 0; World.setRank(0, '#ffffff', false); Sfx.musicLevel(0); });
     G.on('rank', onRank);
+    G.on('autoRoll', onRolls);
     G.on('golden', (d) => {
       UI.banner('GOLDEN TIME!!', `${d.time}秒間、斬るたびに木材が噴き出す`, 'golden');
       Sfx.golden();
@@ -1168,6 +1243,7 @@ const FX = (() => {
     World.frame(dt, real, blocked());
     drawOverlay(dt, real);
     drawTwinkles(ox, real);
+    drawReel(real);
   }
 
   function axeIcon(a, size = 48) {

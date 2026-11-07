@@ -19,7 +19,7 @@ const Axe3D = (() => {
   const OUTLINE = 1.15;
   const deg = (d) => (d * Math.PI) / 180;
   const col = (c) => new T3.Color(c);
-  const RANKS = { N: 0, R: 1, SR: 2, SSR: 3, UR: 4, LR: 5, EX: 6 };
+  const RANKS = { N: 0, R: 1, SR: 2, SSR: 3, UR: 4, LR: 5, EX: 6, MYTH: 7, GOD: 8, OMEGA: 9 };
 
   // 共通の斧の形（data.js の AXE_PATHS と同じ形を点列で持つ）
   const BLADE = [30, 11, 44, 9, 'c', 50, 3, 59, 5, 60, 17, 'c', 61, 29, 52, 35, 46, 30, 30, 25];
@@ -376,7 +376,7 @@ const Axe3D = (() => {
       P.add(g, P.std({ vertexColors: true, roughness: 0.55, metalness: 0.1, emissive: '#ffffff', emissiveIntensity: 0.08 }), 0, 0, 0, false);
     },
     // ビームアックス: 光の刃
-    beam(P) {
+    beam(P, def) {
       P.add(new T3.CylinderGeometry(3, 3.3, 40, 12), P.std({ color: '#2b3140', metalness: 0.92, roughness: 0.26 }), 32, 43, 0);
       P.add(new T3.BoxGeometry(9, 9, 8), P.std({ color: '#3a4252', metalness: 0.9, roughness: 0.22 }), 32, 18, 0);
       for (const y of [27, 33]) {
@@ -388,8 +388,11 @@ const Axe3D = (() => {
         g.translate(-46, 18, 0); g.scale(k, k, 1); g.translate(46, -18, 0);
         return P.add(g, mat, 0, 0, 0, outline);
       };
-      const outer = P.basic({ color: '#18c8ff', transparent: true, opacity: 0.45, blending: T3.AdditiveBlending, depthWrite: false });
-      const mid = P.basic({ color: '#4ff0ff', transparent: true, opacity: 0.85, blending: T3.AdditiveBlending, depthWrite: false });
+      const rb = def.glow === 'rainbow';
+      const bc = def.glow && !rb && def.id !== 'x_beam' ? def.glow : '#4ff0ff';
+      const outer = P.basic({ color: rb ? '#ff6ad5' : bc === '#4ff0ff' ? '#18c8ff' : bc, transparent: true, opacity: 0.45, blending: T3.AdditiveBlending, depthWrite: false });
+      const mid = P.basic({ color: bc, transparent: true, opacity: 0.85, blending: T3.AdditiveBlending, depthWrite: false });
+      if (rb) P.ticks.push((t) => { mid.color.setHSL((t * 0.3) % 1, 1, 0.6); outer.color.setHSL((t * 0.3 + 0.15) % 1, 1, 0.55); });
       layer(1.16, 1.2, outer);
       layer(1.0, 1.8, mid, '#00313f');
       layer(0.74, 2.4, P.basic({ color: '#f4ffff' }));
@@ -481,8 +484,8 @@ const Axe3D = (() => {
       });
     },
     // 天翼斧セラフィム
-    wing(P) {
-      feathers(P, ['#fffaf0', '#ffd977'], '#fff6d0', 0.28, false);
+    wing(P, def) {
+      feathers(P, def.pal || ['#fffaf0', '#ffd977'], def.pal ? def.pal[1] : '#fff6d0', 0.28, false);
       const halo = P.add(new T3.TorusGeometry(6.5, 0.9, 8, 28), P.basic({ color: '#ffe680' }), 32, 1, 0, false);
       halo.rotation.x = 1.2;
       handle(P, '#f6f1e6', { rings: '#f0c84a', pommel: '#f0c84a' });
@@ -490,8 +493,8 @@ const Axe3D = (() => {
       P.ticks.push((t) => { halo.position.y = -1 + Math.sin(t * 2.2) * 0.9; halo.rotation.z = t * 0.8; });
     },
     // 不死鳥斧フェニクス: 燃える羽根
-    phoenix(P) {
-      feathers(P, ['#fff2a0', '#ff3a12'], '#ff6a1a', 0.55, true);
+    phoenix(P, def) {
+      feathers(P, def.pal || ['#fff2a0', '#ff3a12'], def.pal ? def.pal[1] : '#ff6a1a', 0.55, true);
       handle(P, '#d8a640', { metal: 0.7, rings: '#ff4a1a', pommel: '#ff2a3a', gem: true });
       P.glow('#ff7a2a', 44, 16, 64, 0.55);
     },
@@ -542,8 +545,9 @@ const Axe3D = (() => {
       });
     },
     // 焔竜斧ヴォルカ: 口を開けた竜の頭
-    dragon(P) {
-      const head = paint(extrude(shapeOf([30, 9, 38, 4, 49, 6, 58, 10, 63, 13.5, 58, 15.5, 47, 17, 58, 19.5, 61, 22.5, 52, 27, 41, 28.5, 31, 25]), 7, 1.5, 6), '#4a0610', '#d0341c', (x) => (x - 30) / 32);
+    dragon(P, def) {
+      const pc = def.pal || ['#4a0610', '#d0341c'];
+      const head = paint(extrude(shapeOf([30, 9, 38, 4, 49, 6, 58, 10, 63, 13.5, 58, 15.5, 47, 17, 58, 19.5, 61, 22.5, 52, 27, 41, 28.5, 31, 25]), 7, 1.5, 6), pc[0], pc[1], (x) => (x - 30) / 32);
       P.add(head, P.std({ color: '#ffffff', vertexColors: true, metalness: 0.55, roughness: 0.35, emissive: '#ff2a00', emissiveIntensity: 0.1 }));
       const tooth = P.std({ color: '#fff6e0', roughness: 0.4 });
       for (let i = 0; i < 4; i++) {
@@ -604,6 +608,113 @@ const Axe3D = (() => {
         om.emissive.setHSL((t * 0.4 + 0.5) % 1, 1, 0.6);
       });
     },
+    // 恋の斧: ふくらんだハートが鼓動する
+    heart(P, def) {
+      const s = new T3.Shape();
+      s.moveTo(0, -13);
+      s.bezierCurveTo(-4, -9, -16, -3, -15, 5);
+      s.bezierCurveTo(-14, 13, -4, 14, 0, 8);
+      s.bezierCurveTo(4, 14, 14, 13, 15, 5);
+      s.bezierCurveTo(16, -3, 4, -9, 0, -13);
+      const g = paint(extrude(s, 5, 1.8, 14), def.blade[1], def.blade[0], (x, y) => (y + 13) / 26);
+      const h = P.add(g, P.std({ color: '#ffffff', vertexColors: true, metalness: 0.2, roughness: 0.18, emissive: def.blade[1], emissiveIntensity: 0.25 }), 45, 18, 0);
+      h.rotation.z = -Math.PI / 2;
+      handle(P, def.handle, { rings: '#ff6ab0', pommel: '#ff3d8b', gem: true });
+      P.glow(def.glow, 46, 18, 50, 0.45);
+      P.ticks.push((t) => { const b = Math.pow(Math.max(0, Math.sin(t * 5)), 12); h.scale.setScalar(1 + 0.09 * b); });
+    },
+    // 雪華斧: 六方向に枝を伸ばす雪の結晶
+    snowflake(P, def) {
+      const g = new T3.Group();
+      g.position.set(45, -18, 0);
+      P.grp.add(g);
+      const m = P.std({ color: '#f2fbff', metalness: 0.3, roughness: 0.1, emissive: def.blade[1], emissiveIntensity: 0.35 });
+      for (let i = 0; i < 6; i++) {
+        const arm = new T3.Group();
+        arm.rotation.z = (i * Math.PI) / 3;
+        g.add(arm);
+        P.add(new T3.BoxGeometry(17, 2.6, 2.4), m, 8.5, 0, 0, true, arm);
+        for (const [d, L] of [[7, 6], [12, 4.5]]) {
+          for (const sg of [-1, 1]) {
+            const b = P.add(new T3.BoxGeometry(L, 1.8, 2), m, d + L * 0.35, -sg * L * 0.35, 0, true, arm);
+            b.rotation.z = sg * 0.8;
+          }
+        }
+      }
+      const hub = new T3.CylinderGeometry(4.2, 4.2, 3.2, 6);
+      hub.rotateX(Math.PI / 2);
+      P.add(hub, P.std({ color: '#bfe8ff', metalness: 0.4, roughness: 0.1, emissive: '#7fd8ff', emissiveIntensity: 0.5 }), 0, 0, 0, true, g);
+      handle(P, def.handle, { metal: 0.6, rings: '#ffffff', pommel: '#bfe8ff', gem: true });
+      P.glow(def.glow, 45, 18, 54, 0.5);
+      P.ticks.push((t, dt, act) => { g.rotation.z -= dt * (0.35 + act * 3); });
+    },
+    // 太陽斧: 光を放つ円盤と回る光線
+    sun(P, def) {
+      const g = new T3.Group();
+      g.position.set(46, -18, 0);
+      P.grp.add(g);
+      const disc = new T3.CylinderGeometry(9, 9, 4, 28);
+      disc.rotateX(Math.PI / 2);
+      const dm = P.std({ color: def.blade[0], metalness: 0.4, roughness: 0.3, emissive: def.blade[1], emissiveIntensity: 0.8 });
+      P.add(disc, dm, 0, 0, 0, true, g);
+      const rm = P.std({ color: def.blade[0], metalness: 0.6, roughness: 0.3, emissive: def.blade[1], emissiveIntensity: 0.6 });
+      const rays = new T3.Group();
+      g.add(rays);
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI * 2;
+        const c = P.add(new T3.ConeGeometry(2.4, i % 2 ? 6 : 9, 4), rm, Math.cos(a) * (i % 2 ? 12 : 13.5), -Math.sin(a) * (i % 2 ? 12 : 13.5), 0, true, rays);
+        c.rotation.z = a - Math.PI / 2;
+      }
+      handle(P, def.handle, { rings: '#ffd45a', pommel: def.blade[1], gem: true });
+      P.glow(def.glow, 46, 18, 70, 0.6);
+      P.ticks.push((t, dt, act) => { rays.rotation.z -= dt * (0.5 + act * 3); dm.emissiveIntensity = 0.7 + 0.2 * Math.sin(t * 4); });
+    },
+    // 海神斧: 横向きの三叉の刃
+    trident(P, def) {
+      const pm = P.std({ color: def.blade[0], metalness: 0.85, roughness: 0.2, emissive: def.blade[1], emissiveIntensity: 0.25 });
+      const gm = P.std({ color: '#ffd45a', metalness: 0.95, roughness: 0.25 });
+      P.add(new T3.BoxGeometry(3.6, 24, 3.6), gm, 38, 18, 0);
+      P.add(new T3.BoxGeometry(6, 4, 4), gm, 35, 18, 0);
+      for (const [y, L] of [[8, 18], [18, 22], [28, 18]]) {
+        P.add(new T3.BoxGeometry(L, 2.6, 2.6), pm, 39 + L / 2, y, 0);
+        const tip = P.add(new T3.ConeGeometry(2.3, 6, 4), pm, 40 + L + 2.5, y, 0);
+        tip.rotation.z = -Math.PI / 2;
+      }
+      P.add(new T3.SphereGeometry(2.6, 12, 8), P.std({ color: '#ffffff', emissive: def.glow, emissiveIntensity: 0.8, roughness: 0.1 }), 38, 18, 2.4, false);
+      handle(P, def.handle, { rings: '#ffd45a', pommel: def.glow, gem: true });
+      P.glow(def.glow, 50, 18, 56, 0.45);
+    },
+    // 土星斧: 縞模様の惑星と傾いた輪、まわる小さな月
+    saturn(P, def) {
+      const g = new T3.Group();
+      g.position.set(46, -18, 0);
+      P.grp.add(g);
+      const pl = paint(new T3.SphereGeometry(10, 26, 18), def.blade[1], def.blade[0], (x, y) => 0.5 + 0.5 * Math.sin(y * 0.9));
+      const planet = P.add(pl, P.std({ color: '#ffffff', vertexColors: true, roughness: 0.6, metalness: 0.1, flatShading: false }), 0, 0, 0, true, g);
+      const tilt = new T3.Group();
+      tilt.rotation.set(-1.2, 0.35, 0);
+      g.add(tilt);
+      P.add(new T3.RingGeometry(12.5, 19.5, 56, 1), P.std({ color: def.blade[0], side: T3.DoubleSide, roughness: 0.5, metalness: 0.3, emissive: def.glow, emissiveIntensity: 0.25, transparent: true, opacity: 0.92 }), 0, 0, 0, false, tilt);
+      P.add(new T3.RingGeometry(20.5, 22, 56, 1), P.basic({ color: def.glow, side: T3.DoubleSide, transparent: true, opacity: 0.5, blending: T3.AdditiveBlending, depthWrite: false }), 0, 0, 0, false, tilt);
+      const moon = P.add(new T3.SphereGeometry(2.2, 12, 8), P.std({ color: '#e8e8f0', roughness: 0.8 }), 24, 0, 0, true, g);
+      handle(P, def.handle, { rings: '#ffd27a', pommel: '#ffd27a' });
+      P.glow(def.glow, 46, 18, 60, 0.4);
+      P.ticks.push((t, dt, act) => {
+        planet.rotation.y += dt * (0.8 + act * 2);
+        moon.position.set(Math.cos(t * 1.4) * 24, Math.sin(t * 1.4) * 7, Math.sin(t * 1.4) * 10);
+      });
+    },
+    // 斬鉄斧: 柄から反りのある刀身が伸びる
+    katana(P, def) {
+      const g = paint(extrude(shapeOf([33, 13, 'c', 44, 12.5, 55, 10.5, 63, 6, 'c', 60, 10.5, 52, 15.5, 33, 19]), 1.8, 0.6, 16), def.blade[1], def.blade[0], (x, y) => (-y - 12.5) / 5.5);
+      P.add(g, P.std({ color: '#ffffff', vertexColors: true, metalness: 0.9, roughness: 0.12, emissive: '#cfe8ff', emissiveIntensity: 0.12 }));
+      const ts = new T3.CylinderGeometry(5.5, 5.5, 1.8, 8);
+      ts.rotateZ(Math.PI / 2);
+      P.add(ts, P.std({ color: '#2a2a2a', metalness: 0.8, roughness: 0.3 }), 32.5, 16, 0);
+      P.add(new T3.BoxGeometry(3, 6, 3.4), P.std({ color: '#ffd45a', metalness: 0.95, roughness: 0.2 }), 35, 16, 0);
+      handle(P, def.handle, { rings: '#e8e8f0', ringsAt: [44, 48, 52, 56, 60], pommel: '#ffd45a' });
+      P.glow(def.glow, 50, 12, 46, 0.4);
+    },
     // 虚数斧イマジナリ: 現実に存在しないホログラム。ときどきバグる
     imaginary(P) {
       const holo = (c) => {
@@ -654,11 +765,55 @@ const Axe3D = (() => {
     if (c === true) return OUT_MAT;
     return new T3.MeshBasicMaterial({ color: c, side: T3.BackSide });
   }
+  function aura(P, def, rank) {
+    const rainbow = def.glow === 'rainbow' || rank >= 9;
+    const col = def.glow && def.glow !== 'rainbow' ? def.glow : '#ffffff';
+    const grp = new T3.Group();
+    grp.position.set(44, -18, 0);
+    P.grp.add(grp);
+    const rings = [];
+    const n = rank >= 9 ? 3 : rank >= 8 ? 2 : 1;
+    for (let i = 0; i < n; i++) {
+      const m = P.basic({ color: col, transparent: true, opacity: 0.8, blending: T3.AdditiveBlending, depthWrite: false });
+      const r = P.add(new T3.TorusGeometry(25 + i * 4, 0.55, 6, 64), m, 0, 0, 0, false, grp);
+      r.rotation.set(1.15 + i * 0.45, i * 0.8, 0);
+      rings.push(r);
+    }
+    const sparks = [];
+    for (let i = 0; i < (rank >= 9 ? 14 : rank >= 8 ? 11 : 8); i++) {
+      const sp = P.glow(col, (i / 2 - 3) * 6, 0, 7, 0.95, 4, T3.AdditiveBlending, grp);
+      sp.userData.ph = i / 7;
+      sp.userData.x = Math.sin(i * 2.4) * 22;
+      sparks.push(sp);
+    }
+    let pillar = null;
+    if (rank >= 8) {
+      pillar = P.glow(col, 0, 0, 1, 0.5, -5, T3.AdditiveBlending, grp);
+      pillar.scale.set(16, 110, 1);
+    }
+    const c = new T3.Color();
+    P.ticks.push((t) => {
+      rings.forEach((r, i) => { r.rotation.z = t * (0.6 + i * 0.3) * (i % 2 ? -1 : 1); });
+      for (const sp of sparks) {
+        const ph = (t * 0.35 + sp.userData.ph) % 1;
+        sp.position.set(sp.userData.x * (1 - ph * 0.3), -24 + ph * 52, 4);
+        sp.material.opacity = Math.sin(ph * Math.PI) * 0.95;
+      }
+      if (pillar) pillar.material.opacity = 0.35 + 0.15 * Math.sin(t * 3);
+      if (rainbow) {
+        rings.forEach((r, i) => r.material.color.setHSL((t * 0.25 + i * 0.2) % 1, 1, 0.65));
+        sparks.forEach((sp, i) => sp.material.color.setHSL((t * 0.3 + i * 0.07) % 1, 1, 0.7));
+        if (pillar) pillar.material.color.copy(c.setHSL((t * 0.2) % 1, 1, 0.7));
+      }
+    });
+  }
   function build(def) {
     if (!OUT_MAT) OUT_MAT = new T3.MeshBasicMaterial({ color: '#150c07', side: T3.BackSide });
     const P = ctx(def);
     const fn = (def.model && MODELS[def.model]) || classic;
     fn(P, def);
+    const rank = RANKS[def.r] || 0;
+    if (rank >= 7) aura(P, def, rank);
     for (const m of P.hulls) {
       const mat = outlineMat(m.userData.outline);
       if (mat !== OUT_MAT) P.mats.push(mat);

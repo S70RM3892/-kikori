@@ -80,7 +80,7 @@ function evalWith(fn) {
   G.dirty();
   return e;
 }
-const SKIP = new Set(['gem', 'chest', 'squirrel', 'night']);
+const SKIP = new Set(['gem', 'chest', 'squirrel', 'night', 'rollspd', 'luck']);
 function shop() {
   for (let guard = 0; guard < 200; guard++) {
     const s = S();

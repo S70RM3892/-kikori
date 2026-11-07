@@ -39,6 +39,7 @@ const UI = (() => {
       if (st.sound) { Sfx.unlock(); Sfx.buy(); }
     });
     $('#btn-settings').addEventListener('click', openSettings);
+    $('#roll-strip').addEventListener('click', () => openDrawer('gacha'));
     $('#btn-speed').addEventListener('click', () => {
       Sfx.unlock();
       const prevMax = G.speedMax();
@@ -111,6 +112,14 @@ const UI = (() => {
     setCls('btn-speed', 'x3', eff >= 3);
     setCls('btn-speed', 'capped', eff < v);
     setCls('hud', 'speedy', eff > 1);
+  }
+  function updateRollStrip() {
+    const T = G.T, rate = G.rollRate();
+    const boost = T.fever > 0 || T.rank >= 3 || G.gameSpeed() > 1 || G.buffOf('roll') > 1 || G.buffOf('luck') > 1 || T.golden > 0;
+    setText('rs-rate', rate < 100 ? rate.toFixed(1) : fmt(rate));
+    setText('rs-luck', `×${G.luckNow().toFixed(2)}`);
+    setText('rs-lv', String(S().gachaLv || 1));
+    setCls('roll-strip', 'boost', boost);
   }
   function bump(kind) {
     const e = kind === 'gem' ? $('#cur-gem') : $('#cur-wood');
@@ -550,6 +559,7 @@ const UI = (() => {
     combo: '🔥 コンボ・フィーバー',
     econ: '🏭 木こり・経済',
     luck: '🍀 運・その他',
+    gacha: '🎰 オートガチャ <small>回転とレア運。ガチャLvでも伸びる</small>',
   };
   const UFMT = {
     tap: (s) => `斬撃基礎 ${fmt(s.tapBase)}`,
@@ -571,6 +581,8 @@ const UI = (() => {
     rare: (s) => `レア木 ×${s.rare.toFixed(2)}`,
     chest: (s) => `宝箱率 ${(s.chest * 100).toFixed(1)}%`,
     night: (s) => `オフライン ${Math.round(s.offline * 100)}%`,
+    rollspd: (s) => `基本 毎秒${s.rollBase.toFixed(1)}回`,
+    luck: (s) => `基本の幸運 ×${s.luckBase.toFixed(2)}`,
   };
   TABS.upgrades = {
     build(root) {
@@ -639,18 +651,30 @@ const UI = (() => {
     },
   };
 
-  // --- ガチャタブ
-  const rateTxt = (k) => `${(D.RARITY[k].rate * 100).toFixed(1)}%`;
+  // --- ガチャタブ（オートガチャが主役。プレミアム・ショップ・セット・図鑑）
+  const RLAB = (r) => D.RARITY[r].label || r;
+  const oneIn = (p) => '1/' + (p >= 1 ? '1' : U.fmt(Math.round(1 / p)));
+  const feed = []; // 最近の当たり
+  function bonusText(b) { return Object.keys(b).map((k) => D.SP_TEXT[k](b[k])).join(' ・ '); }
   TABS.gacha = {
     build(root) {
       const s = S();
       root.innerHTML = '';
+      // オートガチャ
+      const auto = el('div', 'auto-card');
+      auto.innerHTML = `<div class="ac-top"><span class="ac-spin" aria-hidden="true">🎰</span><div><small>オートガチャ（ずっと回っている）</small><div class="ac-rate">毎秒 <b class="ac-r">0</b> 回転</div></div></div>` +
+        `<div class="ac-boost"></div><div class="ac-stats"><span>🍀 幸運 <b class="ac-luck">×1</b></span><span>累計 <b class="ac-total">0</b>回</span><span>最高 <b class="ac-best">-</b></span></div>` +
+        `<div class="ac-lv"><b>ガチャLv <span class="ac-glv">1</span></b><div class="bar"><i class="ac-gbar"></i></div><small class="ac-gxp"></small></div>` +
+        `<div class="ac-feed"></div>`;
+      root.appendChild(auto);
+      // 確率表
+      const tbl = el('details', 'rates', `<summary>レアの確率（いまの幸運で）</summary><table><tr><th>レア</th><th>基本</th><th>いま</th><th>持っている</th></tr>${D.RARITY_ORDER.slice().reverse().map((k) => `<tr><td><span class="rb r-${k}">${RLAB(k)}</span></td><td>${oneIn(D.RARITY[k].p)}</td><td class="now-${k}"></td><td>${D.AXES.filter((a) => a.r === k && s.axes[a.id]).length}/${D.AXES.filter((a) => a.r === k).length}</td></tr>`).join('')}</table><p>レアから順に「1/N × 幸運」で判定する。同じ斧を引くほど枚数が増え、枚数が2倍になるごとに Lv が上がる（上限なし）。幸運はガチャLv・強化・スタイルランク・ゴールデンタイム・お守りで上がり、回転はフィーバー（×2）・ランク・倍速・オイルで速くなる。離れている間も回る。</p>`);
+      root.appendChild(tbl);
+      // ピックアップ
       const pu = G.pickup();
-      const fan = D.AXES.filter((a) => a.fantasy);
       const hero = el('div', 'gacha-hero');
-      hero.innerHTML = (pu ? `<button type="button" class="gh-pu r-${pu.r}" aria-label="ピックアップ: ${esc(pu.name)}"><span class="gh-pu-img">${FX.axeIcon(pu, 92)}</span><span class="gh-pu-txt"><small>本日のピックアップ</small><b>${esc(pu.name)}</b><span><span class="rb r-${pu.r}">${pu.r}</span> <em>出現率UP!</em></span><small class="gh-pu-left"></small></span></button>` : '') +
-        `<div class="gh-title">斧ガチャ</div><div class="gh-fan">現実にない<b>幻想の斧</b> ${fan.length}種 登場中</div>` +
-        `<div class="gh-sub">${['EX', 'LR', 'UR', 'SSR', 'SR'].map((k) => `${k} ${rateTxt(k)}`).join(' ・ ')}</div><div class="gh-pity"></div>`;
+      hero.innerHTML = (pu ? `<button type="button" class="gh-pu r-${pu.r}" aria-label="ピックアップ: ${esc(pu.name)}"><span class="gh-pu-img">${FX.axeIcon(pu, 92)}</span><span class="gh-pu-txt"><small>本日のピックアップ</small><b>${esc(pu.name)}</b><span><span class="rb r-${pu.r}">${RLAB(pu.r)}</span> <em>出現率UP!</em></span><small class="gh-pu-left"></small></span></button>` : '') +
+        `<div class="gh-title">プレミアムガチャ</div><div class="gh-fan">ジェムで引くと <b>幸運×${D.CFG.PREMIUM_LUCK}</b> ・ 10連はSR以上確定</div><div class="gh-pity"></div>`;
       root.appendChild(hero);
       if (pu) hero.querySelector('.gh-pu').addEventListener('click', () => axeDetail(pu, true));
       const btns = el('div', 'gacha-btns');
@@ -661,32 +685,61 @@ const UI = (() => {
       btns.querySelector('.pf').addEventListener('click', () => doPull(1, true));
       btns.querySelector('.p1').addEventListener('click', () => doPull(1));
       btns.querySelector('.p10').addEventListener('click', () => doPull(10));
-      root.appendChild(el('details', 'rates', `<summary>排出率と仕組み</summary><table><tr><th>レア</th><th>確率</th><th>装備タップ倍率</th><th>所持ボーナス/Lv</th></tr>${D.RARITY_ORDER.slice().reverse().map((k) => { const r = D.RARITY[k]; return `<tr><td><span class="rb r-${k}">${k}</span></td><td>${(r.rate * 100).toFixed(1)}%</td><td>×${r.tap}</td><td>+${Math.round(r.pas * 100)}%</td></tr>`; }).join('')}</table><p>同じ斧が出ると Lv アップ（最大 Lv${D.CFG.AXE_MAX_LV}）。最大 Lv 後の重複はジェムに変換。${G.stats().pity}回引いて SSR 以上が出なければ次は SSR 確定（天井）。チケット🎫は1枚で1回分。</p><p>ピックアップの斧は、同じレアを引いたときに ${Math.round(D.CFG.PICKUP_SHARE * 100)}% の確率で出る。毎日0時に入れ替わる。幻想の斧は1本ずつ形・動き・斬ったときの演出と音が違う。</p>`));
+      // ジェムショップ
+      root.appendChild(el('div', 'sec-title', `💎 ジェムショップ<span>効き目は時間制。重ねがけOK</span>`));
+      const shop = el('div', 'shop-grid');
+      for (const it of D.SHOP) {
+        const b = el('button', 'shop-it', `<span class="si-ico">${it.icon}</span><b>${esc(it.name)}</b><small>${esc(it.desc)}</small><em>💎${it.gems}</em>`);
+        b.type = 'button';
+        b.dataset.id = it.id;
+        b.addEventListener('click', () => {
+          const r = G.buyShop(it.id);
+          if (r.error === 'gems') { toast('💎', 'ジェムが足りない', 'ボス・実績・ガチャLvで集めよう'); Sfx.error(); failShake(b); return; }
+          if (r.ok) { Sfx.unlockFx(); sparkAt(b, '#5ee8ff'); toast(it.icon, `${it.name}！`, it.desc, 'gold'); }
+        });
+        shop.appendChild(b);
+      }
+      root.appendChild(shop);
+      // セット
+      const done = G.setsDone();
+      root.appendChild(el('div', 'sec-title', `🗂️ 斧のセット <b>${done.length}/${D.SETS.length}</b><span>そろえると永続ボーナス</span>`));
+      const sets = el('div', 'set-list');
+      for (const set of D.SETS) {
+        const have = set.axes.filter((id) => s.axes[id]).length;
+        const ok = have === set.axes.length;
+        const row = el('div', `set-row${ok ? ' done' : ''}`);
+        row.innerHTML = `<div class="set-h"><b>${set.icon} ${esc(set.name)}</b><span>${have}/${set.axes.length}</span></div><div class="set-axes">${set.axes.map((id) => { const a = G.AX[id]; return `<span class="set-ax${s.axes[id] ? ' own' : ''} r-${a.r}" title="${esc(a.name)}">${FX.axeIcon(a, 30)}</span>`; }).join('')}</div><div class="set-b">${ok ? '✅ ' : ''}${esc(bonusText(set.bonus))}</div>`;
+        sets.appendChild(row);
+      }
+      root.appendChild(sets);
+      // 図鑑
       const owned = Object.keys(s.axes).length;
       const st = G.stats();
+      const fan = D.AXES.filter((a) => a.fantasy);
       const fanOwned = fan.filter((a) => s.axes[a.id]).length;
       root.appendChild(el('div', 'sec-title', `斧コレクション <b>${owned}/${D.AXES.length}</b><span>幻想 ${fanOwned}/${fan.length} ・ 所持ボーナス 全ダメージ +${fmt(Math.round((st.axeMult - 1) * 100))}%</span>`));
       const grid = el('div', 'axe-grid');
       const order = D.RARITY_ORDER.slice().reverse();
       const axes = D.AXES.slice().sort((a, b) => order.indexOf(a.r) - order.indexOf(b.r) || (b.fantasy ? 1 : 0) - (a.fantasy ? 1 : 0));
       for (const a of axes) {
-        const lv = s.axes[a.id] || 0;
-        const b = el('button', `axe-card r-${a.r}${lv ? ' owned' : ''}${s.equip === a.id ? ' eq' : ''}${a.fantasy ? ' fan' : ''}`);
+        const n = s.axes[a.id] || 0;
+        const lv = G.lvOf(n);
+        const b = el('button', `axe-card r-${a.r}${n ? ' owned' : ''}${s.equip === a.id ? ' eq' : ''}${a.fantasy ? ' fan' : ''}`);
         b.type = 'button';
-        b.innerHTML = `<span class="ac-r">${a.r}${a.fantasy ? '<i class="ac-fan">幻</i>' : ''}</span><div class="ac-icon">${FX.axeIcon(a, 50)}</div><div class="ac-name">${lv ? esc(a.name) : '？？？'}</div><div class="ac-lv">${lv ? 'Lv' + lv : ''}</div>${s.equip === a.id ? '<span class="ac-eq">装備中</span>' : ''}`;
-        if (lv) b.addEventListener('click', () => axeDetail(a));
+        b.innerHTML = `<span class="ac-r">${RLAB(a.r)}${a.fantasy ? '<i class="ac-fan">幻</i>' : ''}</span><div class="ac-icon">${FX.axeIcon(a, 50)}</div><div class="ac-name">${n ? esc(a.name) : '？？？'}</div><div class="ac-lv">${n ? `Lv${lv} <small>×${fmt(n)}</small>` : oneIn(D.RARITY[a.r].p)}</div>${s.equip === a.id ? '<span class="ac-eq">装備中</span>' : ''}`;
+        if (n) b.addEventListener('click', () => axeDetail(a));
         else b.disabled = true;
         grid.appendChild(b);
       }
       root.appendChild(grid);
-      this.pf = btns.querySelector('.pf');
-      this.p1 = btns.querySelector('.p1');
-      this.p10 = btns.querySelector('.p10');
-      this.pity = hero.querySelector('.gh-pity');
-      this.puLeft = hero.querySelector('.gh-pu-left');
+      Object.assign(this, {
+        pf: btns.querySelector('.pf'), p1: btns.querySelector('.p1'), p10: btns.querySelector('.p10'), pity: hero.querySelector('.gh-pity'), puLeft: hero.querySelector('.gh-pu-left'),
+        aR: auto.querySelector('.ac-r'), aLuck: auto.querySelector('.ac-luck'), aTotal: auto.querySelector('.ac-total'), aBest: auto.querySelector('.ac-best'), aBoost: auto.querySelector('.ac-boost'),
+        aGlv: auto.querySelector('.ac-glv'), aGbar: auto.querySelector('.ac-gbar'), aGxp: auto.querySelector('.ac-gxp'), aFeed: auto.querySelector('.ac-feed'), tbl, shop, feedN: -1,
+      });
     },
     update() {
-      const s = S();
+      const s = S(), T = G.T;
       const set = (b, n, cost) => {
         const t = s.tickets >= n;
         b.querySelector('.pc').textContent = t ? `🎫×${n}` : `💎${cost}`;
@@ -705,28 +758,123 @@ const UI = (() => {
         const t = Math.ceil(G.pickupLeft());
         this.puLeft.textContent = `入れ替わりまで ${Math.floor(t / 3600)}時間${String(Math.floor((t % 3600) / 60)).padStart(2, '0')}分`;
       }
+      // オートガチャの状態
+      const rate = G.rollRate(), luck = G.luckNow();
+      this.aR.textContent = rate < 100 ? rate.toFixed(1) : fmt(rate);
+      this.aLuck.textContent = `×${luck.toFixed(2)}`;
+      this.aTotal.textContent = fmt(s.stats.rolls || 0);
+      const br = D.RARITY_ORDER[s.stats.bestRoll || 0];
+      const ba = s.stats.bestRollAxe && G.AX[s.stats.bestRollAxe];
+      this.aBest.innerHTML = ba ? `<span class="rb r-${br}">${RLAB(br)}</span> ${esc(ba.name)}` : '-';
+      const boosts = [];
+      if (T.fever > 0) boosts.push('🌈フィーバー ×2');
+      if (T.rank > 0) boosts.push(`STYLE ${D.STYLE.RANKS[T.rank].id} 回転×${(1 + 0.1 * T.rank).toFixed(1)} 幸運×${(1 + 0.06 * T.rank).toFixed(2)}`);
+      if (G.gameSpeed() > 1) boosts.push(`⏩ ×${G.gameSpeed()}`);
+      if (T.golden > 0) boosts.push('✨ゴールデン 幸運×2');
+      if (G.buffOf('roll') > 1) boosts.push(`⚙️オイル ×${G.buffOf('roll')}`);
+      if (G.buffOf('luck') > 1) boosts.push(`🍀お守り ×${G.buffOf('luck')}`);
+      this.aBoost.textContent = boosts.length ? boosts.join('  ') : '斬り続けるとランクが上がって回転と幸運がブースト';
+      const need = G.gachaNeed(s.gachaLv || 1);
+      this.aGlv.textContent = String(s.gachaLv || 1);
+      this.aGbar.style.transform = `scaleX(${U.clamp((s.gachaXp || 0) / need, 0, 1)})`;
+      this.aGxp.textContent = `${fmt(s.gachaXp || 0)}/${fmt(need)}`;
+      if (this.feedN !== feed.length) {
+        this.feedN = feed.length;
+        this.aFeed.innerHTML = feed.slice(0, 8).map((o) => `<div class="fd r-${o.r}"><span class="rb r-${o.r}">${RLAB(o.r)}</span><b>${esc(o.axe.name)}</b><small>${o.isNew ? 'NEW!' : o.lvUp ? `Lv${o.lv}↑` : '+1'}</small></div>`).join('') || '<div class="fd-empty">UR以上や新しい斧が出るとここに並ぶ</div>';
+      }
+      for (const k of D.RARITY_ORDER) {
+        const c = this.tbl.querySelector('.now-' + k);
+        if (c) c.textContent = oneIn(Math.min(1, D.RARITY[k].p * luck));
+      }
+      this.shop.querySelectorAll('.shop-it').forEach((b) => { const it = D.SHOP.find((x) => x.id === b.dataset.id); b.classList.toggle('can', s.gems >= it.gems); });
     },
   };
   const spText = (a, lv) => (a.sp ? Object.keys(a.sp).map((k) => D.SP_TEXT[k](a.sp[k] * (1 + 0.2 * (Math.max(1, lv) - 1)))).join(' / ') : 'なし');
   function axeDetail(a, preview) {
     const s = S();
-    const lv = s.axes[a.id] || 0;
+    const n = s.axes[a.id] || 0;
+    const lv = G.lvOf(n);
     const R = D.RARITY[a.r];
     const tapM = R.tap * (1 + 0.1 * (Math.max(1, lv) - 1));
     const body = el('div', 'axe-detail');
     body.innerHTML = `<div class="ad-icon r-${a.r}">${FX.axeIcon(a, 132)}</div>` +
       (a.fantasy ? '<div class="ad-fan">✦ 幻想の斧 ✦</div>' : '') +
       `<p class="ad-desc">${esc(a.desc)}</p>` +
-      `<dl><dt>レア</dt><dd><span class="rb r-${a.r}">${a.r}</span> ${lv ? `Lv${lv}/${D.CFG.AXE_MAX_LV}` : '未所持'}</dd>` +
+      `<dl><dt>レア</dt><dd><span class="rb r-${a.r}">${RLAB(a.r)}</span> ${oneIn(R.p)}</dd>` +
+      `<dt>Lv</dt><dd>${n ? `Lv${lv}（${fmt(n)}枚・次のLvまで あと${fmt(Math.pow(2, lv) - n)}枚）` : '未所持'}</dd>` +
       `<dt>装備時タップ</dt><dd>×${tapM.toFixed(2)}</dd><dt>装備時特性</dt><dd>${esc(spText(a, lv))}</dd>` +
-      `<dt>所持ボーナス</dt><dd>全ダメージ +${Math.round(R.pas * Math.max(1, lv) * 100)}%${lv ? '' : '（入手時）'}</dd></dl>`;
+      `<dt>所持ボーナス</dt><dd>全ダメージ +${(R.pas * Math.max(1, lv) * 100).toFixed(1)}%${n ? '' : '（入手時）'}</dd></dl>`;
     const isEq = s.equip === a.id;
-    const buttons = preview && !lv ? [{ text: '閉じる', cls: 'primary' }] : [
-      { text: isEq ? '装備中' : '装備する', cls: 'primary', disabled: isEq || !lv, onClick: () => { G.equip(a.id); rebuild(); } },
+    const buttons = preview && !n ? [{ text: '閉じる', cls: 'primary' }] : [
+      { text: isEq ? '装備中' : '装備する', cls: 'primary', disabled: isEq || !n, onClick: () => { G.equip(a.id); rebuild(); } },
       { text: '閉じる' },
     ];
     modal({ title: a.name, body, cls: 'r-' + a.r, buttons });
   }
+
+  // ------------------------------------------------------------- オートガチャの当たり: 小さなカードと、超レアの演出
+  const cardQ = [];
+  let cardLive = 0;
+  function rareCard(o) {
+    if (cardQ.length > 6) cardQ.splice(0, cardQ.length - 6);
+    cardQ.push(o);
+    pumpCards();
+  }
+  function pumpCards() {
+    const root = $('#rare-cards');
+    if (!root) return;
+    while (cardQ.length && cardLive < 2 && !overlayBusy) {
+      const o = cardQ.shift();
+      cardLive++;
+      const c = el('div', `rare-card r-${o.r}`, `<span class="rc-img">${FX.axeIcon(o.axe, 46)}</span><span class="rc-t"><span><span class="rb r-${o.r}">${RLAB(o.r)}</span> <small>${oneIn(D.RARITY[o.r].p)}</small></span><b>${esc(o.axe.name)}</b><em>${o.isNew ? 'NEW!' : o.lvUp ? `Lv${o.lv} に上がった` : `${fmt(o.copies)}枚目`}</em></span>`);
+      root.appendChild(c);
+      Sfx.gachaReveal(o.r);
+      setTimeout(() => { c.classList.add('out'); setTimeout(() => { c.remove(); cardLive--; pumpCards(); }, 300); }, 2400);
+    }
+  }
+  // LR 以上: 画面いっぱいに一瞬だけ見せる（タップで閉じる・自動で閉じる）
+  const cutQ = [];
+  function cutscene(o) {
+    cutQ.push(o);
+    if (cutQ.length === 1) playCut();
+  }
+  function playCut() {
+    const o = cutQ[0];
+    if (!o) return;
+    if (overlayBusy || modalCur) { setTimeout(playCut, 600); return; }
+    const rk = G.RANK[o.r];
+    overlayBusy = true;
+    const ov = el('div', `cut-ov r-${o.r}${rk >= 7 ? ' myth' : ''}`);
+    ov.innerHTML = `<div class="gs-rays"></div><div class="cut-in"><div class="cut-odds">${oneIn(D.RARITY[o.r].p)}</div><div class="gs-rar"><span class="rb r-${o.r}">${RLAB(o.r)}</span>${o.isNew ? '<span class="gs-tag pu">NEW</span>' : ''}</div><div class="gs-img">${FX.axeIcon(o.axe, 210)}</div><div class="gs-name">${esc(o.axe.name)}</div><div class="gs-desc">${o.isNew ? esc(o.axe.desc) : o.lvUp ? `Lv${o.lv} に上がった！` : `${fmt(o.copies)}枚目`}</div></div>`;
+    document.body.appendChild(ov);
+    Sfx.showcase(o.r);
+    Sfx.vibrate(rk >= 7 ? [40, 40, 80] : [20, 30, 40]);
+    FX.confetti(rk >= 7 ? 220 : rk >= 6 ? 160 : 100);
+    FX.addFlash(rk >= 7 ? 0.7 : 0.4, rk >= 7 ? '255,255,255' : '255,240,200');
+    let done = false;
+    const close = () => {
+      if (done) return;
+      done = true;
+      ov.classList.add('out');
+      setTimeout(() => { ov.remove(); overlayBusy = false; cutQ.shift(); pumpCards(); if (cutQ.length) setTimeout(playCut, 250); }, 250);
+    };
+    ov.addEventListener('click', close);
+    setTimeout(close, rk >= 7 ? 3400 : rk >= 6 ? 2600 : 2000);
+  }
+  // 画面を止める演出は「初めての LR 以上」と「MYTH 以上」だけ。続けて出すぎないように間をあける
+  let lastCut = 0;
+  function onAutoRoll(d) {
+    for (const o of d.notable) {
+      feed.unshift(o);
+      if (feed.length > 30) feed.length = 30;
+      const rk = G.RANK[o.r];
+      if (blocked() && !overlayBusy) continue;
+      const now = performance.now();
+      if ((rk >= 7 || (rk >= 5 && o.isNew)) && (rk >= 8 || now - lastCut > 6000) && cutQ.length < 3) { lastCut = now; cutscene(o); }
+      else if (rk >= 4 || o.isNew) rareCard(o);
+    }
+  }
+
   function doPull(n, free) {
     if (overlayBusy) return;
     const r = G.pull(n, { free: !!free });
@@ -741,7 +889,7 @@ const UI = (() => {
   }
   // ガチャ演出: 光の色が 青→紫→金→虹→白→（暗転） と昇格していき、SSR以上は1本ずつ大きく見せる
   let r0Free = false;
-  const STEP = { N: 0, R: 0, SR: 1, SSR: 2, UR: 3, LR: 4, EX: 5 };
+  const STEP = { N: 0, R: 0, SR: 1, SSR: 2, UR: 3, LR: 4, EX: 5, MYTH: 5, GOD: 5, OMEGA: 5 };
   const HYPE = ['', 'キラッ…', '金色の光…！', '虹色！？ 激アツ!!', 'LEGEND…!!!', '？？？？？'];
   function gachaShow(res, n, free) {
     r0Free = !!free;
@@ -789,8 +937,8 @@ const UI = (() => {
       res.forEach((o, i) => {
         const c = el('div', `g-card r-${o.r}${o.axe.fantasy ? ' fan' : ''}`);
         c.style.animationDelay = `${(i * step) / 1000}s`;
-        c.innerHTML = `<div class="gc-in"><span class="gc-r">${o.r}</span>${o.pickup ? '<span class="gc-pu">UP</span>' : o.axe.fantasy ? '<span class="gc-fan">幻</span>' : ''}${FX.axeIcon(o.axe, n > 1 ? 54 : 124)}<div class="gc-name">${esc(o.axe.name)}</div>` +
-          `<div class="gc-tag">${o.isNew ? '<b class="new">NEW!</b>' : o.lvUp ? `<b class="lvup">Lv${o.lv}↑</b>` : `<b class="cv">💎+${o.gems}</b>`}</div></div>`;
+        c.innerHTML = `<div class="gc-in"><span class="gc-r">${RLAB(o.r)}</span>${o.pickup ? '<span class="gc-pu">UP</span>' : o.axe.fantasy ? '<span class="gc-fan">幻</span>' : ''}${FX.axeIcon(o.axe, n > 1 ? 54 : 124)}<div class="gc-name">${esc(o.axe.name)}</div>` +
+          `<div class="gc-tag">${o.isNew ? '<b class="new">NEW!</b>' : o.lvUp ? `<b class="lvup">Lv${o.lv}↑</b>` : `<b class="cv">×${fmt(o.copies)}</b>`}</div></div>`;
         grid.appendChild(c);
         setTimeout(() => {
           Sfx.gachaReveal(o.r);
@@ -836,9 +984,9 @@ const UI = (() => {
     const rk = rank6(o.r);
     const box = el('div', `g-show r-${o.r}${a.fantasy ? ' fan' : ''}`);
     box.innerHTML = `<div class="gs-rays"></div><div class="gs-in">` +
-      `<div class="gs-rar"><span class="rb r-${o.r}">${o.r}</span>${a.fantasy ? '<span class="gs-tag fan">幻想の斧</span>' : ''}${o.pickup ? '<span class="gs-tag pu">PICKUP</span>' : ''}</div>` +
+      `<div class="gs-rar"><span class="rb r-${o.r}">${RLAB(o.r)}</span>${a.fantasy ? '<span class="gs-tag fan">幻想の斧</span>' : ''}${o.pickup ? '<span class="gs-tag pu">PICKUP</span>' : ''}</div>` +
       `<div class="gs-img">${FX.axeIcon(a, 210)}</div><div class="gs-name">${esc(a.name)}</div><div class="gs-desc">${esc(a.desc)}</div>` +
-      `<div class="gs-sp">✦ ${esc(spText(a, o.lv))}</div><div class="gs-new">${o.isNew ? 'NEW!!' : o.lvUp ? `Lv${o.lv} にアップ!` : `💎+${o.gems}`}</div><div class="gs-btns"></div></div>`;
+      `<div class="gs-sp">✦ ${esc(spText(a, o.lv))}</div><div class="gs-new">${o.isNew ? 'NEW!!' : o.lvUp ? `Lv${o.lv} にアップ!` : `${fmt(o.copies)}枚目`}</div><div class="gs-btns"></div></div>`;
     const bb = box.querySelector('.gs-btns');
     if (S().equip !== a.id) {
       const eb = el('button', 'btn primary', '装備する');
@@ -1338,10 +1486,20 @@ const UI = (() => {
       Sfx.milestone();
     });
     G.on('offline', (d) => {
-      if (d.sec < 120) { if (d.sec >= 15 && d.gain > 0) toast('🪵', `+${fmt(d.gain)} 木材`, `離席中（${U.fmtTime(d.sec)}）`); return; }
+      if (d.sec < 120) { if (d.sec >= 15 && d.gain > 0) toast('🪵', `+${fmt(d.gain)} 木材`, `離席中（${U.fmtTime(d.sec)}）${d.rolls ? ` ・ 🎰${fmt(d.rolls.n)}回` : ''}`); return; }
       const body = el('div', 'offline');
+      const ro = d.rolls;
+      let rollHtml = '';
+      if (ro && ro.n > 0) {
+        const parts = D.RARITY_ORDER.map((k, i) => [k, ro.counts[i]]).filter(([k, n]) => n > 0 && G.RANK[k] >= 3).reverse();
+        const news = ro.notable.filter((o) => o.isNew).slice(0, 6);
+        rollHtml = `<div class="off-rolls"><p>🎰 その間にガチャが <b>${fmt(ro.n)}回</b> まわった</p><div class="off-r">${parts.map(([k, n]) => `<span><span class="rb r-${k}">${RLAB(k)}</span>×${fmt(n)}</span>`).join('')}</div>` +
+          (news.length ? `<div class="off-new">${news.map((o) => `<span class="r-${o.r}" title="${esc(o.axe.name)}">${FX.axeIcon(o.axe, 40)}<small>NEW</small></span>`).join('')}</div>` : '') + '</div>';
+        for (const o of ro.notable) { feed.unshift(o); }
+        if (feed.length > 30) feed.length = 30;
+      }
       body.innerHTML = `<p>${U.fmtTime(d.sec)}の間に木こり達が働いた（効率 ${Math.round(d.eff * 100)}%）</p><div class="big-num wood-num">+0</div>` +
-        (d.slept ? `<p class="sleep-bonus">😴 睡眠ボーナス ×${D.CFG.SLEEP_BONUS}！ よく寝た。</p>` : '');
+        (d.slept ? `<p class="sleep-bonus">😴 睡眠ボーナス ×${D.CFG.SLEEP_BONUS}！ よく寝た。</p>` : '') + rollHtml;
       modal({
         title: 'おかえり！', body, buttons: [{ text: '受け取る', cls: 'primary', onClick: () => { const c = FX.sceneCenter(); FX.coins(c.x, c.y, 16, 'wood'); } }],
         onOpen: (box) => countUp(box.querySelector('.wood-num'), d.gain),
@@ -1368,6 +1526,21 @@ const UI = (() => {
       FX.confetti(70);
     });
     G.on('equip', () => { if (tab === 'upgrades' || tab === 'gacha') rebuild(); });
+    G.on('autoRoll', onAutoRoll);
+    G.on('setDone', (set) => {
+      banner('セット完成!!', `${set.icon} ${set.name} ・ ${bonusText(set.bonus)}`, 'unlock');
+      toast(set.icon, `セット完成: ${set.name}`, bonusText(set.bonus), 'gold');
+      Sfx.unlockFx();
+      FX.confetti(90);
+      if (tab === 'gacha') rebuild();
+    });
+    G.on('gachaLevel', (d) => {
+      toast('🎰', `ガチャLv ${d.lv}!`, `回転 +${D.CFG.GLV_ROLL}/秒 ・ 幸運 +${Math.round(D.CFG.GLV_LUCK * 100)}% ・ 💎+${d.gems}${d.tickets ? ` ・ 🎫+${d.tickets}` : ''}`, 'gold');
+      Sfx.levelUp();
+      const r = $('#roll-strip');
+      if (r) { r.classList.remove('lvup'); void r.offsetWidth; r.classList.add('lvup'); }
+    });
+    G.on('shop', () => { if (tab === 'gacha' && current) current.update(); });
     G.on('comboEnd', (d) => {
       if (d.n < 10) return;
       finishT = 1.5;
@@ -1401,7 +1574,9 @@ const UI = (() => {
       updateStudy();
       updateDock();
       updateSpeedBtn();
+      updateRollStrip();
       if (toastQ.length && !overlayBusy) pumpToasts();
+      if (cardQ.length && !overlayBusy) pumpCards();
     }
     slowT += dt;
     if (slowT > 1) {
