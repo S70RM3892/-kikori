@@ -992,7 +992,14 @@ const UI = (() => {
   let r0Free = false;
   const STEP = { N: 0, R: 0, SR: 1, SSR: 2, UR: 3, LR: 4, EX: 5, MYTH: 5, GOD: 5, OMEGA: 5 };
   const HYPE = ['', 'キラッ…', '金色の光…！', '虹色！？ 激アツ!!', 'LEGEND…!!!', '？？？？？'];
-  function gachaShow(res, n, free) {
+  // ガチャ演出の文脈: 森の斧（ふつう）か、次元の武器（germui.js から gx を渡す）
+  const AXE_GX = {
+    core: '🪓', can: (n) => G.canPull(n), again: (n) => doPull(n), skill: (a) => D.SKILLS[a.id],
+    equipped: (id) => S().equip === id, equip: (id) => G.equip(id), sp: (a, lv) => spText(a, lv), seed: (a) => D.AXES.indexOf(a), skLabel: '必殺技', after: () => { if (tab === 'gacha') rebuild(); },
+  };
+  let GX = AXE_GX;
+  function gachaShow(res, n, free, gx) {
+    GX = gx || AXE_GX;
     r0Free = !!free;
     overlayBusy = true;
     const rank = (r) => G.RANK[r];
@@ -1006,7 +1013,7 @@ const UI = (() => {
     if (fanNew && target < 1) target = 1;
     const ov = el('div', `gacha-ov lv-0 top-${top}`);
     ov.style.setProperty('--gs', String(spd));
-    ov.innerHTML = `<div class="g-stage"><div class="g-portal"><div class="g-rays"></div><div class="g-ring"></div><div class="g-core">🪓</div></div><div class="g-hype"></div><div class="g-skip">タップでスキップ</div></div>`;
+    ov.innerHTML = `<div class="g-stage"><div class="g-portal"><div class="g-rays"></div><div class="g-ring"></div><div class="g-core">${GX.core}</div></div><div class="g-hype"></div><div class="g-skip">タップでスキップ</div></div>`;
     document.body.appendChild(ov);
     Sfx.gachaRoll((0.9 + target * 0.55) / spd);
     const timers = [];
@@ -1059,11 +1066,12 @@ const UI = (() => {
       ok.type = 'button';
       btns.append(again, ok);
       st.appendChild(btns);
-      const close = () => { ov.remove(); overlayBusy = false; if (tab === 'gacha') rebuild(); };
+      const gx = GX;
+      const close = () => { ov.remove(); overlayBusy = false; gx.after(); };
       ok.addEventListener('click', close);
-      again.disabled = !G.canPull(n);
+      again.disabled = !gx.can(n);
       if (r0Free) again.textContent = `もう1回（💎${D.CFG.GACHA_1}）`;
-      again.addEventListener('click', () => { close(); doPull(n); });
+      again.addEventListener('click', () => { close(); gx.again(n); });
       // SSR以上は1本ずつ大きく見せる（レアの低い順に、最後が一番いい斧）
       const shows = res.filter((o) => rank(o.r) >= 3 || (o.axe.fantasy && o.isNew)).sort((a, b) => rank(a.r) - rank(b.r));
       if (shows.length) {
@@ -1071,7 +1079,7 @@ const UI = (() => {
         const next = () => {
           const o = shows.shift();
           if (!o || !ov.isConnected) { btns.classList.remove('wait'); return; }
-          showcase(ov, o, next);
+          showcase(ov, o, next, gx);
         };
         setTimeout(next, n > 1 ? res.length * step + 520 / spd : 420 / spd);
       }
@@ -1080,21 +1088,21 @@ const UI = (() => {
     timers.push(setTimeout(reveal, ms(1000 + target * 560 + (target >= 5 ? 700 : 0))));
     ov.addEventListener('click', (e) => { if (!revealed && !e.target.closest('.btn')) reveal(); });
   }
-  function showcase(ov, o, done) {
+  function showcase(ov, o, done, gx = AXE_GX) {
     const a = o.axe;
     const rk = rank6(o.r);
-    const sk = D.SKILLS[a.id];
+    const sk = gx.skill(a);
     const box = el('div', `g-show r-${o.r}${a.fantasy ? ' fan' : ''}${sk ? ' pat-' + sk.pat : ''}`);
     ciVars(box, a);
     box.innerHTML = `${sk ? '<div class="ci-pat full"></div>' : ''}<div class="gs-rays"></div>${sk ? `<div class="ci-stamp full">${esc(sk.stamp)}</div>` : ''}<div class="gs-in">` +
       `<div class="gs-rar"><span class="rb r-${o.r}">${RLAB(o.r)}</span>${a.fantasy ? '<span class="gs-tag fan">幻想の斧</span>' : ''}${o.pickup ? '<span class="gs-tag pu">PICKUP</span>' : ''}</div>` +
-      `<div class="gs-img">${FX.axeIcon(a, 210)}</div><div class="gs-name">${esc(a.name)}</div>${sk ? `<div class="gs-line">「${esc(sk.line)}」</div>` : ''}<div class="gs-desc">${esc(a.desc)}</div>${sk ? `<div class="gs-sk">必殺技「${esc(sk.name)}」</div>` : ''}` +
-      `<div class="gs-sp">✦ ${esc(spText(a, o.lv))}</div><div class="gs-new">${o.isNew ? 'NEW!!' : o.lvUp ? `Lv${o.lv} にアップ!` : `${fmt(o.copies)}枚目`}</div><div class="gs-btns"></div></div>`;
+      `<div class="gs-img">${FX.axeIcon(a, 210)}</div><div class="gs-name">${esc(a.name)}</div>${sk ? `<div class="gs-line">「${esc(sk.line)}」</div>` : ''}<div class="gs-desc">${esc(a.desc)}</div>${sk ? `<div class="gs-sk">${gx.skLabel}「${esc(sk.name)}」</div>` : ''}` +
+      `<div class="gs-sp">✦ ${esc(gx.sp(a, o.lv))}</div><div class="gs-new">${o.isNew ? 'NEW!!' : o.lvUp ? `Lv${o.lv} にアップ!` : `${fmt(o.copies)}枚目`}</div><div class="gs-btns"></div></div>`;
     const bb = box.querySelector('.gs-btns');
-    if (S().equip !== a.id) {
+    if (!gx.equipped(a.id)) {
       const eb = el('button', 'btn primary', '装備する');
       eb.type = 'button';
-      eb.addEventListener('click', (e) => { e.stopPropagation(); G.equip(a.id); eb.disabled = true; eb.textContent = '装備した！'; Sfx.equip(rk); });
+      eb.addEventListener('click', (e) => { e.stopPropagation(); gx.equip(a.id); eb.disabled = true; eb.textContent = '装備した！'; Sfx.equip(rk); });
       bb.appendChild(eb);
     } else bb.appendChild(el('span', 'gs-eq', '装備中'));
     const nb = el('button', 'btn', '次へ');
@@ -1106,7 +1114,7 @@ const UI = (() => {
     bb.appendChild(nb);
     ov.appendChild(box);
     Sfx.showcase(o.r);
-    if (sk) Sfx.cutin(rk, D.AXES.indexOf(a));
+    if (sk) Sfx.cutin(rk, gx.seed(a));
     Sfx.vibrate(rk >= 4 ? [30, 40, 60] : 20);
     FX.confetti(rk >= 5 ? 200 : rk >= 4 ? 140 : 70);
     FX.addFlash(rk >= 5 ? 0.6 : 0.35, rk >= 6 ? '255,120,220' : '255,255,255');
@@ -1202,7 +1210,7 @@ const UI = (() => {
       const dt = typeof DM !== 'undefined' && DM ? DM.totals(s) : null;
       root.appendChild(el('div', 'tab-head', `<div class="tab-stat">実績 <b>${n}/${D.ACH.length}</b></div><div class="tab-stat">ボーナス 全部の世界の全ダメージ <b>+${fmt(Math.round((G.stats().achMult - 1) * 100))}%</b></div>` +
         (dt && dt.open > 1 ? `<div class="tab-stat">🏅 次元の段位 <b>${fmt(dt.tiers)}/${fmt((DM.N - 1) * DM.LAD_N)}</b></div>` : '')));
-      if (dt && dt.open > 1) root.appendChild(el('p', 'muted small tab-note', '次元の段位（1次元に1,549段）は、各次元の右の「🌀 次元」タブで見られる。3段ごとに💎+1、1段ごとに次元の力 +0.1%。'));
+      if (dt && dt.open > 1) root.appendChild(el('p', 'muted small tab-note', `次元の段位（1次元に${DM.LAD_N.toLocaleString()}段）は、各次元の右の「🌀 次元」タブで見られる。3段ごとに💎+1、1段ごとに次元の力 +0.1%。`));
       const cat = (a) => a.cat || (a.germ ? '菌斬り' : '基本');
       const CATS = ['基本', '菌斬り', '世界', '図鑑', '記録'];
       const filt = [['すべて', () => true], ['未達成', (a) => !s.ach[a.id]]].concat(CATS.map((c) => [`${c} ${D.ACH.filter((a) => cat(a) === c && s.ach[a.id]).length}/${D.ACH.filter((a) => cat(a) === c).length}`, (a) => cat(a) === c]));
@@ -1745,5 +1753,5 @@ const UI = (() => {
     get overlayBusy() { return overlayBusy; }, set overlayBusy(v) { overlayBusy = v; },
     get drawerOpen() { return drawerOpen; },
   };
-  return { init, frame, bump, banner, toast, modal, rebuild, blocked, nightCheck, afterHit, tapSwing: doTap, shakeHud, wave, beat, cutIn, openDrawer, closeDrawer, get tab() { return tab; }, _ };
+  return { init, frame, bump, banner, toast, modal, rebuild, blocked, nightCheck, afterHit, tapSwing: doTap, shakeHud, wave, beat, cutIn, openDrawer, closeDrawer, gachaShow, get tab() { return tab; }, _ };
 })();

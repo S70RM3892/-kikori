@@ -84,7 +84,18 @@ while (t < MIN * 60) {
   G.tick(dt);
   GM.tick(dt);
   t += dt;
-  if (t >= nextStroke) {
+  // 撃つ武器: 押しっぱなしで、0.35秒ごとに狙う敵を変える（ときどき指を離す）
+  if (GM.stats().cls === 'shoot') {
+    if (t >= nextStroke) {
+      nextStroke = t + 0.35;
+      const list = GM.T.germs.filter((x) => x.alive && !x.flee);
+      const hold = rng() < 0.85 && list.length;
+      if (hold) {
+        const ge = list[Math.floor(rng() * list.length)];
+        if (!GM.T.trig) GM.trigger(true, ge.x, ge.y); else GM.aimAt(ge.x, ge.y);
+      } else if (GM.T.trig) GM.trigger(false);
+    }
+  } else if (t >= nextStroke) {
     nextStroke = t + (1 / SPS) * (0.7 + rng() * 0.6);
     const list = GM.T.germs.filter((x) => x.alive && !x.flee);
     if (list.length) {
@@ -110,7 +121,7 @@ while (t < MIN * 60) {
       GM.enter(from + 1);
       g = G.dstate();
       const tt = DM.totals(S, true);
-      dimLog.push(`${from + 1}:${((t - dimT) / 60).toFixed(1)}分`);
+      dimLog.push(`${from + 1}${GM.stats().cls === 'shoot' ? '🔫' : ''}:${((t - dimT) / 60).toFixed(1)}分`);
       if ((from + 1) % 10 === 0 || from + 1 === SIM_DIMS) console.log(`${(t / 60).toFixed(1)}分 次元${from + 1}「${DM.meta(from + 1).name}」へ  力×${tt.power.toFixed(1)} ★${tt.stars} 武器${tt.kinds} 段位${tt.tiers} hk ${fmt(g.hk)} 💎${fmt(S.gems)}`);
       dimT = t;
     }

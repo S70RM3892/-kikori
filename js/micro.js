@@ -896,7 +896,47 @@ const Micro = (() => {
   function accessory(L, acc) {
     const f = lastFace;
     if (!f || !acc) return;
+    if (Array.isArray(acc)) { for (const a of acc) accessory(L, a); return; }
     const { x, y, z, s } = f;
+    // 次元ポータルの小物（敵の特徴の目印・株の飾り）
+    const gold = col('#ffd45a'), blk = col('#14101c'), red = col('#ff3a5a'), wht = col('#ffffff');
+    if (acc === 'crown') {
+      part(L, new T3.CylinderGeometry(0.34 * s, 0.3 * s, 0.18 * s, 12, 1, true), gold, at(x, y + 0.82 * s, z - 0.3 * s, 1, -0.2));
+      for (let i = 0; i < 5; i++) { const a = (i / 5) * Math.PI * 2; part(L, new T3.ConeGeometry(0.06 * s, 0.18 * s, 5), gold, at(x + Math.cos(a) * 0.32 * s, y + 0.97 * s, z - 0.3 * s + Math.sin(a) * 0.32 * s)); }
+      return;
+    }
+    if (acc === 'mask') { part(L, new T3.BoxGeometry(0.95 * s, 0.26 * s, 0.08 * s), blk, at(x, y + 0.13 * s, z + 0.24 * s)); return; }
+    if (acc === 'antenna') {
+      for (const sx of [-1, 1]) { part(L, new T3.CylinderGeometry(0.02 * s, 0.02 * s, 0.5 * s, 5), blk, at(x + sx * 0.2 * s, y + 0.86 * s, z - 0.3 * s, 1, 0, 0, -sx * 0.35)); part(L, new T3.SphereGeometry(0.08 * s, 8, 6), red, at(x + sx * 0.3 * s, y + 1.1 * s, z - 0.3 * s)); }
+      return;
+    }
+    if (acc === 'ribbon') { for (const sx of [-1, 1]) part(L, new T3.SphereGeometry(0.18 * s, 10, 8), col('#ff6ab0'), at(x + 0.35 * s + sx * 0.18 * s, y + 0.78 * s, z - 0.2 * s, 1, 0, 0, sx * 0.6, 1.2, 0.7, 0.5)); part(L, new T3.SphereGeometry(0.08 * s, 8, 6), col('#ff3a8a'), at(x + 0.35 * s, y + 0.78 * s, z - 0.15 * s)); return; }
+    if (acc === 'helmet') {
+      part(L, new T3.SphereGeometry(0.62 * s, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2), col('#8a96a8'), at(x, y + 0.42 * s, z - 0.4 * s, 1, -0.15));
+      part(L, new T3.TorusGeometry(0.6 * s, 0.05 * s, 6, 24), col('#5a6474'), at(x, y + 0.44 * s, z - 0.36 * s, 1, Math.PI / 2 - 0.15));
+      return;
+    }
+    if (acc === 'mustache') { for (const sx of [-1, 1]) part(L, new T3.TorusGeometry(0.13 * s, 0.045 * s, 6, 12, Math.PI), blk, at(x + sx * 0.13 * s, y - 0.12 * s, z + 0.12 * s, 1, 0, 0, sx > 0 ? 0.3 : Math.PI - 0.3)); return; }
+    if (acc === 'scarf') { part(L, new T3.TorusGeometry(0.62 * s, 0.1 * s, 8, 24), red, at(x, y - 0.42 * s, z - 0.42 * s, 1, Math.PI / 2 + 0.2)); part(L, new T3.BoxGeometry(0.16 * s, 0.4 * s, 0.06 * s), red, at(x + 0.32 * s, y - 0.62 * s, z + 0.05 * s, 1, 0, 0, 0.3)); return; }
+    if (acc === 'eyepatch') { part(L, new T3.CylinderGeometry(0.2 * s, 0.2 * s, 0.05 * s, 14), blk, at(x + 0.3 * s, y + 0.12 * s, z + 0.2 * s, 1, Math.PI / 2)); part(L, new T3.BoxGeometry(1.0 * s, 0.05 * s, 0.04 * s), blk, at(x, y + 0.26 * s, z + 0.14 * s, 1, 0, 0, -0.25)); return; }
+    if (acc === 'flower') {
+      const pc2 = col('#ffd0f0');
+      for (let i = 0; i < 5; i++) { const a = (i / 5) * Math.PI * 2; part(L, new T3.SphereGeometry(0.1 * s, 8, 6), pc2, at(x - 0.4 * s + Math.cos(a) * 0.12 * s, y + 0.72 * s + Math.sin(a) * 0.12 * s, z - 0.05 * s)); }
+      part(L, new T3.SphereGeometry(0.08 * s, 8, 6), col('#ffe14a'), at(x - 0.4 * s, y + 0.72 * s, z));
+      return;
+    }
+    if (acc === 'tophat') {
+      part(L, new T3.CylinderGeometry(0.46 * s, 0.46 * s, 0.05 * s, 18), blk, at(x, y + 0.7 * s, z - 0.3 * s, 1, -0.2));
+      part(L, new T3.CylinderGeometry(0.28 * s, 0.28 * s, 0.55 * s, 16), blk, at(x, y + 0.98 * s, z - 0.36 * s, 1, -0.2));
+      part(L, new T3.CylinderGeometry(0.29 * s, 0.29 * s, 0.09 * s, 16), gold, at(x, y + 0.78 * s, z - 0.32 * s, 1, -0.2));
+      return;
+    }
+    if (acc === 'shield') {
+      part(L, new T3.CylinderGeometry(0.42 * s, 0.42 * s, 0.08 * s, 20), col('#c8d0dc'), at(x - 0.62 * s, y - 0.25 * s, z + 0.12 * s, 1, Math.PI / 2 - 0.1, 0.4));
+      part(L, new T3.CylinderGeometry(0.2 * s, 0.2 * s, 0.1 * s, 6), gold, at(x - 0.6 * s, y - 0.25 * s, z + 0.18 * s, 1, Math.PI / 2 - 0.1, 0.4));
+      return;
+    }
+    if (acc === 'cross') { part(L, new T3.CylinderGeometry(0.2 * s, 0.2 * s, 0.05 * s, 16), wht, at(x, y + 0.62 * s, z - 0.05 * s, 1, Math.PI / 2 - 0.4)); part(L, new T3.BoxGeometry(0.22 * s, 0.07 * s, 0.04 * s), red, at(x, y + 0.63 * s, z), 1); part(L, new T3.BoxGeometry(0.07 * s, 0.22 * s, 0.04 * s), red, at(x, y + 0.63 * s, z)); return; }
     if (acc === 'horns') {
       for (const sx of [-1, 1]) part(L, new T3.ConeGeometry(0.11 * s, 0.42 * s, 8), col('#fff4e0'), at(x + sx * 0.42 * s, y + 0.78 * s, z - 0.25 * s, 1, 0, 0, -sx * 0.45));
     } else if (acc === 'hat') {
@@ -911,7 +951,7 @@ const Micro = (() => {
     }
   }
   function shapeGeo(shape, palette, acc) {
-    const k = shape + '|' + (palette === 'rainbow' ? 'rb' : palette.join(',')) + '|' + (acc || '');
+    const k = shape + '|' + (palette === 'rainbow' ? 'rb' : palette.join(',')) + '|' + (Array.isArray(acc) ? acc.join('+') : acc || '');
     let g = geos.get(k);
     if (g) return g;
     const L = [];
@@ -950,7 +990,15 @@ const Micro = (() => {
     const X = GD.STRAIN && GD.STRAIN[ge.sid];
     return X ? X.pal : GM.TY[ge.type].col;
   }
-  const accOf = (ge) => (ge.crit ? 'halo' : ge.boss || ge.core ? null : (GD.STRAIN && GD.STRAIN[ge.sid] && GD.STRAIN[ge.sid].acc) || null);
+  const accOf = (ge) => {
+    if (ge.crit) return 'halo';
+    if (ge.core) return null;
+    const X = GD.STRAIN && GD.STRAIN[ge.sid];
+    if (!X) return null;
+    // 特徴の目印（盾・アンテナ…）はボスにもつける。株の飾りは手下だけ
+    const a = [X.tacc, ge.boss ? null : X.acc].filter(Boolean);
+    return a.length > 1 ? a : a[0] || null;
+  };
   let coreG = null;
   function onSpawn(ge) {
     if (!ok || objs.has(ge.id)) return;
@@ -1271,9 +1319,27 @@ const Micro = (() => {
   }
   function release() { hold.on = false; }
   const lerpAng = (a, b, k) => { let d = b - a; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return a + d * k; };
+  // 撃つ武器: 画面の下の砲台で、狙う向きへ銃口を向ける（撃つたびに反動）
+  function updateGun(real) {
+    const tu = GM.turret(), ang = GM.T.aimAng || Math.PI / 2;
+    hold.recoil = Math.max(0, (hold.recoil || 0) - real * 7);
+    const back = hold.recoil * 0.32;
+    const h = kat.holder;
+    const k = 1 - Math.exp(-real * 14);
+    hold.x += (tu.x - Math.cos(ang) * back - hold.x) * k;
+    hold.y += (tu.y - Math.sin(ang) * back - hold.y) * k;
+    h.position.set(hold.x, hold.y, 1.8);
+    h.rotation.set(0, 0, 0);
+    h.rotateZ(ang - Math.PI / 2 + hold.recoil * 0.06);
+    h.rotateY(0.4 + Math.sin(time * 0.8) * 0.06);
+    const L = kat.P.blade ? kat.P.blade.L : 40;
+    h.scale.setScalar(((GM.MUZZLE * 34) / Math.max(12, L)) * (1 + musouMix * 0.12));
+    kat.P.tick(time, real, GM.T.trig ? 1 : 0);
+  }
   function updateKatana(dt, real) {
     ensureKatana();
     if (!kat) return;
+    if (GM.stats().cls === 'shoot') { updateGun(real); return; }
     let gx, gy, ang;
     if (hold.on) {
       // 切っ先が指の所に来るように、振っている向きに刀身を寝かせる
@@ -1374,8 +1440,11 @@ const Micro = (() => {
       else if (ge.boss) m.emissive.set('#ff2040').multiplyScalar(GM.T.bossTimer < 8 ? 0.25 + 0.25 * Math.sin(time * 14) : 0.05 + 0.12 * ge.phase * (0.6 + 0.4 * Math.sin(time * 6)));
       else if (ge.v === 'bomb') m.emissive.set('#ff3a00').multiplyScalar(0.25 + 0.35 * Math.max(0, Math.sin(time * 9 + ge.ph * 6)));
       else if (ge.v === 'lucky' || ge.crit) m.emissive.setHSL((time * 0.6 + ge.ph) % 1, 1, 0.4);
+      else if (ge.rage) m.emissive.set('#ff2a2a').multiplyScalar(0.35 + 0.25 * Math.sin(time * 18 + ge.ph * 9));
+      else if (ge.dash > 0) m.emissive.set('#ffffff').multiplyScalar(0.3);
       else if (o.baseEm) m.emissive.copy(o.baseEm);
       else m.emissive.setRGB(0, 0, 0);
+      if (ge.tr === 'hide' && !ge.boss) { if (!m.transparent) { m.transparent = true; m.needsUpdate = true; } const hid = GM.ghostHidden(ge); m.opacity += ((hid ? 0.12 : 0.92) - m.opacity) * Math.min(1, real * 10); }
       if (ge.frozen > 0) m.emissive.set('#7ad8ff').multiplyScalar(0.55);
       if (ge.burn) m.emissive.set('#ff6a1a').multiplyScalar(0.35 + 0.25 * Math.sin(time * 22 + ge.ph * 9));
       if (o.flash > 0.01) m.emissive.lerp(cWhite, o.flash * 0.85);
@@ -1439,6 +1508,7 @@ const Micro = (() => {
     G.on('gOugi', ougi);
     G.on('gBoom', boomFx);
     G.on('gIssen', releaseAll);
+    G.on('gShot', (e) => { hold.recoil = e.kind === 'machinegun' || e.kind === 'laser' ? Math.max(hold.recoil || 0, 0.45) : 1; if (e.kind === 'rocket' || e.kind === 'sniper' || e.kind === 'shotgun') { cam.punch = Math.max(cam.punch, 0.12); shake(0.15); } });
     G.on('dim', () => reset());
     G.on('load', () => reset());
   }

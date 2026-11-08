@@ -21,7 +21,7 @@ const DM = (() => {
     i: 0, TYPES: GD.TYPES, STRAINS: GD.STRAINS, STRAIN: GD.STRAIN, BOSSES: GD.BOSSES, BIOMES: GD.BIOMES,
     KATANAS: GD.KATANAS, OUGI: GD.OUGI, KSERIES: GD.KSERIES, CELLS: GD.CELLS, KILL_WORDS: GD.KILL_WORDS,
     LB: { noun: '菌', cur: 'DNA', curIcon: '🧬', wpn: '刀', ally: '免疫細胞', allyIcon: '🛡️', world: 'ミクロの世界', dim: '菌斬り次元', icon: '🧫' },
-    music: null, starter: 'k_bokuto',
+    music: null, starter: 'k_bokuto', kind: 'katana', cls: 'slash',
   };
   // 敵の強さの型（菌の14種と同じ並び: 体力・稼ぎ・速さ・大きさ・出始めるウェーブ・分裂・胞子）
   const TPL = BASE.TYPES.map((t) => ({ hp: t.hp, dna: t.dna, sp: t.sp, size: t.size, wave: t.wave, split: t.split, burst: t.burst }));
@@ -241,17 +241,134 @@ const DM = (() => {
   }
   const FORMS = ['katana', 'sword', 'greatsword', 'scythe', 'spear', 'claw', 'saber', 'dagger', 'cleaver'];
 
+  // ------------------------------------------------------------- 界ごとの追加の敵（20種から、次元ごとに14種を選ぶ）
+  const EXTRA = {
+    slime: [['ちびスライム', 'ball', '#b0ffc0', '#3a9a5a'], ['とげ玉スライム', 'puffer', '#ffd06a', '#a0601a'], ['かさスライム', 'mushroom', '#ff8ab0', '#f0e8ff'], ['ぷるぷる卵', 'egg', '#d0fff0', '#5ab08a'], ['雲スライム', 'cloud', '#e0f0ff', '#8aa0c0'], ['ハートスライム', 'heart', '#ff9ac0', '#c03a6a']],
+    crystal: [['結晶ゴーレム', 'golem', '#a0d0ff', '#3a5a9a'], ['鉱石魔晶', 'ore', '#c0a0ff', '#4a2a8a'], ['氷晶', 'icicle', '#d0f8ff', '#5aa0d0'], ['星晶', 'star', '#fff0a0', '#c09a1a'], ['晶球', 'bubble', '#e0d0ff', '#7a5ac0'], ['晶の卵', 'egg', '#c0ffff', '#2a8aa0']],
+    fruit: [['ココナツ魔', 'fuzzy', '#a07a4a', '#4a2a10'], ['マンゴー魔', 'lemon', '#ffb04a', '#c04a10'], ['ブルーベリー魔', 'ball', '#6a6aff', '#1a1a6a'], ['ライチ魔', 'spiky', '#ff8a9a', '#a01a3a'], ['ザクロ魔', 'apple', '#c81a3a', '#4a0010'], ['柿魔', 'orange', '#ff8a2a', '#a03a00']],
+    ghost: [['のっぺらぼう', 'egg', '#fff0e0', '#c0a080'], ['からかさ小僧', 'kasa', '#8affb0', '#1a6a3a'], ['一つ目小僧', 'eyeball', '#ffffff', '#5a3a2a'], ['人魂の群れ', 'wisp', '#ffb0ff', '#8a1a8a'], ['ぬりかべ', 'cube', '#a8a090', '#4a4030'], ['雪女の霊', 'ghost', '#d0f0ff', '#5a8ab0']],
+    mech: [['ミサイル兵', 'cone', '#ff6a4a', '#6a1a0a'], ['衛星兵', 'planet', '#c0d0e0', '#3a4a5a'], ['電池兵', 'prism', '#7aff7a', '#1a6a1a'], ['スパナ兵', 'gear', '#d0d0d8', '#4a4a5a'], ['レーダー兵', 'disc', '#6ae0ff', '#1a4a6a'], ['監視ボール', 'eyeball', '#ffffff', '#ff3a3a']],
+    star: [['流れ星獣', 'drop', '#fff6a0', '#c0a01a'], ['宇宙飛行獣', 'bot', '#ffffff', '#5a6a8a'], ['月うさぎ獣', 'moon', '#ffe0f0', '#a07ab0'], ['星座獣', 'tetra', '#c0d0ff', '#3a4aaa'], ['宇宙ゴミ獣', 'rock', '#8a8a9a', '#2a2a3a'], ['オーロラ獣', 'spiral', '#7affd0', '#3a3aa8']],
+    ice: [['氷のヒナ魔', 'egg', '#e0f0ff', '#3a5a8a'], ['かまくら魔', 'pudding', '#ffffff', '#a0b8d0'], ['霜柱魔', 'prism', '#e0f8ff', '#7ab0d0'], ['冬の精魔', 'angel', '#e8f8ff', '#8ab0d0'], ['氷山魔', 'rock', '#d0f0ff', '#5a8ab0'], ['つらら蝙蝠', 'bat', '#c0e8ff', '#3a6a9a']],
+    fire: [['火打ち石魔', 'ore', '#c0a090', '#ff5a00'], ['マッチ魔', 'rod', '#ffd0a0', '#ff3a00'], ['ほむら蝙蝠', 'bat', '#ff8a3a', '#6a1a00'], ['火の鳥の雛', 'egg', '#ffb04a', '#c02a00'], ['炎の目', 'eyeball', '#fff0a0', '#ff3a00'], ['溶岩スライム', 'slime', '#ff6a2a', '#6a0a00']],
+    sea: [['イソギンチャク魔', 'fuzzy', '#ff9ad0', '#8a1a5a'], ['ヤドカリ魔', 'shell', '#ffb08a', '#8a3a1a'], ['エイ魔', 'kite', '#8ab0d0', '#2a3a5a'], ['ナマコ魔', 'rod', '#6a5a4a', '#2a1a10'], ['ヒトデ王', 'star', '#ffb06a', '#a04a1a'], ['泡クラゲ魔', 'bubble', '#c0e0ff', '#5a8ab0']],
+    candy: [['マシュマロ魔', 'pillow', '#ffffff', '#ffd0e0'], ['アイス魔', 'cone', '#fff0d0', '#c08a4a'], ['ゼリービーンズ魔', 'lemon', '#7aff7a', '#ff4ab0'], ['チョコバナナ魔', 'banana', '#6a3a1a', '#ffe08a'], ['金平糖王', 'spiky', '#ffb0e0', '#a03a8a'], ['ハートチョコ魔', 'heart', '#8a4a2a', '#3a1a0a']],
+    sky: [['つばめ雲魔', 'feather', '#c0d0ff', '#3a4a8a'], ['風船魔', 'bubble', '#ff6a6a', '#8a1a1a'], ['虹の泡魔', 'bubble', '#ffd0ff', '#5aa0ff'], ['かみなり小僧', 'imp', '#fff06a', '#8a6a00'], ['夜明け魔', 'sun', '#ffb06a', '#c04a3a'], ['気球魔', 'pear', '#ffd04a', '#a03a1a']],
+    toxic: [['毒ガマ魔', 'blob', '#7aff4a', '#1a5a0a'], ['毒針魔', 'spiky', '#c0ff4a', '#3a6a0a'], ['腐った卵魔', 'egg', '#c0c08a', '#5a5a1a'], ['毒雲魔', 'cloud', '#a0ff6a', '#3a5a1a'], ['毒の目', 'eyeball', '#e0ffc0', '#5aa01a'], ['瘴気の霊', 'ghost', '#c0ffa0', '#3a6a1a']],
+    rock: [['ころころ岩魔', 'ball', '#a09080', '#4a3a2a'], ['砂時計岩魔', 'hourglass', '#e0c08a', '#8a6a3a'], ['石像魔', 'skull', '#c8c0b0', '#5a5040'], ['水晶岩魔', 'geode', '#a0e0ff', '#3a5a8a'], ['砂嵐魔', 'cloud', '#e0c08a', '#8a6a3a'], ['隕石岩魔', 'rock', '#5a4a4a', '#ff5a1a']],
+    geo: [['円柱', 'drum', '#ffd36a', '#c9781a'], ['クラインの壺', 'bell', '#a0f0ff', '#3a6aa8'], ['ハート曲線', 'heart', '#ff6a9a', '#a01a4a'], ['四角錐', 'cone', '#9affb0', '#1a7a4a'], ['コッホ雪片', 'snowflake', '#ffffff', '#5a6aa8'], ['無限大', 'torus', '#ffe14a', '#a87a00']],
+    cyber: [['ポップアップ広告', 'pillow', '#fff06a', '#ff3a3a'], ['フィッシング', 'kite', '#6ae0ff', '#1a4a6a'], ['ゾンビPC', 'robot', '#6a8a6a', '#1a2a1a'], ['データ雲', 'cloud', '#a0f0ff', '#2a6aa8'], ['パスワード破り', 'gear', '#ff4af0', '#3a0a4a'], ['ビット玉', 'ico', '#7aff7a', '#0a5a0a']],
+    time: [['時計うさぎ魔', 'clock', '#ffffff', '#ff8ab0'], ['日時計魔', 'sun', '#ffe08a', '#a07a1a'], ['カレンダー魔', 'pillow', '#ffffff', '#ff3a3a'], ['タイムカプセル魔', 'egg', '#c0c8d0', '#4a5a6a'], ['化石時計魔', 'shell', '#e0d0b0', '#8a7a5a'], ['未来の卵魔', 'egg', '#a0f0ff', '#2a6aa8']],
+    dream: [['あくび魔', 'slime', '#ffe0f0', '#a07ab0'], ['寝言魔', 'note', '#c0b0ff', '#5a4aa0'], ['ゆめ蝙蝠', 'bat', '#d0a0ff', '#4a2a8a'], ['星の羊雲', 'cloud', '#ffffd0', '#a0a070'], ['ねがお魔', 'moon', '#ffd0f0', '#8a5ab0'], ['ぬいぐるみ魔', 'fuzzy', '#ffc0a0', '#a05a3a']],
+    music: [['メトロノーム魔', 'tetra', '#d0a080', '#6a3a1a'], ['ラッパ魔', 'cone', '#ffd04a', '#a07a00'], ['ピアノ魔', 'pillow', '#ffffff', '#1a1a1a'], ['ト音記号魔', 'spiral', '#ffffff', '#3a3a5a'], ['カスタネット魔', 'macaron', '#ff5a5a', '#3a3aff'], ['ハーモニカ魔', 'cube', '#c0c8d0', '#4a5a6a']],
+    void: [['虚ろな影', 'ghost', '#1a1a2a', '#000000'], ['逆さの月', 'moon', '#5a3a8a', '#0a0014'], ['虚無の卵', 'egg', '#2a1a3a', '#000000'], ['裂け目の目', 'eyeball', '#ff4af0', '#1a001a'], ['空間のゆがみ', 'torus', '#8a6aff', '#14002a'], ['忘却の雲', 'cloud', '#4a4a6a', '#0a0a14']],
+    divine: [['小天使魔', 'angel', '#fff6d0', '#e0b04a'], ['聖なる鐘魔', 'bell', '#fff0a0', '#c09a1a'], ['光の羽根', 'feather', '#fffaf0', '#e0c88a'], ['神の盃', 'cupcake', '#ffd04a', '#a07a00'], ['天の星', 'star', '#ffffff', '#a0c0ff'], ['神鏡魔', 'disc', '#e0e8ff', '#8a9ab0']],
+    chaos: null,
+  };
+  {
+    const r = mulberry(4242);
+    const all = [];
+    REALMS.forEach((R) => { if (R.id !== 'chaos') (EXTRA[R.id] || []).concat(R.types).forEach((t) => all.push(t)); });
+    const used = new Set(REALMS[REALMS.length - 1].types.map((t) => t[1]));
+    const pick = [];
+    while (pick.length < 6) { const t = all[Math.floor(r() * all.length)]; if (used.has(t[1])) continue; used.add(t[1]); pick.push(['混沌' + t[0].replace(/魔$/, ''), t[1], t[2], t[3]]); }
+    EXTRA.chaos = pick;
+  }
+
+  // ------------------------------------------------------------- 敵の特徴（次元ごとに3つ。同じ姿でも次元が違えば動きが違う）
+  // acc: 特徴の目印の小物 / hp・dna・sp・size: 強さの倍率
+  const TRAITS = {
+    shield: { name: '盾持ち', pre: '盾持ち', icon: '🛡️', desc: '盾でダメージを0.35倍に減らす（芯・会心・貫く武器は通る）', acc: 'shield' },
+    blink: { name: 'ワープ', pre: 'ワープ', icon: '🌀', desc: 'ときどき瞬間移動する', acc: 'antenna' },
+    dash: { name: '突進', pre: '突進', icon: '💨', desc: 'ときどき猛スピードで突っ込む', acc: 'helmet' },
+    clone: { name: '分身', pre: '分身', icon: '👥', desc: '初めて当たると2体に分かれる', acc: 'mask' },
+    heal: { name: '癒し手', pre: '癒しの', icon: '💚', desc: 'まわりの仲間の傷を治す', acc: 'cross' },
+    shrink: { name: 'ちぢみ', pre: 'ちぢみ', icon: '🔻', desc: '当たるたびに小さくなる', acc: 'ribbon' },
+    rage: { name: '激昂', pre: '激昂', icon: '💢', desc: '体力が半分を切ると2倍速くなる', acc: 'horns' },
+    float: { name: 'ふわふわ', pre: 'ふわふわ', icon: '🎈', desc: '大きく揺れながら漂う', acc: 'flower' },
+    spin: { name: '回転', pre: '回転', icon: '🔄', desc: '遅い斬撃を弾く（撃つ武器は効く）', acc: 'eyepatch' },
+    hide: { name: '隠れ身', pre: '隠れ', icon: '🫥', desc: 'ときどき消えて当たらない', acc: 'scarf' },
+    magnet: { name: '磁石', pre: '磁石', icon: '🧲', desc: 'まわりの敵を引き寄せる（まとめて倒すチャンス）', acc: 'antenna' },
+    bloat: { name: 'ふくらみ', pre: 'ふくらみ', icon: '🎈', desc: 'だんだん大きくなる。大きいほど稼げるが、やがて逃げる', acc: null, dna: 1.2 },
+    rich: { name: '金持ち', pre: '金持ち', icon: '💰', desc: '通貨を3倍落とすが、逃げ足が速い', acc: 'tophat', dna: 3, sp: 1.3 },
+    tough: { name: '頑丈', pre: '頑丈な', icon: '🧱', desc: '体力2倍', acc: 'helmet', hp: 2, size: 1.12 },
+    swift: { name: '俊足', pre: '俊足', icon: '⚡', desc: '動きが1.8倍速い', acc: 'mustache', sp: 1.8 },
+    tiny: { name: 'ちび', pre: 'ちび', icon: '🐣', desc: '小さくて弱いが当てにくい', acc: 'crown', size: 0.65, hp: 0.5, dna: 0.8 },
+  };
+  const TRAIT_IDS = Object.keys(TRAITS);
+  const ACCS = ['horns', 'hat', 'shades', 'halo', 'crown', 'mask', 'ribbon', 'helmet', 'mustache', 'scarf', 'eyepatch', 'flower', 'tophat'];
+
+  // ------------------------------------------------------------- 武器の種類（次元ごとに1つ）
+  // cls: slash = ドラッグで斬る / shoot = 押して撃つ（押したままで連射）
+  // fire（撃つ武器）: rate 1秒に何発 / dmg 1発の倍率 / n 弾の数 / spread ばらけ / sp 弾の速さ / pierce 貫通 / aoe 爆発の半径
+  //   beam 光線 / homing 追尾 / bounce 跳ね返り / ret 戻ってくる / range 届く距離
+  const WK = {
+    katana: { cls: 'slash', name: '刀', icon: '🗡️', wsuf: ['丸', '切', '正'] },
+    sword: { cls: 'slash', name: '剣', icon: '⚔️', wsuf: ['剣', 'ブレード', '刃'] },
+    greatsword: { cls: 'slash', name: '大剣', icon: '⚔️', wsuf: ['大剣', '巨剣', '剛剣'] },
+    dagger: { cls: 'slash', name: 'ナイフ', icon: '🔪', wsuf: ['ナイフ', '短剣', '小刀'] },
+    cleaver: { cls: 'slash', name: '包丁', icon: '🔪', wsuf: ['包丁', '牛刀', '鉈'] },
+    saber: { cls: 'slash', name: '光剣', icon: '⚔️', wsuf: ['セイバー', '光剣', 'ビーム刃'] },
+    spear: { cls: 'slash', name: '槍', icon: '🔱', wsuf: ['槍', '銛', '矛'] },
+    scythe: { cls: 'slash', name: '大鎌', icon: '⚔️', wsuf: ['鎌', '大鎌', '死神鎌'] },
+    claw: { cls: 'slash', name: '爪', icon: '🐾', wsuf: ['爪', '鉤爪', '手甲'] },
+    handgun: { cls: 'shoot', name: '拳銃', icon: '🔫', wsuf: ['銃', 'リボルバー', 'ハンドガン'], fire: { rate: 4, dmg: 0.75, n: 1, spread: 0.015, sp: 44 } },
+    machinegun: { cls: 'shoot', name: 'マシンガン', icon: '🔫', wsuf: ['マシンガン', 'ガトリング', '連射銃'], fire: { rate: 8, dmg: 0.17, n: 1, spread: 0.075, sp: 48 } },
+    shotgun: { cls: 'shoot', name: 'ショットガン', icon: '🔫', wsuf: ['ショットガン', '散弾銃', 'ブラスター'], fire: { rate: 1.3, dmg: 0.2, n: 6, spread: 0.26, sp: 36, range: 8 } },
+    sniper: { cls: 'shoot', name: '狙撃銃', icon: '🎯', wsuf: ['ライフル', '狙撃銃', 'スナイパー'], fire: { rate: 0.8, dmg: 3.0, n: 1, spread: 0, sp: 140, pierce: 99 } },
+    rocket: { cls: 'shoot', name: 'ランチャー', icon: '🚀', wsuf: ['ランチャー', '砲', 'バズーカ'], fire: { rate: 0.8, dmg: 0.9, n: 1, spread: 0.02, sp: 17, aoe: 1.9 } },
+    laser: { cls: 'shoot', name: '光線銃', icon: '🔦', wsuf: ['レーザー', '光線銃', 'ビーム砲'], fire: { rate: 10, dmg: 0.055, n: 1, beam: 1, pierce: 99 } },
+    bow: { cls: 'shoot', name: '弓', icon: '🏹', wsuf: ['弓', '長弓', '弩'], fire: { rate: 1.8, dmg: 0.9, n: 1, spread: 0.01, sp: 34, pierce: 1 } },
+    staff: { cls: 'shoot', name: '魔法の杖', icon: '🪄', wsuf: ['杖', '魔杖', 'ワンド'], fire: { rate: 2.4, dmg: 0.5, n: 2, spread: 0.5, sp: 12, homing: 7 } },
+    shuriken: { cls: 'shoot', name: '手裏剣', icon: '✴️', wsuf: ['手裏剣', '苦無', '円月輪'], fire: { rate: 2.6, dmg: 0.26, n: 1, spread: 0.02, sp: 26, bounce: 2 } },
+    boomerang: { cls: 'shoot', name: 'ブーメラン', icon: '🪃', wsuf: ['ブーメラン', '投げ輪', '戻り刃'], fire: { rate: 1.1, dmg: 0.26, n: 1, spread: 0, sp: 20, pierce: 99, ret: 4.6 } },
+  };
+  const SLASH_K = Object.keys(WK).filter((k) => WK[k].cls === 'slash');
+  const SHOOT_K = Object.keys(WK).filter((k) => WK[k].cls === 'shoot');
+  // 武器の名前に使う、界ごとの言葉
+  const WTHEME = {
+    slime: ['ぷる', 'ねば', 'ゼリー', 'しずく', 'ぷに', 'とろ', 'ぽよ', 'ぷるん', 'グミ', 'ムース', 'もち', 'ジェル'],
+    crystal: ['水晶', '紫晶', '金剛', '翠玉', '紅玉', '蒼玉', '黄玉', '月長石', '黒曜', '虹晶', '琥珀', '瑠璃'],
+    fruit: ['リンゴ', 'ミカン', 'バナナ', 'スイカ', 'イチゴ', 'ブドウ', 'モモ', 'レモン', 'メロン', 'キウイ', 'パイン', 'ザクロ'],
+    ghost: ['人魂', '提灯', '卒塔婆', '鬼火', '狐火', '百鬼', '黄泉', '冥府', '怨念', '御札', '数珠', '髑髏'],
+    mech: ['歯車', 'ネジ', '鋼鉄', '電磁', '原子', '合金', 'プラズマ', 'ターボ', 'ギア', 'ロボ', 'サイバー', 'メカ'],
+    star: ['流星', '彗星', '銀河', '星雲', '月光', '日輪', '惑星', '土星', '北斗', '天狼', '昴', '宇宙'],
+    ice: ['氷柱', '雪月', '吹雪', '霜', '氷河', '凍土', '白銀', 'オーロラ', '雪華', '氷晶', '冬将軍', '極寒'],
+    fire: ['火炎', '劫火', '溶岩', '火山', '焔', '烈火', '紅蓮', '炎竜', '灼熱', '火の鳥', '爆炎', '煉獄'],
+    sea: ['珊瑚', '真珠', '深海', '潮', '渦潮', '海竜', '波', '人魚', '竜宮', '貝', '海神', '錨'],
+    candy: ['ドーナツ', 'チョコ', 'キャンディ', 'マカロン', 'プリン', 'ケーキ', 'クッキー', 'グミ', 'わたあめ', 'ショコラ', 'パフェ', 'ワッフル'],
+    sky: ['雷雲', '虹', '旋風', '青空', '雲海', '天空', '暁', '夕焼', '嵐', 'そよ風', '稲妻', '翼'],
+    toxic: ['毒', '瘴気', '胞子', '苔', '沼', '腐蝕', '紫毒', '猛毒', '茸', '霧', '泥', '蟲毒'],
+    rock: ['岩', '鋼岩', '花崗', '玄武', '大地', '砂岩', '巨石', '鉱脈', '金塊', '化石', '断崖', '地殻'],
+    geo: ['円', '三角', '四角', '黄金比', 'π', '∞', 'ベクトル', 'フラクタル', '螺旋', '多面', '座標', '虚数'],
+    cyber: ['ビット', 'バイト', 'ピクセル', 'データ', 'ネット', 'コード', 'バグ', 'キャッシュ', 'ノード', 'クラウド', '量子', 'ロジック'],
+    time: ['刻', '秒針', '砂時計', '振り子', '暦', '永劫', '刹那', '未来', '過去', '時空', '歯車', '暁'],
+    dream: ['夢', 'まどろみ', 'ひつじ', '枕', '星屑', '月夜', 'おもちゃ', '綿', '虹色', '夜想', 'うたた寝', '幻'],
+    music: ['音符', '旋律', '和音', '鼓動', 'リズム', 'ビート', 'ソナタ', 'ロック', 'ジャズ', '雅楽', '合唱', '交響'],
+    void: ['虚無', '深淵', '影', '裂け目', '反物質', '事象', '忘却', '無限', '暗黒', '特異点', '零', '終焉'],
+    divine: ['神', '天', '聖', '光輪', '天使', '神鳴', '神風', '神楽', '天照', '月読', '須佐', '八咫'],
+    chaos: ['混沌', 'カオス', '乱', '渦', '万華', '狂', 'でたらめ', 'ごちゃ', '反転', '逆', '謎', '∞'],
+  };
+
   // ------------------------------------------------------------- 次元の一覧（0 = 菌斬り次元）
   const PER = 10;
-  const LIST = [{ i: 0, id: 'd0', realm: -1, local: 0, name: '菌斬り次元', icon: '🧫', gim: 'normal', hue: 0 }];
+  const LIST = [{ i: 0, id: 'd0', realm: -1, local: 0, name: '菌斬り次元', icon: '🧫', gim: 'normal', hue: 0, kind: 'katana' }];
   REALMS.forEach((R, ri) => {
     const r = mulberry(77 + ri * 131);
     const pool = GIM_IDS.slice();
     for (let k = pool.length - 1; k > 0; k--) { const j = Math.floor(r() * (k + 1)); const t = pool[k]; pool[k] = pool[j]; pool[j] = t; }
+    // 武器の種類: 1番目は界の武器、残り9つは近接4〜5・遠距離4〜5になるように混ぜる
+    const base = R.form === 'mix' ? 'sword' : R.form;
+    const sl = SLASH_K.filter((x) => x !== base), sh = SHOOT_K.slice();
+    for (const a of [sl, sh]) for (let k = a.length - 1; k > 0; k--) { const j = Math.floor(r() * (k + 1)); const t = a[k]; a[k] = a[j]; a[j] = t; }
+    const kinds = [base];
+    const nSh = 4 + (ri % 2);
+    for (let k = 0; k < 9; k++) kinds.push(k < nSh ? sh[k] : sl[k - nSh]);
+    for (let k = kinds.length - 1; k > 1; k--) { const j = 1 + Math.floor(r() * k); const t = kinds[k]; kinds[k] = kinds[j]; kinds[j] = t; }
     for (let k = 0; k < PER; k++) {
       const gim = k === 0 ? 'normal' : pool[k - 1];
       const i = LIST.length;
-      LIST.push({ i, id: 'd' + i, realm: ri, local: k, name: `${GIM[gim].pre}${R.noun}次元`, icon: R.icon, gim, hue: k ? (k * 47 + ri * 13) % 360 : 0 });
+      LIST.push({ i, id: 'd' + i, realm: ri, local: k, name: `${GIM[gim].pre}${R.noun}次元`, icon: R.icon, gim, hue: k ? (k * 47 + ri * 13) % 360 : 0, kind: kinds[k] });
     }
   });
   const N = LIST.length;
@@ -265,15 +382,38 @@ const DM = (() => {
     const m = LIST[i], R = realmOf(m);
     const r = mulberry(5003 + i * 7919);
     const hue = m.hue, hT = Math.round(hue * 0.35);
-    const TYPES = R.types.map((t, k) => Object.assign({
-      id: 't' + k, name: t[0], shape: t[1], col: [shift(t[2], hT), shift(t[3], hT)], cap: shift(t[2], hT, 0.16),
-      desc: `${R.name}に棲む${t[0]}（空想）。`,
-    }, TPL[k]));
+    // 敵: 界の20種から14種（1番目の次元は界の基本の14種）。特徴3つを割り当て、名前と動きを変える
+    const pool = R.types.concat(EXTRA[R.id] || []);
+    let pickI;
+    if (m.local === 0) pickI = R.types.map((t, k) => k);
+    else {
+      const idx = pool.map((t, k) => k).slice(1);
+      for (let k = idx.length - 1; k > 0; k--) { const j = Math.floor(r() * (k + 1)); const t = idx[k]; idx[k] = idx[j]; idx[j] = t; }
+      pickI = [0].concat(idx.slice(0, 13));
+    }
+    const tr = TRAIT_IDS.slice();
+    for (let k = tr.length - 1; k > 0; k--) { const j = Math.floor(r() * (k + 1)); const t = tr[k]; tr[k] = tr[j]; tr[j] = t; }
+    const traits = m.local === 0 ? [['rich', 'tiny', 'swift', 'tough'][m.realm % 4]] : tr.slice(0, 3);
+    const TYPES = pickI.map((pi, k) => {
+      const t = pool[pi];
+      const has = m.local === 0 ? k % 3 === 2 : k % 4 !== 0;
+      const T0 = has ? TRAITS[traits[(k - 1) % traits.length] || traits[0]] : null;
+      const tid = T0 ? TRAIT_IDS.find((x) => TRAITS[x] === T0) : null;
+      const base = Object.assign({}, TPL[k]);
+      if (T0) { base.hp *= T0.hp || 1; base.dna *= T0.dna || 1; base.sp *= T0.sp || 1; base.size *= T0.size || 1; }
+      return Object.assign(base, {
+        id: 't' + k, name: T0 ? T0.pre + t[0] : t[0], shape: t[1], col: [shift(t[2], hT), shift(t[3], hT)], cap: shift(t[2], hT, 0.16),
+        desc: `${R.name}に棲む${t[0]}（空想）。${T0 ? `特徴「${T0.name}」: ${T0.desc}。` : ''}`, trait: tid, tacc: T0 ? T0.acc : null,
+      });
+    });
+    // 株の小物も次元ごとに違う組み合わせ
+    const acc = ACCS.slice();
+    for (let k = acc.length - 1; k > 0; k--) { const j = Math.floor(r() * (k + 1)); const t = acc[k]; acc[k] = acc[j]; acc[j] = t; }
     const STRAINS = [], STRAIN = {};
     for (const t of TYPES) {
       for (let s = 0; s < 10; s++) {
         const pal = s ? (SG.PAL[s] === 'rainbow' ? 'rainbow' : SG.PAL[s].map((c) => shift(c, hT))) : t.col;
-        const x = { sid: `${t.id}_${s}`, type: t.id, s, name: SG.ADJ[s] + t.name, pal, cap: s ? SG.CAP[s] : t.cap, acc: SG.ACC[s], hp: 1 + 0.12 * s, dna: 1 + 0.18 * s, sp: 1 + 0.04 * s, wave: s ? t.wave + s * 9 : t.wave };
+        const x = { sid: `${t.id}_${s}`, type: t.id, s, name: SG.ADJ[s] + t.name, pal, cap: s ? SG.CAP[s] : t.cap, acc: s ? acc[(s - 1) % 5] : null, tacc: t.tacc, trait: t.trait, hp: 1 + 0.12 * s, dna: 1 + 0.18 * s, sp: 1 + 0.04 * s, wave: s ? t.wave + s * 9 : t.wave };
         STRAINS.push(x);
         STRAIN[x.sid] = x;
       }
@@ -291,27 +431,40 @@ const DM = (() => {
       const deg = (hue + (k % 10) * 29 + Math.floor(k / 10) * 13) % 360;
       BIOMES.push({ name: WADJ[Math.floor(k / 10)] + R.places[k % 10], bg: base.map((c) => shift(c, deg)), amb: R.amb[k % R.amb.length], ambCol: shift(base[1], deg, 0.15), light: shift(base[1], deg, 0.3), rainbow: k % 10 === 9, gen: true });
     }
-    // 武器: 刀と同じ44シリーズ × 10本。形と名前は界ごと、色は次元ごと
+    // 武器: 44シリーズ × 10本。種類（刀・剣・拳銃・弓…）は次元ごと、名前は界の言葉、色は次元ごと
+    // 遠距離の武器は「間合い」→連射速度、「残心」→弾が増える、に読み替える。
+    // MYTH以上の名物武器は、この次元のルールを強める「理」つき
     const KATANAS = [], OUGI = {}, KSERIES = [];
     const names = new Set();
+    const kind = m.kind || R.form, K0 = WK[kind] || WK.sword;
+    const shoot = K0.cls === 'shoot';
+    const theme = WTHEME[R.id] || [R.noun];
+    const gimN = GIM[m.gim];
     KG.KS.forEach((s, si) => {
-      const [kanji, label, light, dark, glow, fx, tsuba, slash, ov, pat, motif, focus, line, hi] = s;
+      const [kanji, label, light, dark, glow, fx, tsuba, slash, ov, pat, motif, focus0, line, hi] = s;
       const seq = hi ? KG.SEQ_HI : KG.SEQ;
       const ids = [];
-      const form = R.form === 'mix' ? FORMS[(si + i) % FORMS.length] : R.form;
+      // 混沌界は系譜ごとに形が変わる（近接か遠距離かは次元で同じ）
+      const form = R.form === 'mix' ? (shoot ? SHOOT_K : SLASH_K)[(si + i) % (shoot ? SHOOT_K : SLASH_K).length] : kind;
+      const KW = WK[form];
+      const focus = shoot && focus0 === 'reach' ? 'rate' : shoot && focus0 === 'zanshin' ? 'multi' : focus0;
       seq.forEach((rr, k) => {
         const ri = KG.RI[rr];
         let nm = '';
-        for (let t = 0; t < 40 && (!nm || names.has(nm)); t++) nm = kanji + KG.C2[Math.floor(r() * KG.C2.length)] + R.wsuf[Math.floor(r() * R.wsuf.length)];
+        for (let t = 0; t < 60 && (!nm || names.has(nm)); t++) {
+          const th = theme[Math.floor(r() * theme.length)], suf = KW.wsuf[Math.floor(r() * KW.wsuf.length)];
+          nm = ri >= 9 ? `${gimN.name === '標準' ? '' : gimN.name}${th}${suf}` : ri >= 3 ? th + KG.C2[Math.floor(r() * KG.C2.length)] + suf : ri >= 2 ? kanji + th + suf : th + suf + (t > 8 ? KG.C2[Math.floor(r() * KG.C2.length)] : '');
+        }
         names.add(nm);
         const dh = (k - 4.5) * 8 + hue;
         const sp = {};
-        sp[focus] = +(KG.KSPK[focus] * (ri + 1)).toFixed(4);
+        sp[focus] = +((KG.KSPK[focus] || KG.KSPK.issen) * (ri + 1)).toFixed(4);
         if (KG.ALL_HI[rr]) sp.all = (sp.all || 0) + KG.ALL_HI[rr];
+        if (hi && ri >= 7 && m.gim !== 'normal') sp.gim = ri >= 9 ? 2 : ri >= 8 ? 1 : 0.5;
         const w = {
-          id: `w${i}_${si}_${k}`, r: rr, name: ri >= 3 ? `${label}「${nm}」` : nm, desc: `${label}の系譜、${k + 1}本目。${line}。`,
+          id: `w${i}_${si}_${k}`, r: rr, name: ri >= 3 ? `${label}「${nm}」` : nm, desc: `${label}の系譜、${k + 1}本目の${KW.name}。${line}。${sp.gim ? `この次元のルール「${gimN.name}」を強める。` : ''}`,
           blade: [shift(light, dh, ri >= 6 ? 0.05 : 0), shift(dark, dh)], handle: shift(dark, dh + 30, -0.12), glow: ri >= 2 ? glow : undefined,
-          k: { form, tsuba: k % 3 ? tsuba : KG.TSUBA[(si + k) % KG.TSUBA.length], hamon: ri >= 2 ? shift(light, dh + 20, 0.15) : undefined, len: +(0.85 + 0.05 * Math.min(ri, 8) + r() * 0.08).toFixed(2), curve: +(0.6 + r() * 1.2).toFixed(2), fx: ri >= 4 ? fx || undefined : undefined, twin: ri >= 7 && k % 3 === 0 },
+          k: { form, cls: KW.cls, tsuba: k % 3 ? tsuba : KG.TSUBA[(si + k) % KG.TSUBA.length], hamon: ri >= 2 ? shift(light, dh + 20, 0.15) : undefined, len: +(0.85 + 0.05 * Math.min(ri, 8) + r() * 0.08).toFixed(2), curve: +(0.6 + r() * 1.2).toFixed(2), fx: ri >= 4 ? fx || undefined : undefined, twin: ri >= 7 && k % 3 === 0 },
           sp, series: si, gen: true, pasK: 0.25, kind: 'katana', model: 'blade', dim: i,
         };
         KATANAS.push(w);
@@ -324,8 +477,8 @@ const DM = (() => {
     const music = Object.assign({}, R.music, { tr: (m.local % 5) - 2, bpm: R.music.bpm + (m.local % 3) * 4 });
     return {
       i, meta: m, realm: R, TYPES, STRAINS, STRAIN, BOSSES, BIOMES, KATANAS, OUGI, KSERIES, CELLS, KILL_WORDS: R.kill,
-      LB: { noun: R.noun, cur: R.cur, curIcon: R.curIcon, wpn: R.wpn, ally: R.ally, allyIcon: R.allyIcons[0], world: R.world, dim: m.name, icon: R.icon },
-      music, starter: KATANAS[0].id,
+      LB: { noun: R.noun, cur: R.cur, curIcon: R.curIcon, wpn: R.form === 'mix' ? (shoot ? '飛び道具' : '混沌刃') : K0.name, ally: R.ally, allyIcon: R.allyIcons[0], world: R.world, dim: m.name, icon: R.icon },
+      music, starter: KATANAS[0].id, kind, cls: K0.cls, traits,
     };
   }
   const cache = new Map();
@@ -497,6 +650,8 @@ const DM = (() => {
     { k: 'allies', icon: '🛡️', name: '仲間', n: 30, th: geo(5, 1.6), v: (ds) => sumv(ds.cells), txt: (x) => `仲間を${U.fmt(x)}人集める` },
     { k: 'upg', icon: '⚙️', name: '研ぎ', n: 30, th: geo(5, 1.35), v: (ds) => sumv(ds.upg), txt: (x) => `研ぎを合計${U.fmt(x)}Lvにする` },
     { k: 'glv', icon: '🎲', name: 'ガチャLv', n: 40, th: lin(5, 5), v: (ds) => ds.kgLv || 1, txt: (x) => `武器ガチャLv${x}に到達` },
+    { k: 'prest', icon: '♻️', name: '次元転生', n: 30, th: geo(1, 1.4), v: (ds) => ds.prest || 0, txt: (x) => `この次元で${U.fmt(x)}回転生する` },
+    { k: 'pp', icon: '💠', name: '次元のかけら', n: 40, th: geo(1, 1.6), v: (ds) => ds.pp || 0, txt: (x) => `次元のかけらを${U.fmt(x)}個集める` },
   ];
   const LAD_N = LAD.reduce((s, l) => s + l.n, 0);
   function ladDone(l, v) {
@@ -531,7 +686,7 @@ const DM = (() => {
     const now = Date.now();
     if (!force && TOT && now - totAt < 1500) return TOT;
     totAt = now;
-    let open = 0, visited = 0, st = 0, kinds = 0, tiers = 0, dex = 0, top = 0;
+    let open = 0, visited = 0, st = 0, kinds = 0, tiers = 0, dex = 0, top = 0, pp = 0;
     for (let i = 0; i < N; i++) {
       if (!isOpen(S, i)) break;
       open++;
@@ -539,17 +694,19 @@ const DM = (() => {
       if (!ds) continue;
       if (i ? ds.seen : (S.stats.gVisits || 0) > 0) visited++;
       st += stars(ds);
+      pp += ds.pp || 0;
       if (i) { kinds += cnt(ds.kat); tiers += ladTotal(ds); dex += cnt(ds.dex); }
       top = i;
     }
-    const power = (1 + 0.1 * st) * (1 + 0.002 * kinds) * (1 + 0.001 * tiers);
-    TOT = { open, visited, stars: st, kinds, tiers, dex, top, power, forest: Math.sqrt(power) };
+    const power = (1 + 0.1 * st) * (1 + 0.002 * kinds) * (1 + 0.001 * tiers) * (1 + 0.01 * pp);
+    TOT = { open, visited, stars: st, kinds, tiers, dex, top, pp, power, forest: Math.sqrt(power) };
     return TOT;
   }
   const dirty = () => { totAt = -1e9; if (typeof G !== 'undefined' && G.dirty) G.dirty(); };
 
   return {
-    N, LIST, REALMS, GIM, BASE, UNLOCK_W, unlockW, LAD, LAD_N, FORMS,
+    N, LIST, REALMS, GIM, BASE, UNLOCK_W, unlockW, LAD, LAD_N, FORMS, WK, SLASH_K, SHOOT_K, TRAITS,
+    traitsOf: (i) => (i ? content(i).traits : []),
     content, use, L, fresh, peek, isOpen, frontier, stars, pack, unpack, packAll, unpackAll,
     ladDone, ladEval, ladTotal, totals, dirty, realmOf,
     get cur() { return curI; },

@@ -60,6 +60,8 @@ const GM = (() => {
     rank: 0, style: 0, lastSids: [], musou: 0, musouMax: 1, musouG: 0, musouKills: 0, musouDna: 0, lastKillT: -9,
     formT: 3, formId: 1, forms: {}, booms: [], chain: { n: 0, t: -9 }, critT: 40, burnT: 0, firstLucky: 0,
     stormT: 2, slowT: 0, ladT: 0, idleT: 0, allT: 0,
+    // 撃つ武器: 引き金・狙い・弾・光線
+    trig: false, aim: { x: 0, y: 2 }, aimAng: Math.PI / 2, fireCd: 0, shots: [], sid: 1, beam: null, shotN: 0,
   };
 
   // ------------------------------------------------------------- 計算
@@ -96,8 +98,20 @@ const GM = (() => {
     st.spiritK = 1 + 0.6 * Math.log2(1 + (s.spirits || 0) * G.mutv('m_spirit'));
     // 次元の力: 全部の次元の★・武器の種類・段位が、どの次元のダメージにも効く
     st.dimPower = HAS_DM ? DM.totals(s).power : 1;
-    st.global = f.achMult * st.spiritK * f.levelMult * (1 + pas) * st.axeSyn * G.mutv('m_all') * (1 + (sp.all || 0)) * st.dimPower;
+    // 次元転生のかけら: この次元の強さと稼ぎに効く
+    st.ppK = 1 + 0.5 * (g.pp || 0);
+    st.global = f.achMult * st.spiritK * f.levelMult * (1 + pas) * st.axeSyn * G.mutv('m_all') * (1 + (sp.all || 0)) * st.dimPower * st.ppK;
     const gm = GIM();
+    // 名物武器の「理」: この次元のルールを強める
+    st.gimK = 1 + (sp.gim || 0);
+    // 武器の種類（斬る／撃つ）と撃つ武器の性能
+    const kd = eq && eq.k && eq.k.form;
+    const W = HAS_DM && kd ? DM.WK[kd] : null;
+    st.cls = W ? W.cls : 'slash';
+    st.kind = kd || 'katana';
+    st.fire = W && W.fire ? W.fire : null;
+    st.rateK = 1 + (sp.rate || 0);
+    st.multiP = Math.min(0.9, sp.multi || 0);
     const imm = Math.pow(1.2, lv('immune')) * G.mutv('m_cells') * (1 + (sp.cells || 0));
     st.cdps = {};
     let cd = 0;
@@ -125,22 +139,23 @@ const GM = (() => {
     const dex = g.dex ? Object.keys(g.dex).length : 0;
     st.dexN = dex;
     st.dexMult = 1 + C.DEX_BONUS * Math.floor(dex / C.DEX_STEP);
-    st.dnaMult = Math.pow(1.15, lv('analyze')) * G.mutv('m_dna') * (1 + (sp.dna || 0)) * G.buffOf('dna') * st.dexMult * (gm.dna || 1);
-    st.goldK = (1 + 0.15 * lv('gold') + (sp.gold || 0)) * (gm.gold || 1);
+    st.dnaMult = Math.pow(1.15, lv('analyze')) * G.mutv('m_dna') * (1 + (sp.dna || 0)) * G.buffOf('dna') * st.dexMult * (gm.dna || 1) * (gm.dna ? Math.sqrt(st.gimK) : 1) * st.ppK;
+    st.goldK = (1 + 0.15 * lv('gold') + (sp.gold || 0)) * (gm.gold || 1) * (gm.gold ? st.gimK : 1);
     st.outTime = C.OUT_TIME + lv('outbreak') + G.mutv('m_fever') + (sp.out || 0);
     st.outFreq = 1 + 0.05 * lv('outbreak');
     st.bossM = (1 + 0.25 * lv('boss')) * G.mutv('m_boss') * (1 + (sp.boss || 0));
     st.bossTime = C.BOSS_TIME + lv('boss');
     // 秘技
-    st.thunderP = Math.min(0.8, 0.02 * lv('thunder') + (sp.thunder || 0) + (gm.thunder || 0));
-    st.thunderN = 1 + Math.floor(lv('thunder') / 8) + (gm.thunderN || 0);
-    st.fireP = Math.min(0.8, 0.02 * lv('fire') + (sp.fire || 0) + (gm.fire || 0));
-    st.iceP = Math.min(0.8, 0.02 * lv('ice') + (sp.ice || 0) + (gm.ice || 0));
-    st.chainP = Math.min(0.85, C.BOOM_CHAIN + 0.04 * lv('boom') + (sp.boom || 0) + (gm.chain || 0));
+    const gx = st.gimK - 1;
+    st.thunderP = Math.min(0.8, 0.02 * lv('thunder') + (sp.thunder || 0) + (gm.thunder || 0) + (gm.thunder ? 0.1 * gx : 0));
+    st.thunderN = 1 + Math.floor(lv('thunder') / 8) + (gm.thunderN || 0) + (gm.thunderN ? Math.round(gx) : 0);
+    st.fireP = Math.min(0.8, 0.02 * lv('fire') + (sp.fire || 0) + (gm.fire || 0) + (gm.fire ? 0.1 * gx : 0));
+    st.iceP = Math.min(0.8, 0.02 * lv('ice') + (sp.ice || 0) + (gm.ice || 0) + (gm.ice ? 0.1 * gx : 0));
+    st.chainP = Math.min(0.85, C.BOOM_CHAIN + 0.04 * lv('boom') + (sp.boom || 0) + (gm.chain || 0) + (gm.bomb ? 0.08 * gx : 0));
     st.boomR = C.BOOM_R * (1 + 0.04 * lv('boom'));
-    st.musouTime = C.MUSOU_TIME + 0.5 * lv('musou') + G.mutv('m_fever') + (sp.musou || 0) + (gm.musouT || 0);
+    st.musouTime = C.MUSOU_TIME + 0.5 * lv('musou') + G.mutv('m_fever') + (sp.musou || 0) + (gm.musouT || 0) + (gm.musouT ? 2 * gx : 0);
     st.musouGain = (1 + 0.05 * lv('musou')) * (gm.musou || 1);
-    st.luckK = (1 + 0.15 * lv('lucky') + (sp.luckg || 0)) * (gm.lucky || 1);
+    st.luckK = (1 + 0.15 * lv('lucky') + (sp.luckg || 0)) * (gm.lucky || 1) * (gm.lucky ? st.gimK : 1);
     const kl = (g.kgLv || 1) - 1;
     st.rollBase = (C.ROLL_BASE + C.ROLL_STEP * lv('krollspd') + C.KLV_ROLL * kl) * G.mutv('m_roll');
     st.luckBase = (1 + C.LUCK_STEP * lv('kluck') + C.KLV_LUCK * kl) * G.mutv('m_luck');
@@ -295,6 +310,7 @@ const GM = (() => {
       boss: !!o.boss, bossDef: o.bossDef || null, child: !!o.child, minion: !!o.minion, flee: false,
       life: v === 'gold' || v === 'rainbow' || v === 'lucky' ? C.GOLD_LIFE : 0, sp: 1.1 * t.sp * X.sp * (V ? V.sp : 1) * (ob ? 1.25 : 1) * (o.child ? 1.4 : 1) * (o.boss ? 1 : gm.sp || 1),
       tx: 0, ty: 0, hitT: -9, strain: s, sid: X.sid, form: o.form || 0, path: o.path || null, crit: !!o.critter, core: !!o.core,
+      tr: o.critter || o.core ? null : t.trait || null, trT: rand(1.2, 3), r0: r, bloat: 0, cloned: false, rage: false,
       burn: null, frozen: 0, phase: 0, wasIn: false,
     };
     const q = o.boss ? { x: 0, y: (T.bounds.y0 + T.bounds.y1) / 2 + 0.6 } : innerPoint(r + 0.3);
@@ -305,7 +321,7 @@ const GM = (() => {
     return ge;
   }
   function find(id) { for (const x of T.germs) if (x.id === id) return x; return null; }
-  function ghostHidden(ge) { return ge.v === 'ghost' && Math.sin(T.time * 2.2 + ge.ph * 6.28) < -0.35; }
+  function ghostHidden(ge) { return (ge.v === 'ghost' && Math.sin(T.time * 2.2 + ge.ph * 6.28) < -0.35) || (ge.tr === 'hide' && !ge.boss && Math.sin(T.time * 1.7 + ge.ph * 6.28) < -0.6); }
   function removeGerm(ge) { const i = T.germs.indexOf(ge); if (i >= 0) T.germs.splice(i, 1); }
   const targetable = (x) => x.alive && !x.flee && !x.core && !x.crit;
 
@@ -389,18 +405,20 @@ const GM = (() => {
 
   // ------------------------------------------------------------- 斬る
   // o: { speed: 振りの速さ, core: 芯を通ったか, ang: 振った向き（ワールド）, x, y: 画面の当たった所 }
+  // o.shot: 撃った弾（dmgK: 1発の倍率 / gk: ゲージ・ランクのたまり方 / ap: 装甲を貫く / nocool: 同じ敵に続けて当たる）
   function slice(id, o) {
     const ge = find(id);
     if (!ge || !ge.alive || ge.flee) return null;
-    if (ge.cool > T.time) return null;
-    if (ghostHidden(ge)) return { miss: true, g: ge };
-    ge.cool = T.time + C.HIT_COOL;
+    if (ge.cool > T.time && !o.nocool) return null;
+    if (ghostHidden(ge) && !(o.shot && stats().gimK >= 3)) return { miss: true, g: ge };
+    if (!o.nocool) ge.cool = T.time + C.HIT_COOL;
     const s = S(), st = stats();
     if (ge.core) return weakHit(ge, o);
+    const gk = o.gk == null ? 1 : o.gk;
     const stier = speedTier(o.speed || 0);
     let bonus = C.SPEED_BONUS[stier];
     if (bonus > 0) bonus *= st.drawK;
-    let dmg = st.kdmg * (1 + bonus);
+    let dmg = st.kdmg * (1 + bonus) * (o.dmgK || 1);
     const core = !!o.core;
     if (core) dmg *= st.coreM;
     const crit = rnd() < st.critC;
@@ -410,15 +428,18 @@ const GM = (() => {
     T.combo++;
     T.comboT = st.comboWin;
     dmg *= comboMult();
-    // 一閃: 前の1体から0.5秒以内に斬り続けると、同じ一振りとして数える
-    if (T.stroke && T.stroke.kills > 0 && T.time - T.stroke.last > C.ISSEN_GAP) { strokeEnd(); strokeStart(); }
-    const k = T.stroke ? T.stroke.kills : 0;
+    // 一閃: 前の1体から0.5秒以内に斬り続けると、同じ一振りとして数える（撃つ武器は「1回の発射」で数える）
+    if (!o.vol && T.stroke && T.stroke.kills > 0 && T.time - T.stroke.last > C.ISSEN_GAP) { strokeEnd(); strokeStart(); }
+    const k = o.vol ? o.vol.kills : T.stroke ? T.stroke.kills : 0;
     dmg *= 1 + Math.min(k, C.ISSEN_CAP) * st.issen;
     if (T.outbreak > 0) dmg *= 2;
     if (T.musou > 0) dmg *= C.MUSOU_DMG;
     if (ge.boss) dmg *= st.bossM;
-    let deflect = false;
-    if (ge.v === 'armor' && stier < 3 && !core && T.musou <= 0) { dmg *= 0.08; deflect = true; ST().gDeflects++; }
+    let deflect = false, guard = false;
+    // 敵の特徴: 盾持ち（芯・会心・貫く武器は通る）・回転（遅い斬撃を弾く）
+    if (ge.tr === 'shield' && !ge.boss && !core && !crit && !o.ap) { dmg *= 0.35; guard = true; }
+    if (ge.tr === 'spin' && !ge.boss && !o.shot && stier < 2) { dmg *= 0.3; guard = true; }
+    if (ge.v === 'armor' && stier < 3 && !core && !o.ap && T.musou <= 0) { dmg *= 0.08 * (st.gimK >= 2 ? 4 : 1); deflect = true; ST().gDeflects++; }
     hurt(ge, dmg);
     ST().gSlices++;
     if (core) ST().gCores++;
@@ -426,30 +447,41 @@ const GM = (() => {
     if (T.combo > ST().gMaxCombo) ST().gMaxCombo = T.combo;
     for (const [n, name] of GD.COMBO_MS) if (T.combo === n) emit('gComboMs', { n, name });
     if (T.stroke) T.stroke.hits++;
-    G.gainXp(0.25);
-    styleAdd(0.4 + (core ? 0.8 : 0) + (crit ? 0.8 : 0) + (stier >= 3 ? 0.5 : 0));
+    G.gainXp(0.25 * gk);
+    styleAdd((0.4 + (core ? 0.8 : 0) + (crit ? 0.8 : 0) + (stier >= 3 ? 0.5 : 0)) * gk);
     // 奥義ゲージ
     const oi = ougiInfo();
     if (oi && !T.ougiPending) {
-      T.ougi += 1 + (core ? 1 : 0) + (crit ? 2 : 0) + (T.musou > 0 ? 1 : 0);
+      T.ougi += (1 + (core ? 1 : 0) + (crit ? 2 : 0) + (T.musou > 0 ? 1 : 0)) * gk;
       if (T.ougi >= oi.need) { T.ougi = 0; fireOugi(oi); }
     }
     const killed = ge.hp <= 0;
-    const ev = { g: ge, dmg, core, crit, stier, deflect, shatter, combo: T.combo, x: o.x, y: o.y, ang: o.ang || 0, n: k + 1, killed };
-    if (!killed && !ge.path) {
+    const ev = { g: ge, dmg, core, crit, stier, deflect, shatter, combo: T.combo, x: o.x, y: o.y, ang: o.ang || 0, n: k + 1, killed, shot: o.shot || null, guard };
+    // ちぢみ: 当たるたびに小さく / 分身: 初めて当たると2体に
+    if (!killed && !ge.boss) {
+      if (ge.tr === 'shrink') ge.r = Math.max(ge.r0 * 0.5, ge.r * 0.86);
+      if (ge.tr === 'clone' && !ge.cloned && !ge.child) {
+        ge.cloned = true;
+        ge.hp = Math.min(ge.hp, ge.maxHp * 0.6);
+        for (const sx of [-1, 1]) { const c = spawn({ child: true, type: ge.type, strain: ge.strain, x: ge.x + sx * ge.r, y: ge.y, ang: (sx > 0 ? 0 : Math.PI) + rand(-0.4, 0.4), speed: 4 }); c.cloned = true; c.hp = c.maxHp = ge.maxHp * 0.3; }
+        emit('gTrait', { kind: 'clone', g: ge });
+      }
+    }
+    if (!killed && !ge.path && !o.shot) {
       // 斬られた勢いで流される
       ge.vx += Math.cos(ev.ang) * (ge.boss ? 0.4 : 3.2);
       ge.vy += Math.sin(ev.ang) * (ge.boss ? 0.4 : 3.2);
     }
     emit('gSlice', ev);
     // 秘技: 雷は斬った瞬間、炎と氷は倒しきれなかったとき
-    if (!deflect && rnd() < st.thunderP) thunder(ge, dmg);
+    if (!deflect && rnd() < st.thunderP * gk) thunder(ge, dmg);
+    if (o.shot && !killed && !ge.path && !ge.boss) { ge.vx += Math.cos(ev.ang) * 1.6 * gk; ge.vy += Math.sin(ev.ang) * 1.6 * gk; }
     if (!killed && !deflect && !ge.boss) {
-      if (rnd() < st.zanshin) T.pending.push({ t: T.time + 0.32, kind: 'zanshin', id: ge.id, dmg: dmg * 0.6, ang: ev.ang + Math.PI / 2 });
-      if (!ge.burn && rnd() < st.fireP) { ge.burn = { t: 2.5, dmg: dmg * 0.35 * (GIM().burn || 1) }; ST().gFire++; emit('gBurn', ge); }
-      if (!ge.frozen && rnd() < st.iceP) { ge.frozen = 2.5; ge.path = null; ge.vx = 0; ge.vy = 0; ST().gIce++; emit('gFreeze', ge); }
+      if (!o.shot && rnd() < st.zanshin) T.pending.push({ t: T.time + 0.32, kind: 'zanshin', id: ge.id, dmg: dmg * 0.6, ang: ev.ang + Math.PI / 2 });
+      if (!ge.burn && rnd() < st.fireP * gk) { ge.burn = { t: 2.5, dmg: dmg * 0.35 * (GIM().burn || 1) }; ST().gFire++; emit('gBurn', ge); }
+      if (!ge.frozen && rnd() < st.iceP * gk) { ge.frozen = 2.5; ge.path = null; ge.vx = 0; ge.vy = 0; ST().gIce++; emit('gFreeze', ge); }
     }
-    if (killed) kill(ge, { src: 'slice', ang: ev.ang, issen: k + 1, x: o.x, y: o.y, core, crit, stier });
+    if (killed) kill(ge, { src: 'slice', ang: ev.ang, issen: k + 1, x: o.x, y: o.y, core, crit, stier, vol: o.vol });
     // 鏡写: 左右反対の位置にいる敵にも一太刀
     if (GIM().mirror && !o.mirror && !deflect) {
       let best = null, bd = 1e9;
@@ -458,7 +490,7 @@ const GM = (() => {
         const d = Math.hypot(x.x + ge.x, x.y - ge.y);
         if (d < bd && d < x.r + 1.1) { bd = d; best = x; }
       }
-      if (best) { emit('gMirror', { from: ge, to: best }); slice(best.id, { speed: o.speed, core: false, ang: Math.PI - (o.ang || 0), mirror: true }); }
+      if (best) { emit('gMirror', { from: ge, to: best }); slice(best.id, { speed: o.speed, core: false, ang: Math.PI - (o.ang || 0), mirror: true, dmgK: (o.dmgK || 1) * st.gimK, shot: o.shot, gk: o.gk, nocool: o.nocool, ap: o.ap }); }
     }
     return ev;
   }
@@ -486,7 +518,7 @@ const GM = (() => {
     ge.ang = o.ang || 0;
     const s = S(), g = gs(), st = stats();
     const issen = o.issen || 1;
-    let dna = ge.dna * st.dnaMult * (1 + Math.min(issen - 1, C.ISSEN_CAP) * st.issen) * (T.outbreak > 0 ? C.OUT_DNA : 1) * (1 + (comboMult() - 1) * 0.5) * styleMult() * (T.musou > 0 ? C.MUSOU_DNA : 1);
+    let dna = ge.dna * (1 + (ge.bloat || 0) * 1.5) * st.dnaMult * (1 + Math.min(issen - 1, C.ISSEN_CAP) * st.issen) * (T.outbreak > 0 ? C.OUT_DNA : 1) * (1 + (comboMult() - 1) * 0.5) * styleMult() * (T.musou > 0 ? C.MUSOU_DNA : 1);
     gainDna(dna);
     ST().gKills++;
     T.lastKillT = T.time;
@@ -496,7 +528,8 @@ const GM = (() => {
     if (ge.child) ST().gSplits++;
     if (T.outbreak > 0) { T.outKills++; T.outDna += dna; }
     if (T.musou > 0) { T.musouKills++; T.musouDna += dna; }
-    if (T.stroke && o.src === 'slice') { T.stroke.kills++; T.stroke.dna += dna; T.stroke.last = T.time; }
+    if (o.vol) { o.vol.kills++; o.vol.dna += dna; o.vol.last = T.time; }
+    else if (T.stroke && o.src === 'slice') { T.stroke.kills++; T.stroke.dna += dna; T.stroke.last = T.time; }
     if (rnd() < 0.0015 * G.mutv('m_gem') || ge.v === 'rainbow') G.gainGems(ge.v === 'rainbow' ? 10 : 1);
     // 斬撃ランク: 違う株を続けて斬ると多彩さボーナス
     const variety = !T.lastSids.includes(ge.sid);
@@ -561,6 +594,11 @@ const GM = (() => {
     const sk = T.stroke;
     T.stroke = null;
     if (!sk) return null;
+    issenDone(sk);
+    return sk;
+  }
+  // 一振り（撃つ武器は1回の発射）で2体以上倒したときのごほうびと掛け声
+  function issenDone(sk) {
     if (sk.kills >= 2) {
       const st = ST();
       if (sk.kills > st.gBestIssen) st.gBestIssen = sk.kills;
@@ -572,9 +610,8 @@ const GM = (() => {
       styleAdd(sk.kills * 1.5);
       emit('gIssen', { n: sk.kills, dna: sk.dna + bonus, bonus, gems, name: GD.issenName(sk.kills) });
       // 時止め: まとめて斬ると敵の動きがゆっくりに
-      if (GIM().slow && sk.kills >= 4) { T.slowT = Math.min(2.5, 0.8 + sk.kills * 0.12); emit('gSlowmo', { n: sk.kills, t: T.slowT }); }
+      if (GIM().slow && sk.kills >= 4) { T.slowT = Math.min(2.5, 0.8 + sk.kills * 0.12) * stats().gimK; emit('gSlowmo', { n: sk.kills, t: T.slowT }); }
     }
-    return sk;
   }
 
   // ------------------------------------------------------------- 秘技: 雷・誘爆
@@ -684,6 +721,7 @@ const GM = (() => {
     g.wkills = 0;
     g.wave++;
     if (g.wave > g.maxWave) g.maxWave = g.wave;
+    if (g.wave > (g.runMax || 1)) g.runMax = g.wave;
     if (HAS_DM && g.maxWave > prevMax) {
       // ★（ボスを倒すごと）が増えると次元の力が上がる。ウェーブ15で次の次元が開く
       if (DM.stars(g) > Math.floor((prevMax - 1) / 10)) { DM.dirty(); T.dirty = true; }
@@ -951,6 +989,220 @@ const GM = (() => {
     return true;
   }
 
+
+  // ------------------------------------------------------------- 撃つ（銃・弓・杖・手裏剣・ブーメラン・光線）
+  // 砲台は画面の下の真ん中。押している間、押した所へ連射する（敵の近くを押すとその敵に吸い付き、動きを先読みする）
+  const MUZZLE = 1.9;
+  const turret = () => ({ x: (T.bounds.x0 + T.bounds.x1) / 2, y: T.bounds.y0 + 0.55 });
+  const shootable = (x) => x.alive && !x.flee;
+  const clampAng = (a) => (a < -Math.PI / 2 ? Math.PI - 0.1 : Math.max(0.1, Math.min(Math.PI - 0.1, a)));
+  function segDist(px, py, ax, ay, bx, by) {
+    const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy;
+    let t = L2 > 0 ? ((px - ax) * dx + (py - ay) * dy) / L2 : 0;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(px - (ax + dx * t), py - (ay + dy * t));
+  }
+  function nearest(x, y, skip, maxD = 99) {
+    let best = null, bd = maxD;
+    for (const ge of T.germs) {
+      if (!shootable(ge) || (skip && skip.has(ge.id)) || ghostHidden(ge)) continue;
+      const d = Math.hypot(ge.x - x, ge.y - y);
+      if (d < bd) { bd = d; best = ge; }
+    }
+    return best;
+  }
+  function assist(px, py, sp) {
+    let best = null, bd = 1.35;
+    for (const ge of T.germs) {
+      if (!shootable(ge)) continue;
+      const d = Math.hypot(ge.x - px, ge.y - py) - ge.r;
+      if (d < bd) { bd = d; best = ge; }
+    }
+    if (!best) return { x: px, y: py };
+    const tu = turret(), t = sp ? Math.hypot(best.x - tu.x, best.y - tu.y) / sp : 0;
+    return { x: best.x + best.vx * t, y: best.y + best.vy * t };
+  }
+  // 1回押した・離した・動かした
+  function trigger(on, x, y) {
+    if (on) {
+      T.trig = true;
+      if (x != null) { T.aim.x = x; T.aim.y = y; }
+      if (T.fireCd > 0.12) T.fireCd = 0.12;
+    } else {
+      T.trig = false;
+      T.beam = null;
+    }
+  }
+  function aimAt(x, y) { T.aim.x = x; T.aim.y = y; }
+  // 1発ぶんの倍率と、ゲージ・ランクのたまり方（1秒あたり、斬るのと同じくらいになるように）
+  const gaugeK = (F) => Math.min(1.5, 2.5 / (F.rate * (F.n || 1)));
+  const SPD = { sniper: 9, bow: 5.5 };
+  function fire() {
+    const st = stats(), F = st.fire;
+    if (!F) return;
+    const tu = turret();
+    const q = assist(T.aim.x, T.aim.y, F.sp || 0);
+    const ang = clampAng(Math.atan2(q.y - tu.y, q.x - tu.x));
+    T.aimAng = ang;
+    const mx = tu.x + Math.cos(ang) * MUZZLE, my = tu.y + Math.sin(ang) * MUZZLE;
+    const kind = st.kind;
+    if (F.beam) {
+      const L = 40, x1 = mx + Math.cos(ang) * L, y1 = my + Math.sin(ang) * L;
+      T.beam = { x0: mx, y0: my, x1, y1, t: T.time, ang };
+      const gk = gaugeK(F);
+      const vol = { kills: 0, dna: 0, live: 0, t: T.time, last: T.time };
+      for (const ge of T.germs.slice()) {
+        if (!shootable(ge)) continue;
+        const d = segDist(ge.x, ge.y, mx, my, x1, y1);
+        if (d > ge.r + 0.2) continue;
+        slice(ge.id, { speed: 3, core: d <= ge.r * st.core, ang, shot: kind, dmgK: F.dmg, gk, nocool: true, ap: true, vol });
+      }
+      issenDone(vol);
+      T.shotN++;
+      emit('gShot', { kind, x: mx, y: my, ang, n: 1, beam: true });
+      return;
+    }
+    const n = (F.n || 1) + (rnd() < st.multiP ? 1 : 0);
+    const gk = gaugeK(F);
+    const vol = { kills: 0, dna: 0, live: n, t: T.time, last: T.time };
+    for (let i = 0; i < n; i++) {
+      const a = ang + (n > 1 ? (i / (n - 1) - 0.5) * F.spread * 2 : 0) + (rnd() - 0.5) * F.spread * 0.6;
+      T.shots.push({
+        id: T.sid++, kind, x: mx, y: my, vx: Math.cos(a) * F.sp, vy: Math.sin(a) * F.sp, dmgK: F.dmg, pierce: F.pierce || 0, hit: new Set(),
+        age: 0, dist: 0, range: F.range || 40, aoe: F.aoe || 0, homing: F.homing || 0, bounce: F.bounce || 0, ret: F.ret || 0, back: false,
+        gk, ap: !!(F.pierce || F.aoe), r: kind === 'rocket' ? 0.32 : kind === 'shotgun' ? 0.14 : kind === 'shuriken' ? 0.26 : kind === 'boomerang' ? 0.22 : 0.18, speed: SPD[kind] || 3, vol,
+      });
+    }
+    T.shotN++;
+    emit('gShot', { kind, x: mx, y: my, ang, n });
+  }
+  // ロケットの爆発
+  function explode(p) {
+    const st = stats();
+    emit('gBoom', { x: p.x, y: p.y, r: p.aoe, n: 1, boss: false, rocket: true });
+    for (const ge of T.germs.slice()) {
+      if (!shootable(ge)) continue;
+      const d = Math.hypot(ge.x - p.x, ge.y - p.y);
+      if (d > p.aoe + ge.r) continue;
+      slice(ge.id, { speed: 3, core: false, ang: Math.atan2(ge.y - p.y, ge.x - p.x), shot: 'rocket', dmgK: p.dmgK * (d < ge.r + 0.4 ? 1 : 0.75), gk: p.gk * 0.5, nocool: true, ap: true, vol: p.vol });
+    }
+    void st;
+  }
+  function stepShots(dt) {
+    if (!T.shots.length) return;
+    const b = T.bounds, st = stats();
+    for (let i = T.shots.length - 1; i >= 0; i--) {
+      const p = T.shots[i];
+      p.age += dt;
+      if (p.homing) {
+        const tg = nearest(p.x, p.y, p.hit, 9);
+        if (tg) {
+          const cur = Math.atan2(p.vy, p.vx);
+          let d = Math.atan2(tg.y - p.y, tg.x - p.x) - cur;
+          while (d > Math.PI) d -= Math.PI * 2;
+          while (d < -Math.PI) d += Math.PI * 2;
+          const na = cur + Math.max(-1, Math.min(1, d)) * Math.min(1, p.homing * dt);
+          const sp = Math.min(30, Math.hypot(p.vx, p.vy) * (1 + dt * 0.9));
+          p.vx = Math.cos(na) * sp; p.vy = Math.sin(na) * sp;
+        }
+      }
+      if (p.kind === 'rocket') { const k = 1 + dt * 1.6; if (Math.hypot(p.vx, p.vy) < 42) { p.vx *= k; p.vy *= k; } }
+      if (p.ret && !p.back && p.dist >= p.ret) { p.back = true; p.hit.clear(); }
+      if (p.back) {
+        const tu = turret(), dx = tu.x - p.x, dy = tu.y - p.y, d = Math.hypot(dx, dy) || 1, sp = Math.hypot(p.vx, p.vy);
+        const k = Math.min(1, dt * 7);
+        p.vx += ((dx / d) * sp - p.vx) * k;
+        p.vy += ((dy / d) * sp - p.vy) * k;
+        if (d < 0.9) { T.shots.splice(i, 1); shotGone(p); continue; }
+      }
+      const x0 = p.x, y0 = p.y;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.dist += Math.hypot(p.x - x0, p.y - y0);
+      let dead = false;
+      for (const ge of T.germs.slice()) {
+        if (!shootable(ge) || p.hit.has(ge.id)) continue;
+        const d = segDist(ge.x, ge.y, x0, y0, p.x, p.y);
+        if (d > ge.r + p.r) continue;
+        if (p.aoe) { p.x = ge.x; p.y = ge.y; explode(p); dead = true; break; }
+        p.hit.add(ge.id);
+        const ev = slice(ge.id, { speed: p.speed, core: d <= ge.r * st.core, ang: Math.atan2(p.vy, p.vx), shot: p.kind, dmgK: p.dmgK, gk: p.gk, nocool: true, ap: p.ap, vol: p.vol });
+        if (ev && ev.miss) continue;
+        if (p.bounce > 0) {
+          p.bounce--;
+          const tg = nearest(p.x, p.y, p.hit, 5.5);
+          if (tg) { const a = Math.atan2(tg.y - p.y, tg.x - p.x), sp = Math.hypot(p.vx, p.vy); p.vx = Math.cos(a) * sp; p.vy = Math.sin(a) * sp; emit('gBounce', { x: p.x, y: p.y }); break; }
+        }
+        if (p.pierce > 0) { p.pierce--; continue; }
+        if (!p.ret) { dead = true; break; }
+      }
+      const out = p.x < b.x0 - 2 || p.x > b.x1 + 2 || p.y > b.y1 + 2.5 || p.y < b.y0 - 2.5 || p.dist > p.range || p.age > 5;
+      if (dead || (out && !p.back)) { T.shots.splice(i, 1); shotGone(p); }
+    }
+  }
+  function shotGone(p) {
+    const v = p.vol;
+    if (!v) return;
+    v.live--;
+    if (v.live <= 0) issenDone(v);
+  }
+  // キーボード（スペース）や、近い敵へ1回だけ撃つとき
+  function shootOnce(x, y) {
+    trigger(true, x, y);
+    T.fireCd = 0;
+    if (stats().fire) fire();
+    trigger(false);
+  }
+
+
+  // ------------------------------------------------------------- 敵の特徴（次元ごと）: 動きの倍率を返す（-1 = 逃げて消える）
+  function traitStep(ge, dt, list) {
+    const tr = ge.tr;
+    ge.trT -= dt;
+    if (tr === 'blink') {
+      if (ge.trT <= 0) {
+        ge.trT = rand(2.2, 3.6) * (ge.boss ? 1.8 : 1);
+        const x0 = ge.x, y0 = ge.y, q = innerPoint(ge.r + 0.3);
+        ge.x = q.x; ge.y = q.y; ge.vx = 0; ge.vy = 0;
+        const q2 = innerPoint(ge.r + 0.3);
+        ge.tx = q2.x; ge.ty = q2.y;
+        emit('gTrait', { kind: 'blink', g: ge, x0, y0 });
+      }
+      return 1;
+    }
+    if (tr === 'dash') {
+      if (ge.dash > 0) { ge.dash -= dt; return 4; }
+      if (ge.trT <= 0) { ge.trT = rand(2, 3.2); ge.dash = 0.45; const q = innerPoint(ge.r + 0.3); ge.tx = q.x; ge.ty = q.y; emit('gTrait', { kind: 'dash', g: ge }); }
+      return 1;
+    }
+    if (tr === 'heal') {
+      if (ge.trT <= 0) {
+        ge.trT = 2.2;
+        let n = 0;
+        for (const x of list) if (x !== ge && x.alive && !x.core && x.hp < x.maxHp && Math.hypot(x.x - ge.x, x.y - ge.y) < 3.2) { x.hp = Math.min(x.maxHp, x.hp + x.maxHp * 0.15); n++; }
+        if (n) emit('gTrait', { kind: 'heal', g: ge, n });
+      }
+      return 1;
+    }
+    if (tr === 'rage') { const on = ge.hp < ge.maxHp * 0.5; if (on && !ge.rage) emit('gTrait', { kind: 'rage', g: ge }); ge.rage = on; return on ? 2 : 1; }
+    if (tr === 'float') { ge.y += Math.sin(T.time * 3 + ge.ph * 6) * 1.6 * dt; ge.x += Math.cos(T.time * 2.1 + ge.ph * 6) * 1.1 * dt; return 0.8; }
+    if (tr === 'magnet') {
+      for (const x of list) {
+        if (x === ge || x.boss || x.core || x.path || x.flee) continue;
+        const dx = ge.x - x.x, dy = ge.y - x.y, d = Math.hypot(dx, dy);
+        if (d > 0.4 && d < 4) { x.x += (dx / d) * 1.1 * dt; x.y += (dy / d) * 1.1 * dt; }
+      }
+      return 0.7;
+    }
+    if (tr === 'bloat' && !ge.boss) {
+      ge.bloat = Math.min(1.6, ge.bloat + dt * 0.14);
+      ge.r = ge.r0 * (1 + ge.bloat * 0.55);
+      if (ge.bloat >= 1.6) { ge.popT = (ge.popT || 0) + dt; if (ge.popT > 1.8) { emit('gTrait', { kind: 'pop', g: ge }); return -1; } }
+      return 0.7;
+    }
+    return 1;
+  }
+
   // ------------------------------------------------------------- 雷雲（空から雷）
   function storm() {
     const list = T.germs.filter((x) => targetable(x) && !x.boss && x.wasIn);
@@ -1016,6 +1268,72 @@ const GM = (() => {
     T.dirty = true;
   }
 
+
+  // ------------------------------------------------------------- 手で引く武器ガチャ（どの次元でも）
+  // 通貨か💎で引く。幸運×3、10連はSR以上が1枠確定、50回ごとにSSR以上が確定（この次元の天井）
+  const PULL_GEM = { 1: 30, 10: 270 };
+  function pullCost(n) {
+    const g = gs(), st = stats();
+    return Math.ceil(dnaAt(Math.max(1, g.maxWave || 1)) * st.dnaMult * 60 * n * (n === 10 ? 0.9 : 1));
+  }
+  function canPull(n, pay) { return pay === 'gem' ? S().gems >= PULL_GEM[n] : gs().dna >= pullCost(n); }
+  function pull(n, pay) {
+    const g = gs(), s = S();
+    if (s.study) return { error: 'study' };
+    if (pay === 'gem') { const c = PULL_GEM[n]; if (s.gems < c) return { error: 'gems' }; s.gems -= c; }
+    else { const c = pullCost(n); if (g.dna < c) return { error: 'cur' }; g.dna -= c; }
+    const luck = stats().luckBase * 3 * G.buffOf('luck');
+    const res = [];
+    for (let i = 0; i < n; i++) {
+      g.pity = (g.pity || 0) + 1;
+      let r = G.rollRarity(luck);
+      if (n === 10 && i === n - 1 && !res.some((o) => RANK[o.r] >= 2) && RANK[r] < 2) r = 'SR';
+      if (g.pity >= 50 && RANK[r] < 3) r = 'SSR';
+      if (RANK[r] >= 3) g.pity = 0;
+      const pool = POOL[r] && POOL[r].length ? POOL[r] : GD.KATANAS;
+      res.push(grantK(pool[Math.floor(rnd() * pool.length)], r));
+    }
+    ST().gRolls += n;
+    ST().gPulls = (ST().gPulls || 0) + n;
+    kgXp(n * 5, true);
+    let best = null;
+    for (const o of res) if (!best || RANK[o.r] > RANK[best.r]) best = o;
+    autoEquipK(best);
+    dirty();
+    G.dirty();
+    emit('kPull', { res, n, pay });
+    return { res };
+  }
+
+  // ------------------------------------------------------------- 次元転生（どの次元でも）
+  // この次元を最初からやり直して「次元のかけら」をもらう。かけら1つで、この次元の強さと稼ぎ +50%。
+  // 武器・図鑑・段位・記録・★（最高ウェーブ）は残る。ウェーブ25から
+  const PP_MIN = 25;
+  const ppGain = (w) => (w < PP_MIN ? 0 : Math.floor(Math.pow(w / 10, 2.2) / 4));
+  function prestigeInfo() {
+    const g = gs(), w = g.runMax || g.wave || 1;
+    const gain = ppGain(w), pp = g.pp || 0;
+    return { w, gain, pp, mult: 1 + 0.5 * pp, next: 1 + 0.5 * (pp + gain), min: PP_MIN, count: g.prest || 0, ok: gain > 0 && !T.boss && !T.pendingBoss };
+  }
+  function dimPrestige() {
+    const info = prestigeInfo();
+    if (!info.ok || !inDim()) return null;
+    const g = gs();
+    g.pp = (g.pp || 0) + info.gain;
+    g.prest = (g.prest || 0) + 1;
+    const gems = 10 + info.gain;
+    G.gainGems(gems);
+    g.wave = 1; g.wkills = 0; g.farming = false; g.dna = 0; g.upg = {}; g.cells = {}; g.runMax = 1; g.idle = 0;
+    ST().gPrest = (ST().gPrest || 0) + 1;
+    resetRun();
+    dirty();
+    if (HAS_DM) DM.dirty();
+    emit('dimPrestige', { gain: info.gain, pp: g.pp, mult: 1 + 0.5 * g.pp, gems, i: DI() });
+    for (let i = 0; i < 3; i++) { const q = innerPoint(1); spawn({ x: q.x, y: q.y }); }
+    G.save();
+    return { gain: info.gain, gems };
+  }
+
   // ------------------------------------------------------------- 次元の移動
   function resetRun() {
     T.germs.length = 0;
@@ -1024,6 +1342,7 @@ const GM = (() => {
     T.boss = null; T.pendingBoss = false; T.ougiPending = null; T.spawnT = 0.8;
     T.musou = 0; T.musouG = 0; T.style = 0; T.rank = 0; T.lastSids = []; T.forms = {}; T.booms = []; T.chain = { n: 0, t: -9 };
     T.formT = 2.5; T.critT = rand(C.CRIT_MIN * 0.5, C.CRIT_MAX * 0.7);
+    T.trig = false; T.shots.length = 0; T.beam = null; T.fireCd = 0;
   }
   // i: 行き先の次元（省略で最後にいた次元）。次元の中から別の次元へも直接行ける（hop）
   function enter(i) {
@@ -1131,9 +1450,11 @@ const GM = (() => {
         const q = innerPoint(ge.r + 0.3);
         ge.tx = q.x; ge.ty = q.y;
       }
+      const tk = ge.tr && inside ? traitStep(ge, dt, list) : 1;
+      if (tk < 0) { list.splice(i, 1); emit('gGone', ge); if (ge.form) formGone(ge, false); continue; }
       const dx = ge.tx - ge.x, dy = ge.ty - ge.y, d = Math.hypot(dx, dy) || 1;
-      const sp = ge.boss ? (inside ? 1.6 * (1 + ge.phase * 0.5) : 4) : ge.sp * (inside ? 1 : 3.5);
-      const k = Math.min(1, dt * 1.6);
+      const sp = (ge.boss ? (inside ? 1.6 * (1 + ge.phase * 0.5) : 4) : ge.sp * (inside ? 1 : 3.5)) * tk;
+      const k = Math.min(1, dt * 1.6 * (ge.dash > 0 ? 3 : 1));
       ge.vx += ((dx / d) * sp - ge.vx) * k;
       ge.vy += ((dy / d) * sp - ge.vy) * k;
       ge.x += ge.vx * dt;
@@ -1188,8 +1509,8 @@ const GM = (() => {
     if (T.ladT <= 0) { T.ladT = 1; ladTick(); }
     // 雷雲・再生
     const gmk = GIM();
-    if (gmk.storm && !T.pendingBoss) { T.stormT -= gdt; if (T.stormT <= 0) { T.stormT = rand(1.1, 2.4); storm(); } }
-    if (gmk.regen) for (const x of T.germs) if (x.alive && !x.core && x.hp < x.maxHp && T.time - x.hitT > 0.8) x.hp = Math.min(x.maxHp, x.hp + x.maxHp * gmk.regen * gdt);
+    if (gmk.storm && !T.pendingBoss) { T.stormT -= gdt; if (T.stormT <= 0) { T.stormT = rand(1.1, 2.4) / st.gimK; storm(); } }
+    if (gmk.regen) for (const x of T.germs) if (x.alive && !x.core && x.hp < x.maxHp && T.time - x.hitT > 0.8) x.hp = Math.min(x.maxHp, x.hp + (x.maxHp * gmk.regen * gdt) / st.gimK);
     // 連斬
     if (T.combo > 0) {
       T.comboT -= dt;
@@ -1295,6 +1616,14 @@ const GM = (() => {
       T.critT = rand(C.CRIT_MIN, C.CRIT_MAX) / st.luckK;
     }
     move(gdt);
+    // 撃つ武器: 押している間は連射、弾を動かす
+    if (T.trig && st.cls === 'shoot' && st.fire && !s.study) {
+      T.fireCd -= gdt;
+      let k = 0;
+      while (T.fireCd <= 0 && k++ < 4) { fire(); T.fireCd += 1 / (st.fire.rate * st.rateK); }
+    } else if (T.fireCd > 0) T.fireCd = Math.max(0, T.fireCd - gdt);
+    if (T.beam && (!T.trig || T.time - T.beam.t > 0.2)) T.beam = null;
+    stepShots(gdt);
     // 免疫細胞
     T.cellT -= gdt;
     if (T.cellT <= 0) { T.cellT = C.CELL_TICK; cellAttack(C.CELL_TICK); }
@@ -1326,6 +1655,7 @@ const GM = (() => {
 
   return {
     T, C, TY, CE, UP, MU, KAT, POOL, ST, DI, GIM, rebind, useDim, idleAll, hkFor, ladTick,
+    trigger, aimAt, shootOnce, turret, MUZZLE, pull, pullCost, canPull, PULL_GEM, prestigeInfo, dimPrestige,
     stats, dirty, tick, slice, strokeStart, strokeEnd, enter, leave, setBounds, open, inDim,
     hpAt, dnaAt, biomeIndex, isBossWave, bossDef, maxGerms, comboMult, styleMult, speedTier, ghostHidden,
     buyCell, cellCost, cellMax, unitCellDps, buyUpg, upgCost, upgMaxed, buyMut, mutCost, mutMaxed, mutLv,

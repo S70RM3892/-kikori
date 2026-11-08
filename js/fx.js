@@ -1530,6 +1530,21 @@ const FX = (() => {
     if (f === 'saber') { const g = k.glow && k.glow !== 'rainbow' ? k.glow : k.blade[0]; return hand('#3a3f4a') + `<path d="M18 46 L58 6" stroke="${g}" stroke-width="7" stroke-linecap="round" opacity=".85"/><path d="M18 46 L58 6" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/>`; }
     if (f === 'spear') return `<path d="M5 61 L44 22" stroke="${k.handle || '#5a3a1a'}" stroke-width="3.4" stroke-linecap="round"/><path d="${blade([42, 24], [60, 4], 8, 2, 0.45)}" ${st}/>`;
     if (f === 'scythe') return `<path d="M8 60 L40 12" stroke="${k.handle || '#3a2a1a'}" stroke-width="3.6" stroke-linecap="round"/><path d="M38 11 C 50 9, 59 16, 61 30 C 55 21, 48 17, 40 18 Z" ${st}/>`;
+    // 撃つ武器: 縦に描いて右上へ傾ける
+    const G0 = (inner) => `<g transform="rotate(42 32 34)">${inner}</g>`;
+    const body = `fill="url(#${id})" stroke="#140c18" stroke-width="1.4" stroke-linejoin="round"`;
+    const gl = k.glow && k.glow !== 'rainbow' ? k.glow : k.blade[0];
+    const hd = k.handle || '#3a2a1a';
+    if (f === 'handgun') return G0(`<rect x="27" y="12" width="10" height="30" rx="2" ${body}/><rect x="28" y="40" width="9" height="16" rx="2" fill="${hd}" stroke="#140c18" stroke-width="1.4" transform="rotate(14 32 48)"/><rect x="30.5" y="8" width="3" height="5" fill="#1a1c22"/>`);
+    if (f === 'machinegun') return G0(`<rect x="26" y="26" width="12" height="20" rx="2" ${body}/>${[28, 31, 34].map((x) => `<rect x="${x}" y="4" width="2.6" height="24" fill="#2a2c34" stroke="#000" stroke-width=".8"/>`).join('')}<circle cx="42" cy="38" r="6" ${body}/><rect x="28" y="45" width="8" height="12" rx="2" fill="${hd}" stroke="#140c18" stroke-width="1.4"/>`);
+    if (f === 'shotgun') return G0(`<rect x="27" y="6" width="4.4" height="34" ${body}/><rect x="32.6" y="6" width="4.4" height="34" ${body}/><rect x="26" y="38" width="12" height="9" rx="2" ${body}/><path d="M27 46 L37 46 L39 60 L27 60 Z" fill="${hd}" stroke="#140c18" stroke-width="1.4"/>`);
+    if (f === 'sniper') return G0(`<rect x="30.5" y="2" width="3" height="40" ${body}/><rect x="35" y="22" width="5" height="14" rx="2" fill="#1a1c22" stroke="#000" stroke-width="1"/><circle cx="37.5" cy="22" r="2" fill="${gl}"/><rect x="27" y="40" width="10" height="10" rx="2" ${body}/><path d="M28 49 L36 49 L38 61 L28 61 Z" fill="${hd}" stroke="#140c18" stroke-width="1.4"/>`);
+    if (f === 'rocket') return G0(`<rect x="24" y="10" width="16" height="42" rx="4" ${body}/><path d="M26 10 L32 1 L38 10 Z" fill="${gl}" stroke="#140c18" stroke-width="1.4"/><rect x="22" y="48" width="20" height="5" fill="#1a1c22"/><rect x="29" y="52" width="6" height="9" fill="${hd}"/>`);
+    if (f === 'laser') return G0(`<rect x="26" y="22" width="12" height="24" rx="3" ${body}/><rect x="28.5" y="10" width="7" height="13" ${body}/><path d="M32 2 L36 8 L32 14 L28 8 Z" fill="${gl}"/><circle cx="32" cy="8" r="6" fill="${gl}" opacity=".35"/><rect x="28" y="45" width="8" height="13" rx="2" fill="${hd}"/>`);
+    if (f === 'bow') return G0(`<path d="M16 46 Q32 0 48 46" fill="none" stroke="url(#${id})" stroke-width="4" stroke-linecap="round"/><path d="M16 46 L48 46" stroke="#f4f0e0" stroke-width="1.4"/><path d="M32 47 L32 9" stroke="#c8a070" stroke-width="2"/><path d="M29 12 L32 4 L35 12 Z" fill="${gl}"/>`);
+    if (f === 'staff') return G0(`<rect x="30.5" y="16" width="3" height="46" rx="1.5" fill="${hd}" stroke="#140c18" stroke-width="1"/><circle cx="32" cy="10" r="8" fill="${gl}" opacity=".35"/><circle cx="32" cy="10" r="5" fill="url(#${id})" stroke="#140c18" stroke-width="1.2"/><path d="M26 16 L32 18 L38 16" fill="none" stroke="${k.blade[0]}" stroke-width="2"/>`);
+    if (f === 'shuriken') { let d = ''; for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2, r = i % 2 ? 6 : 24; d += (i ? 'L' : 'M') + (32 + Math.cos(a) * r).toFixed(1) + ' ' + (32 + Math.sin(a) * r).toFixed(1); } return `<path d="${d} Z" ${body}/><circle cx="32" cy="32" r="3" fill="#140c18"/>`; }
+    if (f === 'boomerang') return `<path d="M8 40 Q32 4 56 40 L50 46 Q32 18 14 46 Z" ${body}/>`;
     if (f === 'claw') return hand() + [0, 1, 2].map((i) => `<path d="M${17 + i * 4} ${49 - i * 4} C ${30 + i * 4} ${38 - i * 4}, ${42 + i * 3} ${24 - i * 4}, ${50 + i * 3} ${8 + i * 2}" stroke="url(#${id})" stroke-width="3" fill="none" stroke-linecap="round"/>`).join('');
     return '';
   }

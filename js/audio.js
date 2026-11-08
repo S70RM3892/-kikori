@@ -601,6 +601,29 @@ const Sfx = (() => {
     noise(big ? 1.2 : 0.4, big ? 0.35 : 0.22, 'lowpass', 1400, 0.8, 0, 120);
     if (n >= 3) tone(note(Math.min(24, n * 2), 392), 0.2, 'square', 0.03, 0.03);
   }
+  // 撃つ武器の音（種類ごと）・当たった音・跳ね返り
+  function shot(kind) {
+    if (!ok()) return;
+    if (kind === 'machinegun') { if (throttle('mg', 55)) return; noise(0.05, 0.16, 'lowpass', 2600, 0.8); tone(140, 0.06, 'square', 0.05, 0, 60); return; }
+    if (kind === 'laser') { if (throttle('las', 70)) return; tone(980, 0.07, 'sawtooth', 0.025, 0, 640); return; }
+    if (throttle('shot', 40)) return;
+    if (kind === 'handgun') { noise(0.09, 0.26, 'lowpass', 3000, 0.7); tone(180, 0.12, 'square', 0.07, 0, 55); noise(0.04, 0.08, 'highpass', 7000, 0.7); }
+    else if (kind === 'shotgun') { noise(0.28, 0.42, 'lowpass', 1800, 0.6); tone(95, 0.3, 'sine', 0.3, 0, 40); noise(0.06, 0.12, 'highpass', 6000, 0.7, 0.02); }
+    else if (kind === 'sniper') { noise(0.05, 0.3, 'highpass', 5000, 0.7); tone(70, 0.45, 'sine', 0.35, 0, 30); noise(0.7, 0.06, 'bandpass', 900, 1.2, 0.05, 300); }
+    else if (kind === 'rocket') { noise(0.5, 0.22, 'bandpass', 600, 1.5, 0, 2400); tone(90, 0.3, 'sawtooth', 0.06, 0, 200); }
+    else if (kind === 'bow') { tone(240, 0.16, 'triangle', 0.08, 0, 120); noise(0.12, 0.1, 'highpass', 4000, 0.8); }
+    else if (kind === 'staff') { [0, 4, 7, 12].forEach((st, i) => tone(note(st, 880), 0.12, 'sine', 0.035, i * 0.025)); noise(0.2, 0.05, 'highpass', 8000, 0.7); }
+    else if (kind === 'shuriken') { noise(0.12, 0.12, 'bandpass', 3800, 4, 0, 6000); tone(2200, 0.05, 'square', 0.02); }
+    else if (kind === 'boomerang') { noise(0.3, 0.12, 'bandpass', 700, 3, 0, 1600); }
+    else noise(0.08, 0.2, 'lowpass', 3000, 0.7);
+  }
+  function hit(core, crit) {
+    if (!ok() || throttle('ghit', 30)) return;
+    noise(0.05, 0.14, 'bandpass', core ? 2600 : 1400, 1.4);
+    tone(core ? 1760 : 520, 0.06, 'triangle', core ? 0.06 : 0.04, 0, core ? 2200 : 300);
+    if (crit) tone(1320, 0.12, 'square', 0.03, 0.01);
+  }
+  function bounce() { if (!ok() || throttle('bnc', 50)) return; tone(2600, 0.06, 'triangle', 0.04, 0, 3400); }
   function zap() {
     if (!ok() || throttle('zap', 60)) return;
     tone(1400, 0.16, 'square', 0.05, 0, 180);
@@ -675,7 +698,7 @@ const Sfx = (() => {
     feverStart, feverEnd, boss, bossWin, bossFail, tick, stage, ach, squirrel, chest, gachaRoll, gachaReveal,
     prestige, goddess, gachaUp, showcase, equip, speed, comboFinish, axeHit, spawn, carry, multi,
     cutin, skillStart, skillHit, rollTick, musicLevel, beatPhase, musicOn, setBgm, rankUp, rankDown, twinkle, shatter,
-    kWhoosh, kSlice, kSplit, sheath, deflect, cellBite, dnaTick, outbreak, outbreakEnd, gBoss, dimWarp, setMode, setTheme,
+    kWhoosh, kSlice, kSplit, sheath, deflect, cellBite, dnaTick, outbreak, outbreakEnd, gBoss, dimWarp, setMode, setTheme, shot, hit, bounce,
     ladder, announce, boom, zap, freeze, shatter2, burn, musouStart, musouEnd, slotTick, slotStop, slotWin, critter, critterGet, newStrain, formIn, formClear, bossPhase, finish, weak,
   };
 })();

@@ -231,6 +231,126 @@ const Axe3D = (() => {
   }
   const lighten = (c, k = 0.55) => col(c).lerp(col('#ffffff'), k);
 
+  // ------------------------------------------------------------- 撃つ武器（拳銃・マシンガン・ショットガン・狙撃銃・ランチャー・光線銃・弓・杖・手裏剣・ブーメラン）
+  // 握りが x=32・y=52 あたり、銃口は y の小さい方（上）。P.blade.tip が銃口
+  function gunModel(P, def, K) {
+    const kind = K.form;
+    const rank = RANKS[def.r] || 0;
+    const glowC = def.glow && def.glow !== 'rainbow' ? def.glow : def.blade[0];
+    const body = P.std({ color: def.blade[1], metalness: 0.75, roughness: 0.3, emissive: rank >= 6 ? glowC : '#000000', emissiveIntensity: rank >= 6 ? 0.18 : 0 });
+    const accent = P.std({ color: def.blade[0], metalness: 0.9, roughness: 0.2, emissive: def.glow ? glowC : '#000000', emissiveIntensity: def.glow ? 0.28 : 0 });
+    const grip = P.std({ color: def.handle, roughness: 0.75, metalness: 0.1 });
+    const dark = P.std({ color: '#1a1c22', metalness: 0.8, roughness: 0.35 });
+    const glowM = P.basic({ color: glowC });
+    const box = (w, h, d, x, y, z, m, rz) => { const g = new T3.BoxGeometry(w, h, d); const mesh = P.add(g, m, x, y, z || 0); if (rz) mesh.rotation.z = rz; return mesh; };
+    const cyl = (r1, r2, h, x, y, m, seg = 12, outline = true) => P.add(new T3.CylinderGeometry(r1, r2, h, seg), m, x, y, 0, outline);
+    let tip = 20;
+    if (kind === 'handgun') {
+      box(7, 15, 5.5, 33, 56, 0, grip, 0.22);
+      box(7.5, 27, 6.5, 32, 38, 0, body);
+      box(8, 9, 7, 32, 46, 0, accent);
+      cyl(1.9, 1.9, 5, 32, 23, dark);
+      P.add(new T3.TorusGeometry(3, 0.7, 6, 14, Math.PI), dark, 36.5, 49, 0).rotation.z = -Math.PI / 2;
+      box(1.4, 2, 2, 32, 26, 3.6, accent);
+      tip = 20.5;
+    } else if (kind === 'machinegun') {
+      box(11, 22, 9, 32, 40, 0, body);
+      box(7, 13, 6, 32, 57, 0, grip, 0.15);
+      const bar = new T3.Group();
+      bar.position.set(32, -22, 0);
+      P.grp.add(bar);
+      for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2; const m = P.add(new T3.CylinderGeometry(1.05, 1.05, 28, 8), i % 2 ? dark : accent, Math.cos(a) * 2.5, 0, Math.sin(a) * 2.5, true, bar); m.position.y = 0; }
+      P.add(new T3.CylinderGeometry(3.6, 3.6, 2, 16), body, 0, 6, 0, true, bar);
+      P.add(new T3.CylinderGeometry(3.6, 3.6, 2, 16), body, 0, -12, 0, true, bar);
+      const drum = P.add(new T3.CylinderGeometry(6.5, 6.5, 4.5, 20), accent, 40, 45, 0);
+      drum.rotation.z = Math.PI / 2;
+      P.ticks.push((t, dt, act) => { bar.rotation.y += dt * (2 + act * 30); });
+      tip = 7;
+    } else if (kind === 'shotgun') {
+      for (const dx of [-2.1, 2.1]) cyl(2, 2, 34, 32 + dx, 29, body, 12);
+      for (const dx of [-2.1, 2.1]) cyl(1.2, 1.2, 1, 32 + dx, 11.8, dark, 10, false);
+      box(9, 9, 6.5, 32, 33, 0, accent);
+      box(8, 10, 6, 32, 48, 0, body);
+      box(7.5, 16, 6, 32, 59, 0, grip, 0.12);
+      tip = 11;
+    } else if (kind === 'sniper') {
+      cyl(1.4, 1.6, 50, 32, 17, body, 10);
+      cyl(2.2, 2.2, 3, 32, -8, dark, 10);
+      box(7.5, 18, 6.5, 32, 45, 0, body);
+      cyl(2.3, 2.3, 17, 37, 33, dark, 12);
+      P.add(new T3.CircleGeometry(2, 16), P.basic({ color: glowC }), 37, 24.4, 2.4, false).rotation.x = -0.1;
+      box(7, 14, 6, 32, 59, 0, grip, 0.18);
+      tip = -9.5;
+    } else if (kind === 'rocket') {
+      cyl(5, 5, 46, 32, 30, body, 18);
+      cyl(5.8, 5.8, 3, 32, 8.5, accent, 18);
+      cyl(5.8, 5.8, 3, 32, 51.5, accent, 18);
+      P.add(new T3.ConeGeometry(3.4, 8, 14), P.std({ color: def.blade[0], metalness: 0.6, roughness: 0.3, emissive: glowC, emissiveIntensity: 0.25 }), 32, 3.5, 0);
+      box(3, 7, 3, 38.5, 22, 0, dark);
+      box(4.5, 11, 4.5, 31, 42, 6, grip, 0.1);
+      tip = 0;
+    } else if (kind === 'laser') {
+      box(9.5, 24, 8, 32, 40, 0, body);
+      cyl(3.2, 2.6, 9, 32, 24, accent, 14);
+      for (const y of [30, 35, 40]) { const r = P.add(new T3.TorusGeometry(5, 0.8, 8, 20), glowM, 32, y, 0, false); r.rotation.x = Math.PI / 2; }
+      const cr = P.add(new T3.OctahedronGeometry(3.2, 0), P.std({ color: glowC, emissive: glowC, emissiveIntensity: 0.8, metalness: 0.2, roughness: 0.1 }), 32, 16.5, 0, false);
+      P.ticks.push((t) => { cr.rotation.y = t * 2; });
+      box(7, 13, 6, 32, 57, 0, grip, 0.16);
+      P.glow(glowC, 32, 16, 26, 0.55);
+      tip = 13;
+    } else if (kind === 'bow') {
+      const arc = P.add(new T3.TorusGeometry(22, 1.5, 8, 30, Math.PI * 0.62), accent, 32, 62, 0);
+      arc.rotation.z = Math.PI * 0.19;
+      const ex = 22 * Math.cos(Math.PI * 0.19), ey = 62 - 22 * Math.sin(Math.PI * 0.19);
+      const str = P.add(new T3.CylinderGeometry(0.35, 0.35, ex * 2, 4), P.basic({ color: '#f4f0e0' }), 32, ey, 0, false);
+      str.rotation.z = Math.PI / 2;
+      box(4, 8, 4, 32, 41, 0, grip);
+      cyl(0.8, 0.8, 38, 32, ey - 18, P.std({ color: '#c8a070', roughness: 0.7 }), 6);
+      P.add(new T3.ConeGeometry(2.2, 6, 4), accent, 32, ey - 39.5, 0);
+      for (const sx of [-1, 1]) { const f = P.add(new T3.BoxGeometry(2.6, 6, 0.4), P.std({ color: glowC, roughness: 0.6 }), 32 + sx * 1.6, ey - 3, 0, false); f.rotation.z = sx * 0.4; }
+      tip = ey - 42.5;
+    } else if (kind === 'staff') {
+      cyl(1.3, 1.6, 54, 32, 39, grip, 8);
+      const orb = P.add(new T3.SphereGeometry(5, 18, 14), P.std({ color: glowC, emissive: glowC, emissiveIntensity: 0.75, metalness: 0.1, roughness: 0.1, transparent: true, opacity: 0.92 }), 32, 7, 0, false);
+      for (let i = 0; i < 4; i++) { const a = (i / 4) * Math.PI * 2; const c = P.add(new T3.ConeGeometry(1, 7, 6), accent, 32 + Math.cos(a) * 5.2, 12, Math.sin(a) * 5.2); c.rotation.z = -Math.cos(a) * 0.5; c.rotation.x = Math.sin(a) * 0.5; }
+      const ring = new T3.Group();
+      ring.position.set(32, -7, 0);
+      P.grp.add(ring);
+      P.add(new T3.TorusGeometry(8, 0.5, 6, 30), glowM, 0, 0, 0, false, ring);
+      P.ticks.push((t) => { ring.rotation.x = t * 1.3; ring.rotation.y = t * 0.9; orb.scale.setScalar(1 + 0.08 * Math.sin(t * 5)); });
+      P.glow(glowC, 32, 7, 34, 0.6);
+      tip = 2;
+    } else if (kind === 'shuriken' || kind === 'boomerang') {
+      const sh = new T3.Shape();
+      if (kind === 'shuriken') {
+        for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2, r = i % 2 ? 3.6 : 13; if (i) sh.lineTo(Math.cos(a) * r, Math.sin(a) * r); else sh.moveTo(Math.cos(a) * r, Math.sin(a) * r); }
+        sh.closePath();
+        const hole = new T3.Path();
+        hole.absarc(0, 0, 2, 0, Math.PI * 2, true);
+        sh.holes.push(hole);
+      } else {
+        sh.moveTo(-14, 6); sh.quadraticCurveTo(0, -8, 14, 6); sh.lineTo(12, 10); sh.quadraticCurveTo(0, -2, -12, 10); sh.closePath();
+      }
+      const g = new T3.ExtrudeGeometry(sh, { depth: 1.6, bevelEnabled: true, bevelThickness: 0.5, bevelSize: 0.5, bevelSegments: 1 });
+      g.translate(0, 0, -0.8);
+      const spin = new T3.Group();
+      spin.position.set(32, -30, 0);
+      P.grp.add(spin);
+      P.add(g, accent, 0, 0, 0, true, spin);
+      P.ticks.push((t, dt, act) => { spin.rotation.z -= dt * (1.5 + act * 14); });
+      box(10, 6, 6, 32, 52, 0, grip);
+      box(6, 4, 7, 32, 46, 0, body);
+      tip = 17;
+    }
+    if (def.glow && kind !== 'laser' && kind !== 'staff') P.glow(glowC, 32, tip + 4, 22 + rank * 2, 0.32);
+    if (K.fx === 'rainbow' || def.glow === 'rainbow') {
+      const c2 = new T3.Color();
+      P.ticks.push((t) => { accent.emissive.copy(c2.setHSL((t * 0.25) % 1, 1, 0.5)); accent.emissiveIntensity = 0.45; });
+    }
+    if (K.fx === 'flame') { const f = P.glow('#ff7a1a', 32, tip + 2, 16, 0.7, 2); P.ticks.push((t) => { const k = 0.7 + 0.5 * Math.sin(t * 13); f.scale.set(16 * k, 20 * k, 1); }); }
+    P.blade = { L: 52 - tip, tip: [32, tip] };
+  }
+
   // ------------------------------------------------------------- 刀以外の武器（次元ポータル）: 剣・大剣・短剣・包丁・光剣・槍・大鎌・爪
   // 座標は刀と同じ（握りが x=32・y=52 あたり、刃は y の小さい方＝上へ伸びる）
   function formBlade(P, def, K) {
@@ -866,6 +986,7 @@ const Axe3D = (() => {
     // 刀（菌斬り次元）: 柄・鍔・はばき・反りのある刀身。刃文は頂点色、特殊な刀身は def.k.fx
     blade(P, def) {
       const K = def.k || {};
+      if (K.cls === 'shoot') { gunModel(P, def, K); return; }
       if (K.form && K.form !== 'katana') { formBlade(P, def, K); return; }
       const rank = RANKS[def.r] || 0;
       const L = 92 * (K.len || 1), curve = K.curve == null ? 1 : K.curve;

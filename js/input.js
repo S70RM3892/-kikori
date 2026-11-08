@@ -22,6 +22,9 @@ const Input = (() => {
   // 菌斬り次元: 刀で菌を斬る（線分と円の当たり判定）
   const germ = () => G.S.dim === 'germ' && typeof GM !== 'undefined' && typeof Micro !== 'undefined' && Micro.ok;
   const blade = (e, type) => ({ x: e.clientX, y: e.clientY - (type === 'mouse' ? 0 : TOUCH_LIFT), t: e.timeStamp || performance.now() });
+  // 撃つ武器（銃・弓・杖…）: 押した所を狙って撃つ。押したままなら連射、指を動かすと狙いが動く
+  const shooting = () => germ() && GM.stats().cls === 'shoot';
+  const aimOf = (e) => Micro.toWorld(e.clientX, e.clientY);
 
   function down(e) {
     if (e.target.closest('button')) return;
@@ -32,6 +35,7 @@ const Input = (() => {
     try { wrap.setPointerCapture(e.pointerId); } catch (err) { /* 古いブラウザ */ }
     const p = blade(e, e.pointerType);
     held = { id: e.pointerId, type: e.pointerType, pts: [p], start: p, moved: 0, lastSide: 0, lastOut: p, whoosh: 0 };
+    if (shooting()) { const w = aimOf(e); held.shoot = true; GM.trigger(true, w.x, w.y); return; }
     if (germ()) { GM.strokeStart(); FX.grab(p); return; }
     held.lastSide = sideOf(p, FX.trunkInfo());
     FX.grab(p);
@@ -40,6 +44,7 @@ const Input = (() => {
   function move(e) {
     if (!held || e.pointerId !== held.id) return;
     e.preventDefault();
+    if (held.shoot) { const w = aimOf(e); GM.aimAt(w.x, w.y); return; }
     const list = e.getCoalescedEvents ? e.getCoalescedEvents() : null;
     const evs = list && list.length ? list : [e];
     for (const ev of evs) step(blade(ev, held.type));
@@ -104,6 +109,7 @@ const Input = (() => {
 
   function up(e) {
     if (!held || e.pointerId !== held.id) return;
+    if (held.shoot) { held = null; GM.trigger(false); return; }
     const dur = (e.timeStamp || performance.now()) - held.start.t;
     const tapLike = held.moved < 14 && dur < 350;
     held = null;

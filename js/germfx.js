@@ -33,14 +33,15 @@ const GFX = (() => {
   // ------------------------------------------------------------- 斬った
   function onSlice(e) {
     if (!on()) return;
-    if (e.deflect) Sfx.deflect(); else Sfx.kSlice(e.stier, e.core, e.crit, e.n);
+    if (e.deflect) Sfx.deflect(); else if (e.shot) Sfx.hit(e.core, e.crit); else Sfx.kSlice(e.stier, e.core, e.crit, e.n);
     if (e.shatter) Sfx.shatter2();
     if (blocked()) return;
     const g = e.g;
     let x = e.x, y = e.y;
     if (x == null) { const q = Micro.germScreen(g); x = q.x; y = q.y; }
     const R = Micro.germScreen(g).r;
-    L.spawn({ t: 'slash', x, y, life: 0.2, max: 0.2, s: R * 1.9 + 30, w: 2.2 + e.stier * 0.6, rot: scrRot(e.ang), col: e.deflect ? '200,210,255' : e.crit ? '255,230,120' : glowRGB() });
+    if (e.shot) shotHit(e, x, y);
+    else L.spawn({ t: 'slash', x, y, life: 0.2, max: 0.2, s: R * 1.9 + 30, w: 2.2 + e.stier * 0.6, rot: scrRot(e.ang), col: e.deflect ? '200,210,255' : e.crit ? '255,230,120' : glowRGB() });
     if (e.deflect) {
       L.burst(x, y, 10, { speed: 360, col: '#dfe8ff', life: 0.25, s: 2 });
       L.floatText(x, y - 24, 'カキン!', { size: 22, fill: '#dfe8ff', stroke: '#101830', vy: -60, life: 0.6 });
@@ -53,9 +54,10 @@ const GFX = (() => {
       const s = Micro.germScreen(g);
       L.mergeText('g' + g.id, s.x, s.y - R - 10, e.dmg, (v) => fmt(v), { size: big ? 26 : 18, fill: e.crit ? '#ffd23a' : '#ffffff', stroke: '#14081a', vy: -50, life: 0.7 }, 0.6);
     }
-    if (e.core) L.floatText(x + 18, y - 34, '芯!', { size: 20, fill: '#7affe8', stroke: '#002a24', vy: -70, life: 0.55 });
+    if (e.core) L.floatText(x + 18, y - 34, e.shot ? (GUNS[e.shot] || e.shot === 'rocket' || e.shot === 'laser' ? 'HEADSHOT!' : '急所!') : '芯!', { size: e.shot ? 18 : 20, fill: e.shot ? '#ff5a6a' : '#7affe8', stroke: e.shot ? '#2a0008' : '#002a24', vy: -70, life: 0.55 });
     if (e.crit) { L.floatText(x - 20, y - 48, '会心!!', { size: 24, fill: '#ffd23a', stroke: '#3a1400', vy: -70, life: 0.65 }); L.hitStop(0.05); Micro.shake(0.12); }
     else L.hitStop(0.015);
+    if (e.guard && !e.killed) L.floatText(x - 26, y - 30, 'ガード!', { size: 16, fill: '#c8d8ff', stroke: '#0a1430', vy: -50, life: 0.5 });
     if (e.shatter) { L.floatText(x, y - 60, '砕!!', { size: 34, fill: '#dff6ff', stroke: '#002a3a', vy: -50, life: 0.7, pop: 2.4 }); L.radial('shard', ['#dff6ff', '#9fe0ff', '#ffffff'], 18, x, y, { sp: 520, s: 6 }); }
     const now = L.clock;
     if (e.stier >= 3 && now - spdT > 0.35) { spdT = now; L.floatText(x + 30, y + 26, SPEED_W[e.stier], { size: 16 + e.stier * 3, fill: ['#fff', '#fff', '#fff', '#9dff4a', '#ffd23a', '#ff8ad0'][e.stier], stroke: '#14081a', vy: -40, life: 0.5, rainbow: e.stier >= 5 }); }
@@ -120,20 +122,25 @@ const GFX = (() => {
     Sfx.sheath(d.n);
     if (blocked()) return;
     const W = L.W, H = L.H, y = H * 0.42;
-    L.spawn({ t: 'slash', x: W / 2, y, life: 0.32, max: 0.32, s: W * 0.62, w: 3 + Math.min(6, d.n * 0.6), rot: -0.08, col: '255,255,255' });
-    L.bigTxt(`一閃 ×${d.n}`, W / 2, y - 10, Math.min(72, 34 + d.n * 3), d.n >= 8 ? '#ffffff' : '#ffe14a', { rainbow: d.n >= 8, life: 1.1 });
-    L.floatText(W / 2, y + 40, d.name, { size: Math.min(34, 18 + d.n * 1.4), fill: '#ffffff', stroke: '#1a0a20', vy: -24, life: 1.1, pop: 2 });
-    if (d.bonus > 0) L.floatText(W / 2, y + 78, `一閃ボーナス 🧬+${fmt(d.bonus)}${d.gems ? ` 💎+${d.gems}` : ''}`, { size: 16, fill: '#7affb8', stroke: '#002a14', vy: -20, life: 1.1 });
+    // 撃つ武器は「1発で何体」: 一撃 ×N（貫通・散弾・爆発・跳ね返り）
+    const shoot = GM.stats().cls === 'shoot';
+    const title = shoot ? '一撃' : '一閃';
+    const nm = shoot ? (d.n >= 10 ? `${d.n}体まとめて吹き飛ばした!!` : `${d.n}体まとめて撃ち抜いた!`) : d.name;
+    if (!shoot) L.spawn({ t: 'slash', x: W / 2, y, life: 0.32, max: 0.32, s: W * 0.62, w: 3 + Math.min(6, d.n * 0.6), rot: -0.08, col: '255,255,255' });
+    else L.waves(['#ffffff', '#ffe14a'], 2, W / 2, y, 0.05);
+    L.bigTxt(`${title} ×${d.n}`, W / 2, y - 10, Math.min(72, 34 + d.n * 3), d.n >= 8 ? '#ffffff' : '#ffe14a', { rainbow: d.n >= 8, life: 1.1 });
+    L.floatText(W / 2, y + 40, nm, { size: Math.min(34, 18 + d.n * 1.4), fill: '#ffffff', stroke: '#1a0a20', vy: -24, life: 1.1, pop: 2 });
+    if (d.bonus > 0) L.floatText(W / 2, y + 78, `${title}ボーナス ${CI()}+${fmt(d.bonus)}${d.gems ? ` 💎+${d.gems}` : ''}`, { size: 16, fill: '#7affb8', stroke: '#002a14', vy: -20, life: 1.1 });
     L.pulse(Math.min(0.6, 0.15 + d.n * 0.04));
     if (d.n >= 4) L.slowmo(Math.min(0.4, 0.1 + d.n * 0.03));
     if (d.n >= 6) { L.addFlash(0.3, '255,255,255'); Micro.shake(0.5); UI.shakeHud(); }
-    if (d.n >= 8) { L.confetti(60 + d.n * 4); UI.banner(`一閃 ×${d.n}`, d.name, 'issen'); }
+    if (d.n >= 8) { L.confetti(60 + d.n * 4); UI.banner(`${title} ×${d.n}`, nm, 'issen'); }
   }
   function onComboMs(d) {
     if (!on()) return;
     Sfx.milestone();
     if (blocked()) return;
-    L.bigTxt(d.name, L.W / 2, L.H * 0.3, d.n >= 100 ? 58 : 44, d.n >= 100 ? '#ffffff' : '#ff8ad0', { rainbow: d.n >= 300, life: 1.3 });
+    L.bigTxt(GM.stats().cls === 'shoot' ? d.name.replace('斬り', '撃破') : d.name, L.W / 2, L.H * 0.3, d.n >= 100 ? 58 : 44, d.n >= 100 ? '#ffffff' : '#ff8ad0', { rainbow: d.n >= 300, life: 1.3 });
     L.waves(d.n >= 100 ? RAINBOW : ['#ff6ab0', '#ffd0e8'], d.n >= 100 ? 4 : 2, L.W / 2, L.H * 0.45);
     if (d.n >= 100) { L.confetti(80); L.addFlash(0.25, '255,180,230'); }
   }
@@ -484,6 +491,7 @@ const GFX = (() => {
   function draw(c, dt, real) {
     if (!on() || !Micro.ok) return;
     const T = GM.T;
+    if (T.shots.length || T.beam || muzz.length || shells.length || marks.length) drawShots(c, real);
     const hold = Micro.holdInfo;
     for (const g of T.germs) {
       if (!g.alive || g.flee) continue;
@@ -580,6 +588,166 @@ const GFX = (() => {
     }
   }
 
+
+
+  // ------------------------------------------------------------- 敵の特徴の演出（ワープ・回復・分身・激昂・突進・破裂）
+  function onTrait(d) {
+    if (!on() || blocked()) return;
+    const g = d.g, s = Micro.germScreen(g);
+    if (d.kind === 'blink') {
+      const a = scr(d.x0, d.y0);
+      L.radial('spark', ['#c8a0ff', '#ffffff'], 10, a.x, a.y, { sp: 240, life: 0.3, s: 3 });
+      L.radial('spark', ['#c8a0ff', '#ffffff'], 10, s.x, s.y, { sp: 200, life: 0.3, s: 3 });
+      L.floatText(s.x, s.y - s.r - 18, 'ワープ!', { size: 16, fill: '#e0c8ff', stroke: '#1a0a3a', vy: -40, life: 0.5 });
+      Sfx.bounce();
+    } else if (d.kind === 'heal') {
+      L.waves(['#7affb0'], 1, s.x, s.y, 0.04);
+      L.floatText(s.x, s.y - s.r - 18, `回復 ×${d.n}`, { size: 15, fill: '#7affb0', stroke: '#002a14', vy: -40, life: 0.6 });
+    } else if (d.kind === 'clone') {
+      L.radial('spark', ['#ffffff', '#ffb0e0'], 12, s.x, s.y, { sp: 260, life: 0.3, s: 3 });
+      L.floatText(s.x, s.y - s.r - 20, '分身!!', { size: 20, fill: '#ffb0e0', stroke: '#2a0a1a', vy: -40, life: 0.6, pop: 2 });
+    } else if (d.kind === 'rage') {
+      L.floatText(s.x, s.y - s.r - 20, '激昂!!', { size: 20, fill: '#ff5a5a', stroke: '#2a0000', vy: -40, life: 0.6, pop: 2 });
+    } else if (d.kind === 'dash') {
+      L.floatText(s.x, s.y - s.r - 16, '突進!', { size: 15, fill: '#ffffff', stroke: '#1a1a2a', vy: -30, life: 0.4 });
+    } else if (d.kind === 'pop') {
+      L.radial('spark', ['#ffe0a0', '#ffffff'], 14, s.x, s.y, { sp: 300, life: 0.3, s: 3 });
+      L.floatText(s.x, s.y - 20, 'パーン…逃げた', { size: 15, fill: '#ffe0a0', stroke: '#2a1a00', vy: -30, life: 0.6 });
+    }
+  }
+
+  // ------------------------------------------------------------- 撃つ武器の演出（弾・光線・マズルフラッシュ・薬莢・命中マーク）
+  const muzz = [], shells = [], marks = [], trails = new Map();
+  const GUNS = { handgun: 1, machinegun: 1, shotgun: 1, sniper: 1 };
+  const SHOT_COL = { handgun: '#ffe9a0', machinegun: '#ffd27a', shotgun: '#ffb04a', sniper: '#ffffff', rocket: '#ff8a3a', laser: '#7affff', bow: '#f4e0b0', staff: '#d0a0ff', shuriken: '#e0f0ff', boomerang: '#ffe14a' };
+  const shotCol = (k) => { const eq = GM.stats().eq; return eq && eq.glow && eq.glow !== 'rainbow' && (k === 'laser' || k === 'staff') ? eq.glow : SHOT_COL[k] || '#ffffff'; };
+  function onShot(e) {
+    if (!on()) return;
+    Sfx.shot(e.kind);
+    if (blocked()) return;
+    const p = scr(e.x, e.y), dir = -e.ang;
+    muzz.push({ x: p.x, y: p.y, ang: dir, life: e.kind === 'laser' ? 0.05 : 0.08, max: 0.08, big: e.kind === 'rocket' || e.kind === 'shotgun' || e.kind === 'sniper', col: shotCol(e.kind), kind: e.kind });
+    if (muzz.length > 12) muzz.shift();
+    if (GUNS[e.kind] && L.quality >= 1) {
+      const side = Math.cos(e.ang) >= 0 ? -1 : 1;
+      shells.push({ x: p.x - Math.cos(dir) * 26, y: p.y - Math.sin(dir) * 26, vx: side * (120 + Math.random() * 80), vy: -(200 + Math.random() * 120), rot: Math.random() * 6, vr: (Math.random() - 0.5) * 30, life: 0.9 });
+      if (shells.length > 40) shells.shift();
+    }
+    if (e.kind === 'sniper') { L.addFlash(0.12, '255,255,255'); L.hitStop(0.03); }
+    if (e.kind === 'shotgun') L.hitStop(0.02);
+  }
+  function onBounce(e) { if (!on() || blocked()) return; const p = scr(e.x, e.y); L.radial('spark', ['#ffffff', '#cfe8ff'], 6, p.x, p.y, { sp: 260, life: 0.2, s: 2 }); Sfx.bounce(); }
+  function shotHit(e, x, y) {
+    marks.push({ x, y, life: 0.16, core: e.core, kill: e.killed });
+    if (marks.length > 30) marks.shift();
+    L.radial('spark', ['#ffffff', SHOT_COL[e.shot] || '#ffe9a0'], e.killed ? 8 : 4, x, y, { sp: 280, life: 0.2, s: 2 });
+  }
+  function drawShots(c, real) {
+    const T = GM.T;
+    c.save();
+    c.globalCompositeOperation = 'lighter';
+    c.lineCap = 'round';
+    const now = L.clock;
+    // 光線
+    if (T.beam) {
+      const a = scr(T.beam.x0, T.beam.y0), b = scr(T.beam.x1, T.beam.y1), col = shotCol('laser');
+      const j = (Math.random() - 0.5) * 2;
+      for (const [w, al, cc] of [[18, 0.25, col], [8, 0.7, col], [3, 1, '#ffffff']]) {
+        c.strokeStyle = cc; c.globalAlpha = al; c.lineWidth = w + j;
+        c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke();
+      }
+      c.globalAlpha = 1;
+    }
+    for (const p of T.shots) {
+      const s = scr(p.x, p.y);
+      const sp = Math.hypot(p.vx, p.vy) || 1, ux = p.vx / sp, uy = -p.vy / sp;
+      const col = shotCol(p.kind);
+      if (GUNS[p.kind]) {
+        const len = p.kind === 'sniper' ? 70 : p.kind === 'machinegun' ? 24 : p.kind === 'shotgun' ? 14 : 30;
+        c.strokeStyle = col; c.globalAlpha = 0.55; c.lineWidth = p.kind === 'sniper' ? 5 : 4;
+        c.beginPath(); c.moveTo(s.x - ux * len, s.y - uy * len); c.lineTo(s.x, s.y); c.stroke();
+        c.strokeStyle = '#ffffff'; c.globalAlpha = 1; c.lineWidth = 1.6;
+        c.beginPath(); c.moveTo(s.x - ux * len * 0.5, s.y - uy * len * 0.5); c.lineTo(s.x, s.y); c.stroke();
+      } else if (p.kind === 'rocket') {
+        let tr = trails.get(p.id);
+        if (!tr) { tr = []; trails.set(p.id, tr); }
+        tr.push({ x: s.x - ux * 10, y: s.y - uy * 10, t: now });
+        while (tr.length && now - tr[0].t > 0.35) tr.shift();
+        for (const q of tr) { const k = 1 - (now - q.t) / 0.35; c.globalAlpha = 0.35 * k; c.fillStyle = k > 0.6 ? '#ffb04a' : '#c8c8d0'; c.beginPath(); c.arc(q.x, q.y, 4 + (1 - k) * 10, 0, Math.PI * 2); c.fill(); }
+        c.globalAlpha = 1;
+        c.save(); c.translate(s.x, s.y); c.rotate(Math.atan2(uy, ux));
+        c.fillStyle = '#ffffff'; c.fillRect(-9, -3, 14, 6); c.fillStyle = '#ff3a3a'; c.fillRect(4, -3, 5, 6);
+        c.restore();
+      } else if (p.kind === 'bow') {
+        c.strokeStyle = '#d8b080'; c.globalAlpha = 1; c.lineWidth = 2.4;
+        c.beginPath(); c.moveTo(s.x - ux * 34, s.y - uy * 34); c.lineTo(s.x, s.y); c.stroke();
+        c.fillStyle = '#ffffff';
+        c.beginPath(); c.moveTo(s.x + ux * 7, s.y + uy * 7); c.lineTo(s.x - uy * 4, s.y + ux * 4); c.lineTo(s.x + uy * 4, s.y - ux * 4); c.closePath(); c.fill();
+        c.strokeStyle = col; c.lineWidth = 3;
+        c.beginPath(); c.moveTo(s.x - ux * 34, s.y - uy * 34); c.lineTo(s.x - ux * 27, s.y - uy * 27); c.stroke();
+      } else if (p.kind === 'staff') {
+        let tr = trails.get(p.id);
+        if (!tr) { tr = []; trails.set(p.id, tr); }
+        tr.push({ x: s.x, y: s.y, t: now });
+        while (tr.length && now - tr[0].t > 0.25) tr.shift();
+        for (const q of tr) { const k = 1 - (now - q.t) / 0.25; c.globalAlpha = 0.4 * k; c.fillStyle = col; c.beginPath(); c.arc(q.x, q.y, 3 + 5 * k, 0, Math.PI * 2); c.fill(); }
+        const g = c.createRadialGradient(s.x, s.y, 0, s.x, s.y, 14);
+        g.addColorStop(0, '#ffffff'); g.addColorStop(0.35, col); g.addColorStop(1, 'rgba(0,0,0,0)');
+        c.globalAlpha = 1; c.fillStyle = g; c.beginPath(); c.arc(s.x, s.y, 14, 0, Math.PI * 2); c.fill();
+      } else if (p.kind === 'shuriken' || p.kind === 'boomerang') {
+        c.save(); c.translate(s.x, s.y); c.rotate(p.age * 22);
+        c.globalCompositeOperation = 'source-over';
+        c.fillStyle = col; c.strokeStyle = '#1a1424'; c.lineWidth = 1.5;
+        c.beginPath();
+        if (p.kind === 'shuriken') { for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2, r = i % 2 ? 4 : 13; if (i) c.lineTo(Math.cos(a) * r, Math.sin(a) * r); else c.moveTo(Math.cos(a) * r, Math.sin(a) * r); } }
+        else { c.moveTo(-15, 6); c.quadraticCurveTo(0, -10, 15, 6); c.lineTo(12, 10); c.quadraticCurveTo(0, -3, -12, 10); }
+        c.closePath(); c.fill(); c.stroke();
+        c.restore();
+      }
+    }
+    // 消えた弾の跡を片づける
+    if (trails.size > 40) { const live = new Set(T.shots.map((p) => p.id)); for (const k of trails.keys()) if (!live.has(k)) trails.delete(k); }
+    // マズルフラッシュ
+    for (let i = muzz.length - 1; i >= 0; i--) {
+      const m = muzz[i];
+      m.life -= real;
+      if (m.life <= 0) { muzz.splice(i, 1); continue; }
+      const k = m.life / m.max, R = (m.big ? 34 : 22) * (0.6 + 0.4 * k);
+      const g = c.createRadialGradient(m.x, m.y, 0, m.x, m.y, R);
+      g.addColorStop(0, '#ffffff'); g.addColorStop(0.4, m.col); g.addColorStop(1, 'rgba(0,0,0,0)');
+      c.globalAlpha = k; c.fillStyle = g;
+      c.beginPath(); c.arc(m.x, m.y, R, 0, Math.PI * 2); c.fill();
+      if (GUNS[m.kind] || m.kind === 'rocket') {
+        c.strokeStyle = m.col; c.lineWidth = 3;
+        c.beginPath(); c.moveTo(m.x, m.y); c.lineTo(m.x + Math.cos(m.ang) * R * 1.8, m.y + Math.sin(m.ang) * R * 1.8); c.stroke();
+      }
+    }
+    c.globalAlpha = 1;
+    c.globalCompositeOperation = 'source-over';
+    // 薬莢
+    for (let i = shells.length - 1; i >= 0; i--) {
+      const q = shells[i];
+      q.life -= real;
+      if (q.life <= 0) { shells.splice(i, 1); continue; }
+      q.vy += 1300 * real; q.x += q.vx * real; q.y += q.vy * real; q.rot += q.vr * real;
+      c.save(); c.translate(q.x, q.y); c.rotate(q.rot); c.globalAlpha = Math.min(1, q.life * 2);
+      c.fillStyle = '#e8b84a'; c.fillRect(-4, -1.6, 8, 3.2); c.fillStyle = '#8a5a1a'; c.fillRect(-4, -1.6, 2, 3.2);
+      c.restore();
+    }
+    // 命中マーク（×）
+    for (let i = marks.length - 1; i >= 0; i--) {
+      const m = marks[i];
+      m.life -= real;
+      if (m.life <= 0) { marks.splice(i, 1); continue; }
+      const k = m.life / 0.16, r = (m.kill ? 12 : 8) * (1.3 - 0.3 * k);
+      c.globalAlpha = k; c.strokeStyle = m.core ? '#ff3a5a' : '#ffffff'; c.lineWidth = m.kill ? 3 : 2;
+      c.beginPath();
+      for (const [sx, sy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) { c.moveTo(m.x + sx * r * 0.45, m.y + sy * r * 0.45); c.lineTo(m.x + sx * r, m.y + sy * r); }
+      c.stroke();
+    }
+    c.restore();
+  }
+
   // ------------------------------------------------------------- 次元ポータルのルール: 雷雲・鏡写・時止め・闇夜
   function onStorm(d) {
     if (!on()) return;
@@ -637,7 +805,7 @@ const GFX = (() => {
       gBoom: onBoom, gChain: onChain, gThunder: onThunder, gBurn: onBurn, gBurnTick: onBurnTick, gFreeze: onFreeze,
       gSlot: onSlot, gChest: onChest, gCritter: onCritter, gCritterGet: onCritterGet, gNewStrain: onNewStrain,
       gCell: onCell, gZanshin: onZanshin, gSpawn: onSpawn, gEscape: onEscape, gOugi: onOugi, gOugiHit: onOugiHit, gOugiDone: onOugiDone,
-      gStorm: onStorm, gMirror: onMirror, gSlowmo: onSlowmo,
+      gStorm: onStorm, gMirror: onMirror, gSlowmo: onSlowmo, gShot: onShot, gBounce: onBounce, gTrait: onTrait,
     };
     for (const k in ev) G.on(k, ev[k]);
     G.on('dim', (d) => { Sfx.setMode(d.to); if (d.to === 'germ' && HAS_DM) Sfx.setTheme(DM.C.music); if (d.to !== 'germ') { document.body.classList.remove('outbreak'); document.body.classList.remove('musou'); } });

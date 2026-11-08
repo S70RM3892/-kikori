@@ -203,7 +203,7 @@ const GUI = (() => {
         <span class="pc-ico">${o.open ? m.icon : '🔒'}</span>
         <span class="pc-no">#${i}</span>
         <b class="pc-n">${o.open || next ? _.esc(m.name) : '？？？の次元'}</b>
-        <span class="pc-g">${R ? R.name : '原初'} ・ ${gm.icon}${gm.name}</span>
+        <span class="pc-g">${R ? R.name : '原初'} ・ ${gm.icon}${gm.name} ・ ${DM.WK[m.kind] ? DM.WK[m.kind].icon + DM.WK[m.kind].name : ''}</span>
         ${o.open ? `<span class="pc-s">W${o.wave} ・ ★${o.stars} ・ ⚔️${o.kinds}${i ? ` ・ 🏅${o.tiers}` : ''}</span>` : `<span class="pc-s">${next ? '🔓 ' + prog : _.esc(lock)}</span>`}
         ${o.here ? '<em class="pc-here">現在地</em>' : o.open && !o.seen ? '<em class="pc-new">NEW!</em>' : ''}
         <button type="button" class="pc-fav${fav ? ' on' : ''}" data-fav="${i}" aria-label="お気に入り">${fav ? '★' : '☆'}</button>
@@ -241,10 +241,13 @@ const GUI = (() => {
     if (d.to === 'germ' && d.first && !(d.i > 0)) setTimeout(tutorial, 900);
     if (d.to === 'germ' && HAS_DM && d.i > 0) {
       // 次元に入ったら: 名前とルール（初めてなら武器・通貨・仲間も）
-      const m = DM.meta(d.i), gm = DM.GIM[m.gim], lb = DM.LB;
+      const m = DM.meta(d.i), gm = DM.GIM[m.gim], lb = DM.LB, shoot = DM.C.cls === 'shoot';
       setTimeout(() => {
         UI.banner(`${m.icon} ${m.name}`, `${gm.icon} ルール「${gm.name}」 ${gm.desc}`, 'stage');
-        if (d.first) _.toast(lb.icon, `${DM.realmOf(m).name}へようこそ`, `武器: ${lb.wpn} ・ 通貨: ${lb.curIcon}${lb.cur} ・ 仲間: ${lb.ally} ・ ウェーブ${DM.unlockW(d.i)}で次の次元`, 'gold');
+        if (d.first) _.toast(lb.icon, `${DM.realmOf(m).name}へようこそ`, `武器: ${lb.wpn}${shoot ? '（押したまま撃つ）' : ''} ・ 通貨: ${lb.curIcon}${lb.cur} ・ 仲間: ${lb.ally} ・ ウェーブ${DM.unlockW(d.i)}で次の次元`, 'gold');
+        const trs = (DM.C.traits || []).map((t) => DM.TRAITS[t]).filter(Boolean);
+        if (d.first && trs.length) _.toast('🧬', 'この次元の敵の特徴', trs.map((t) => `${t.icon}${t.name}`).join(' ・ '), '');
+        if (shoot && (d.first || !S().stats.gShootTip)) { S().stats.gShootTip = 1; _.toast('🔫', 'この次元は「撃つ」武器', '押したまま連射・指を動かすと狙いが動く・敵の近くを押すと吸い付く', 'gold'); }
       }, 500);
     }
     portalBtn();
@@ -267,6 +270,7 @@ const GUI = (() => {
     const list = GM.T.germs.filter((x) => x.alive && !x.flee);
     if (!list.length || !Micro.ok) return;
     const g = list[Math.floor(Math.random() * list.length)];
+    if (GM.stats().cls === 'shoot') { GM.shootOnce(g.x, g.y); return; }
     const s = Micro.germScreen(g);
     FX.grab({ x: s.x - 60, y: s.y });
     FX.drag({ x: s.x + 60, y: s.y }, 4);
@@ -378,6 +382,8 @@ const GUI = (() => {
     let m = 0;
     for (const x of GD.MUTATIONS) if (!GM.mutMaxed(x) && GM.mutCost(x) <= S().germ.factor) m++;
     setBadge('gmut', m);
+    const pi = GM.prestigeInfo();
+    setBadge('gdim', pi.gain > 0 && pi.gain >= Math.max(1, pi.pp) ? '♻' : 0);
   }
 
   // ------------------------------------------------------------- 下のクイック購入
@@ -578,6 +584,16 @@ const GUI = (() => {
     }
   }
 
+  // ガチャ演出（ui.js の gachaShow）に渡す、次元の武器の文脈
+  function GXK(pay) {
+    const st = GM.stats();
+    return {
+      core: st.cls === 'shoot' ? '🔫' : '⚔️', can: (n) => GM.canPull(n, pay),
+      again: (n) => { const r = GM.pull(n, pay); if (!r.error) UI.gachaShow(r.res, n, false, GXK(pay)); },
+      skill: (a) => GD.OUGI[a.id], equipped: (id) => G.dstate().keq === id, equip: (id) => GM.equipK(id),
+      sp: (a, lv) => kspText(a, lv), seed: (a) => 100 + Math.max(0, GD.KATANAS.indexOf(a)), skLabel: '奥義', after: () => { if (UI.tab === 'gkat') _.rebuild(); },
+    };
+  }
   // ------------------------------------------------------------- タブ: 刀ガチャ・刀
   const kspText = (k, lv) => (k.sp ? Object.keys(k.sp).map((x) => GD.KSP_TEXT[x](k.sp[x] * (1 + 0.2 * (Math.max(1, lv) - 1)))).join(' / ') : 'なし');
   function katDetail(k) {
@@ -607,6 +623,23 @@ const GUI = (() => {
         hero.addEventListener('click', () => katDetail(eq));
         root.appendChild(hero);
       }
+      // 手で引くガチャ（通貨か💎。幸運×3・10連はSR以上確定・50回でSSR以上確定）
+      const pb = _.el('div', 'k-pull');
+      pb.innerHTML = `<div class="kp-h"><b>🎰 ${LL('刀ガチャ')}を引く</b><small>幸運×3 ・ 10連はSR以上1枠確定 ・ あと${Math.max(1, 50 - (g.pity || 0))}回でSSR以上確定</small></div>` +
+        `<div class="kp-btns"><button type="button" class="pull kp-c1"><span class="pl">1回</span><b class="pc"></b></button><button type="button" class="pull kp-c10"><span class="pl">10連</span><b class="pc"></b></button>` +
+        `<button type="button" class="pull kp-g1"><span class="pl">1回</span><b class="pc">💎${GM.PULL_GEM[1]}</b></button><button type="button" class="pull kp-g10"><span class="pl">10連</span><b class="pc">💎${GM.PULL_GEM[10]}</b></button></div>`;
+      const doK = (n, pay) => {
+        const r = GM.pull(n, pay);
+        if (r.error) { _.toast(pay === 'gem' ? '💎' : CI(), pay === 'gem' ? 'ジェムが足りない' : LL('DNAが足りない'), '斬って（撃って）集めよう'); Sfx.error(); return; }
+        Sfx.unlock();
+        UI.gachaShow(r.res, n, false, GXK(pay));
+      };
+      pb.querySelector('.kp-c1').addEventListener('click', () => doK(1, 'cur'));
+      pb.querySelector('.kp-c10').addEventListener('click', () => doK(10, 'cur'));
+      pb.querySelector('.kp-g1').addEventListener('click', () => doK(1, 'gem'));
+      pb.querySelector('.kp-g10').addEventListener('click', () => doK(10, 'gem'));
+      this.pb = pb;
+      root.appendChild(pb);
       const auto = _.el('div', 'auto-card');
       auto.innerHTML = `<div class="ac-h"><b>⚔️ ${LL('刀ガチャ')}（自動）</b><span class="ac-live">● 回転中</span></div>` +
         `<div class="ac-stats"><div><small>毎秒</small><b class="ac-r">0</b><small>回</small></div><div><small>幸運</small><b class="ac-luck">×1</b></div><div><small>総回転</small><b class="ac-total">0</b></div></div>` +
@@ -631,7 +664,20 @@ const GUI = (() => {
       });
       Object.assign(this, { aR: auto.querySelector('.ac-r'), aLuck: auto.querySelector('.ac-luck'), aTotal: auto.querySelector('.ac-total'), aGlv: auto.querySelector('.ac-glv'), aGbar: auto.querySelector('.ac-gbar'), aGxp: auto.querySelector('.ac-gxp'), aBoost: auto.querySelector('.ac-boost'), aFeed: auto.querySelector('.ac-feed'), tbl, feedN: -1 });
     },
+    updPull() {
+      const pb = this.pb;
+      if (!pb || !pb.isConnected) return;
+      const g = G.dstate();
+      const c1 = GM.pullCost(1), c10 = GM.pullCost(10);
+      pb.querySelector('.kp-c1 .pc').textContent = CI() + fmt(c1);
+      pb.querySelector('.kp-c10 .pc').textContent = CI() + fmt(c10);
+      pb.querySelector('.kp-c1').disabled = g.dna < c1;
+      pb.querySelector('.kp-c10').disabled = g.dna < c10;
+      pb.querySelector('.kp-g1').disabled = S().gems < GM.PULL_GEM[1];
+      pb.querySelector('.kp-g10').disabled = S().gems < GM.PULL_GEM[10];
+    },
     update() {
+      this.updPull();
       const s = S(), g = G.dstate(), T = GM.T;
       const rate = GM.kRollRate(), luck = GM.kLuckNow();
       this.aR.textContent = rate < 100 ? rate.toFixed(1) : fmt(rate);
@@ -715,6 +761,23 @@ const GUI = (() => {
       const pb = box.querySelector('.d-portal');
       if (pb) pb.addEventListener('click', portalOpen);
       root.appendChild(box);
+      // 次元転生
+      const pi = GM.prestigeInfo();
+      const pr = _.el('div', `dp-box${pi.gain > 0 ? ' ready' : ''}`);
+      pr.innerHTML = `<div class="dp-h"><b>♻️ 次元転生</b><span>💠 かけら <b>${fmt(pi.pp)}</b> ・ この次元の強さと稼ぎ <b>×${fmt(pi.mult)}</b>${pi.count ? ` ・ ${pi.count}回目` : ''}</span></div>` +
+        `<p class="small">この次元をウェーブ1からやり直して「次元のかけら」をもらう。武器・図鑑・段位・最高記録は残る。かけら1つで、この次元の強さと稼ぎ +50%（全部の次元の力にも少し効く）。</p>` +
+        `<div class="dp-row"><span>今回の最高 <b>W${pi.w}</b></span><span>もらえる <b>💠${fmt(pi.gain)}</b></span><span>転生後 <b>×${fmt(pi.next)}</b></span></div>` +
+        `<button type="button" class="btn ${pi.gain > 0 ? 'primary' : ''} big dp-go" ${pi.ok ? '' : 'disabled'}>${pi.gain > 0 ? (pi.ok ? `転生して 💠${fmt(pi.gain)} をもらう` : 'ボス戦のあとで転生できる') : `ウェーブ${pi.min}から転生できる`}</button>`;
+      pr.querySelector('.dp-go').addEventListener('click', () => {
+        const p2 = GM.prestigeInfo();
+        if (!p2.ok) return;
+        _.modal({
+          title: '♻️ 次元転生しますか？',
+          body: `<p><b>${_.esc(LB().dim)}</b> をウェーブ1からやり直して、<b>💠${fmt(p2.gain)}</b> をもらう。</p><p>この次元の強さと稼ぎ ×${fmt(p2.mult)} → <b>×${fmt(p2.next)}</b></p><p class="muted small">研ぎ・仲間・${_.esc(LB().cur)}はなくなる。武器・図鑑・段位・最高記録・ほかの次元はそのまま。</p>`,
+          buttons: [{ text: '転生する', cls: 'primary', onClick: () => { GM.dimPrestige(); _.closeDrawer(); } }, { text: 'やめる' }],
+        });
+      });
+      root.appendChild(pr);
       root.appendChild(_.el('div', 'sec-title', '世界のつながり'));
       const tot = HAS_DM ? DM.totals(s, true) : null;
       const links = _.el('div', 'dim-links');
@@ -830,7 +893,8 @@ const GUI = (() => {
         root.appendChild(_.el('div', 'sec-title', `${LB().icon} ${_.esc(LB().dim)}の${LL('菌図鑑')} <b>${Object.keys(dex).length}/${GD.STRAINS.length}</b><span>${LL(`10種ごとに DNA +${Math.round(GD.CFG.DEX_BONUS * 100)}%`)}（いま ×${GM.stats().dexMult.toFixed(2)}）</span>`));
         _.paged(root, 'dex', GD.STRAINS, 40, [['すべて', () => true], ['登録済み', (x) => dex[x.sid]], ['未登録', (x) => !dex[x.sid]]], (x) => {
           const known = !!dex[x.sid];
-          return _.el('div', `dex-cell${known ? ' known' : ''}`, `${germSVG(x, 40, known)}<small>${known ? _.esc(x.name) : `W${x.wave}〜`}</small>${known ? `<em>${fmt(dex[x.sid])}</em>` : ''}`);
+          const tr = HAS_DM && x.trait ? DM.TRAITS[x.trait] : null;
+          return _.el('div', `dex-cell${known ? ' known' : ''}`, `${germSVG(x, 40, known)}<small>${known ? _.esc(x.name) : `W${x.wave}〜`}</small>${known ? `<em>${fmt(dex[x.sid])}</em>` : ''}${tr ? `<i class="dx-tr" title="${_.esc(tr.desc)}">${tr.icon}</i>` : ''}`);
         }, 'dex-grid');
       } else root.appendChild(_.el('p', 'muted small tab-note', '転生すると菌斬り次元が開き、刀・菌の株・ミクロの世界・ボス病原体も図鑑に加わる。'));
     },
@@ -847,6 +911,14 @@ const GUI = (() => {
     if (bd) bd.addEventListener('click', () => { Sfx.unlock(); travel(gdim() ? 'forest' : 'germ'); });
     const bp = $('#btn-portal');
     if (bp) bp.addEventListener('click', () => { Sfx.unlock(); if (portalOn) portalClose(); else portalOpen(); });
+    G.on('dimPrestige', (d) => {
+      Sfx.bossWin();
+      Sfx.vibrate([40, 60, 40, 60, 120]);
+      FX.confetti(220);
+      FX.addFlash(0.9, '255,255,255');
+      UI.banner('♻️ 次元転生!!', `💠+${fmt(d.gain)} ・ この次元の強さと稼ぎ ×${fmt(d.mult)} ・ 💎+${d.gems}`, 'win');
+      disp.dna = 0;
+    });
     if (HAS_DM) {
       G.on('dimUnlock', onUnlock);
       G.on('ladder', onLadder);
