@@ -231,6 +231,154 @@ const Axe3D = (() => {
   }
   const lighten = (c, k = 0.55) => col(c).lerp(col('#ffffff'), k);
 
+  // ------------------------------------------------------------- 刀以外の武器（次元ポータル）: 剣・大剣・短剣・包丁・光剣・槍・大鎌・爪
+  // 座標は刀と同じ（握りが x=32・y=52 あたり、刃は y の小さい方＝上へ伸びる）
+  function formBlade(P, def, K) {
+    const form = K.form;
+    const rank = RANKS[def.r] || 0;
+    const fx = form === 'saber' ? 'beam' : K.fx || '';
+    const glowC = def.glow && def.glow !== 'rainbow' ? def.glow : form === 'saber' ? def.blade[0] : '#ffffff';
+    const cEdge = col(K.hamon || def.blade[0]), cBody = col(def.blade[1]), cHi = col(def.blade[0]), tc = new T3.Color();
+    const gold = rank >= 3 ? '#ffd45a' : '#c8a050';
+    const metal = P.std({ color: rank >= 5 ? gold : '#8a8f9a', metalness: 0.9, roughness: 0.28, emissive: rank >= 6 ? glowC : '#000000', emissiveIntensity: rank >= 6 ? 0.25 : 0 });
+    const shapeFrom = (pts) => { const sh = new T3.Shape(); sh.moveTo(pts[0][0], -pts[0][1]); for (let i = 1; i < pts.length; i++) sh.lineTo(pts[i][0], -pts[i][1]); sh.closePath(); return sh; };
+    // 頂点色: k(x, y) が 1 に近いほど刃先の色
+    const colorize = (g, kf) => {
+      const p = g.attributes.position, arr = new Float32Array(p.count * 3);
+      for (let i = 0; i < p.count; i++) {
+        const x = p.getX(i), y = -p.getY(i);
+        const k = Math.max(0, Math.min(1, kf(x, y)));
+        tc.copy(cBody).lerp(cHi, 0.3).lerp(cEdge, k);
+        arr[i * 3] = tc.r; arr[i * 3 + 1] = tc.g; arr[i * 3 + 2] = tc.b;
+      }
+      g.setAttribute('color', new T3.BufferAttribute(arr, 3));
+      return g;
+    };
+    let bladeMat;
+    if (fx === 'beam') bladeMat = P.basic({ color: glowC, transparent: true, opacity: 0.88, blending: T3.AdditiveBlending, depthWrite: false });
+    else if (fx === 'void' || fx === 'galaxy') bladeMat = P.std({ color: '#ffffff', vertexColors: true, metalness: 0.6, roughness: 0.25, emissive: fx === 'void' ? '#3a0a5a' : '#1a2a6a', emissiveIntensity: 0.9 });
+    else if (fx === 'crystal') bladeMat = P.std({ color: '#ffffff', vertexColors: true, metalness: 0.2, roughness: 0.05, transparent: true, opacity: 0.88, emissive: glowC, emissiveIntensity: 0.35 });
+    else bladeMat = P.std({ color: '#ffffff', vertexColors: true, metalness: 0.9, roughness: 0.16, emissive: glowC, emissiveIntensity: def.glow ? 0.12 : 0.05 });
+    const len = K.len || 1;
+    let L = 92 * len, cxf = () => 32, y0 = 37, tip = [32, 37 - L];
+    // 左右対称の刃（剣・大剣・短剣）
+    const straight = (Lb, w0, w1, taper, base) => {
+      const N = 18, l = [], r = [];
+      for (let i = 0; i <= N; i++) {
+        const t = i / N, y = base - t * Lb, w = (w0 + (w1 - w0) * t) * (t < taper ? 1 : Math.max(0.02, 1 - (t - taper) / (1 - taper)));
+        l.push([32 - w / 2, y]); r.push([32 + w / 2, y]);
+      }
+      const g = extrude(shapeFrom(l.concat(r.reverse())), Math.max(1.2, w0 * 0.2), 0.45, 4);
+      colorize(g, (x, y) => { const t = (base - y) / Lb, w = (w0 + (w1 - w0) * t) / 2; const u = Math.abs(x - 32) / Math.max(0.5, w); return u > 0.62 ? (u - 0.62) / 0.3 : u < 0.14 && t < 0.75 ? -0.4 : 0; });
+      return g;
+    };
+    const grip = (y1, y2, r, wrapC) => {
+      const h = y2 - y1;
+      P.add(new T3.CylinderGeometry(r, r * 1.08, h, 12), P.std({ color: def.handle, roughness: 0.8, metalness: 0.05 }), 32, (y1 + y2) / 2, 0);
+      const wrap = P.std({ color: wrapC || lighten(def.handle, 0.35), roughness: 0.7 });
+      for (let y = y1 + 2; y <= y2 - 1.5; y += 3.2) P.add(new T3.CylinderGeometry(r * 1.12, r * 1.12, 0.9, 12), wrap, 32, y, 0, false);
+    };
+    if (form === 'sword' || form === 'greatsword' || form === 'dagger') {
+      const big = form === 'greatsword', small = form === 'dagger';
+      L = 92 * len * (big ? 1.08 : small ? 0.55 : 0.95);
+      const w0 = big ? 11 : small ? 5.8 : 6.4, w1 = big ? 8 : small ? 4.2 : 4.6;
+      P.add(straight(L, w0, w1, big ? 0.9 : 0.84, 37), bladeMat, 0, 0, 0, fx !== 'beam');
+      const gw = big ? 26 : small ? 11 : 18;
+      P.add(new T3.BoxGeometry(gw, big ? 3.4 : 2.6, big ? 5 : 4), metal, 32, 38.8, 0);
+      for (const sx of [-1, 1]) P.add(new T3.SphereGeometry(big ? 2.4 : 1.8, 10, 8), metal, 32 + sx * gw / 2, 38.8, 0, false);
+      const gEnd = big ? 62 : small ? 53 : 57;
+      grip(40.3, gEnd, big ? 2.6 : 2.2);
+      if (small) { const tg = new T3.TorusGeometry(3, 0.9, 8, 18); P.add(tg, metal, 32, gEnd + 3.4, 0); }
+      else P.add(rank >= 4 ? new T3.OctahedronGeometry(3.8, 0) : new T3.SphereGeometry(3.3, 12, 8), rank >= 4 ? P.std({ color: glowC, metalness: 0.3, roughness: 0.12, emissive: glowC, emissiveIntensity: 0.5 }) : metal, 32, gEnd + 2.6, 0);
+      tip = [32, 37 - L];
+    } else if (form === 'cleaver') {
+      L = 92 * len * 0.72;
+      const N = 18, sp = [], ed = [];
+      for (let i = 0; i <= N; i++) { const t = i / N, y = 37 - t * L; sp.push([29.5, y]); ed.push([29.5 + 11.5 * (1 - Math.pow(t, 2.6)) + 0.3, y]); }
+      const g = extrude(shapeFrom(sp.concat(ed.reverse())), 1.3, 0.4, 4);
+      colorize(g, (x) => (x - 29.5) / 11.5 > 0.72 ? ((x - 29.5) / 11.5 - 0.72) / 0.25 : 0);
+      P.add(g, bladeMat, 0, 0, 0, true);
+      P.add(new T3.CylinderGeometry(2.9, 2.9, 3, 12), metal, 32, 38.6, 0);
+      P.add(new T3.BoxGeometry(5.6, 20, 4.4), P.std({ color: def.handle, roughness: 0.85, metalness: 0.02 }), 32, 50.5, 0);
+      for (const y of [44, 50.5, 57]) P.add(new T3.CylinderGeometry(1, 1, 4.8, 10), metal, 32, y, 0, false, undefined).rotation.x = Math.PI / 2;
+      tip = [29.5, 37 - L];
+    } else if (form === 'saber') {
+      L = 92 * len * 1.02;
+      const b = P.add(new T3.CylinderGeometry(1.7, 1.9, L, 14), bladeMat, 32, 37 - L / 2, 0, false);
+      const core = new T3.Mesh(b.geometry, P.basic({ color: '#ffffff', transparent: true, opacity: 0.92, depthWrite: false }));
+      core.scale.set(0.5, 1, 0.5);
+      b.add(core);
+      P.add(new T3.SphereGeometry(1.8, 12, 8), bladeMat, 32, 37 - L, 0, false);
+      P.add(new T3.CylinderGeometry(3.1, 2.7, 3.4, 16), metal, 32, 38.6, 0);
+      P.add(new T3.CylinderGeometry(2.4, 2.4, 20, 14), P.std({ color: '#3a3f4a', metalness: 0.85, roughness: 0.35 }), 32, 50.5, 0);
+      for (const y of [44, 47, 50, 53]) P.add(new T3.CylinderGeometry(2.6, 2.6, 1, 14), metal, 32, y, 0, false);
+      P.add(new T3.BoxGeometry(1.6, 2.4, 1.6), P.basic({ color: glowC }), 34.2, 43, 0, false);
+      P.add(new T3.CylinderGeometry(2.7, 2.2, 2.4, 14), metal, 32, 61.6, 0);
+      tip = [32, 37 - L];
+    } else if (form === 'spear') {
+      L = 92 * len * 1.15;
+      const top = 37 - L * 0.72, Lt = L * 0.28;
+      P.add(new T3.CylinderGeometry(1.6, 1.8, 66 - top, 10), P.std({ color: def.handle, roughness: 0.75, metalness: 0.05 }), 32, (66 + top) / 2, 0);
+      const N = 16, l = [], r = [];
+      for (let i = 0; i <= N; i++) { const t = i / N, y = top - t * Lt, w = 10 * Math.pow(Math.sin(Math.PI * Math.min(1, 0.12 + t * 0.95)), 0.75) + 1.2 * (1 - t); l.push([32 - w / 2, y]); r.push([32 + w / 2, y]); }
+      const g = extrude(shapeFrom(l.concat(r.reverse())), 1.6, 0.5, 4);
+      colorize(g, (x, y) => { const t = (top - y) / Lt, w = 5 * Math.pow(Math.sin(Math.PI * Math.min(1, 0.12 + t * 0.95)), 0.75) + 0.6; return Math.abs(x - 32) / w > 0.6 ? (Math.abs(x - 32) / w - 0.6) / 0.35 : 0; });
+      P.add(g, bladeMat, 0, 0, 0, fx !== 'beam');
+      P.add(new T3.TorusGeometry(2.2, 0.9, 8, 16), metal, 32, top + 1, 0).rotation.x = Math.PI / 2;
+      P.add(new T3.ConeGeometry(2.6, 6, 8), P.std({ color: '#e0283a', roughness: 0.8 }), 32, top + 5.5, 0, false);
+      P.add(new T3.SphereGeometry(2.2, 10, 8), metal, 32, 66.5, 0);
+      cxf = () => 32; y0 = top; tip = [32, top - Lt];
+    } else if (form === 'scythe') {
+      L = 92 * len * 1.08;
+      const top = 37 - L * 0.86;
+      P.add(new T3.CylinderGeometry(1.7, 1.9, 66 - top, 10), P.std({ color: def.handle, roughness: 0.75, metalness: 0.05 }), 32, (66 + top) / 2, 0);
+      const Lb = L * 0.62, N = 20, outer = [], inner = [];
+      for (let i = 0; i <= N; i++) {
+        const s = i / N, cx = 32 + s * Lb, cy = top + 2 + s * s * Lb * 0.42 - s * Lb * 0.06, w = 11 * Math.pow(1 - s, 0.75) + 0.4;
+        outer.push([cx, cy - w * 0.5]); inner.push([cx, cy + w * 0.5]);
+      }
+      const g = extrude(shapeFrom(outer.concat(inner.reverse())), 1.4, 0.45, 4);
+      colorize(g, (x, y) => { const s = Math.max(0, Math.min(1, (x - 32) / Lb)), cy = top + 2 + s * s * Lb * 0.42 - s * Lb * 0.06, w = 11 * Math.pow(1 - s, 0.75) + 0.4; return (y - cy) / (w * 0.5) > 0.35 ? ((y - cy) / (w * 0.5) - 0.35) / 0.5 : 0; });
+      P.add(g, bladeMat, 0, 0, 0, fx !== 'beam');
+      P.add(new T3.CylinderGeometry(2.4, 2.4, 5, 12), metal, 32, top + 2, 0);
+      P.add(new T3.ConeGeometry(2, 4.5, 8), metal, 32, top - 2.5, 0).rotation.z = Math.PI;
+      for (const y of [48, 56]) P.add(new T3.CylinderGeometry(2.3, 2.3, 1.6, 10), metal, 32, y, 0, false);
+      cxf = (t) => 32 + t * Lb; y0 = top; tip = [32 + Lb, top + Lb * 0.36];
+      L = Math.max(L, (66 - top));
+    } else if (form === 'claw') {
+      L = 92 * len * 0.62;
+      P.add(new T3.BoxGeometry(17, 5, 5), metal, 32, 41.5, 0);
+      grip(44, 58, 2.3);
+      for (const dx of [-5.5, 0, 5.5]) {
+        const N = 14, l = [], r = [];
+        for (let i = 0; i <= N; i++) { const t = i / N, y = 39 - t * L, x = 32 + dx - 5 * t * t + dx * 0.25 * t, w = 2.8 * (1 - t * 0.85); l.push([x - w / 2, y]); r.push([x + w / 2, y]); }
+        const g = extrude(shapeFrom(l.concat(r.reverse())), 1.1, 0.35, 4);
+        colorize(g, () => 0.25);
+        P.add(g, bladeMat, 0, 0, 0, fx !== 'beam');
+      }
+      cxf = (t) => 32 - 5 * t * t; y0 = 39; tip = [27, 39 - L];
+    }
+    // 光・炎・星・虹（刀と同じ演出）
+    const along = (t) => [cxf(t), y0 - (y0 - tip[1]) * t];
+    if (def.glow) for (let i = 0; i < 3; i++) { const [x, y] = along(0.3 + i * 0.25); P.glow(glowC, x + 1, y, 30 + rank * 3, 0.32); }
+    if (fx === 'flame') {
+      const fl = [];
+      for (let i = 0; i < 7; i++) { const [x, y] = along(0.1 + i * 0.12); fl.push(P.glow(i % 2 ? '#ffb02e' : '#ff5a1f', x + 2, y, 14, 0.7, 2)); }
+      P.ticks.push((t) => fl.forEach((f, i) => { const k = 0.7 + 0.5 * Math.sin(t * 13 + i * 1.7); f.scale.set(14 * k, 20 * k, 1); f.material.opacity = 0.45 + 0.3 * k; }));
+    }
+    if (fx === 'void' || fx === 'galaxy') {
+      const st2 = [];
+      for (let i = 0; i < 9; i++) { const [x, y] = along(0.08 + i * 0.1); st2.push(P.glow(i % 3 ? '#ffffff' : glowC, x + (Math.random() - 0.5) * 3, y, 5, 0.9, 2)); }
+      P.ticks.push((t) => st2.forEach((f, i) => { f.material.opacity = 0.3 + 0.7 * Math.abs(Math.sin(t * 3 + i * 1.3)); }));
+    }
+    if (fx === 'rainbow' || def.glow === 'rainbow') {
+      const c2 = new T3.Color();
+      P.ticks.push((t) => { if (bladeMat.emissive) { bladeMat.emissive.copy(c2.setHSL((t * 0.25) % 1, 1, 0.5)); bladeMat.emissiveIntensity = 0.45; } else bladeMat.color.setHSL((t * 0.25) % 1, 1, 0.6); });
+    }
+    if (fx === 'beam') { const [x, y] = along(0.5); P.glow(glowC, x, y, 70, 0.45); }
+    P.blade = { L: Math.max(L, 52 - tip[1] - 16), tip };
+  }
+
   // ------------------------------------------------------------- 普通の斧
   function classic(P, def) {
     const rank = RANKS[def.r] || 0;
@@ -718,6 +866,7 @@ const Axe3D = (() => {
     // 刀（菌斬り次元）: 柄・鍔・はばき・反りのある刀身。刃文は頂点色、特殊な刀身は def.k.fx
     blade(P, def) {
       const K = def.k || {};
+      if (K.form && K.form !== 'katana') { formBlade(P, def, K); return; }
       const rank = RANKS[def.r] || 0;
       const L = 92 * (K.len || 1), curve = K.curve == null ? 1 : K.curve;
       const wood = !!K.wood, fx = K.fx || '';

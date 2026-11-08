@@ -44,6 +44,7 @@
       <div class="hud-right">
         <div class="hud-btns">
           <button type="button" id="btn-dim" class="icon-btn dim-btn" aria-label="次元を移動する" title="次元を移動（森 ⇄ 菌斬り次元）" hidden><span class="dim-ico" id="dim-ico">🧫</span></button>
+          <button type="button" id="btn-portal" class="icon-btn portal-btn" aria-label="次元ポータルを開く" title="次元ポータル（211の次元）" hidden><span aria-hidden="true">🌀</span><i class="badge" hidden></i></button>
           <button type="button" id="btn-speed" class="icon-btn speed-btn" aria-label="倍速の切り替え" title="倍速（×1 → ×2 → ×3）"><i aria-hidden="true">▶▶</i><b id="speed-x">×1</b></button>
           <button type="button" id="btn-study" class="icon-btn" aria-label="勉強ブースト" title="勉強ブースト">📚</button>
           <button type="button" id="btn-sound" class="icon-btn" aria-label="サウンド切り替え" title="サウンド">🔊</button>
@@ -67,6 +68,7 @@
 
     <div class="wave-box g-only" id="wave-box">
       <div class="stage-line"><small>WAVE</small><b id="wave-n">1</b><span id="gbiome">血管の川</span></div>
+      <div class="gdim-line"><span id="gdim-name"></span><small id="gdim-next"></small></div>
       <div class="wave-prog"><i id="wave-fill"></i><span id="wave-txt"></span></div>
       <div class="gboss-name" id="gboss-name"></div>
       <div class="hp gboss-hp"><i class="hp-fill" id="gboss-fill"></i><span id="gboss-txt"></span></div>
@@ -118,7 +120,7 @@
       <button type="button" class="w-btn" data-open="gmut"><em aria-hidden="true">🧬</em><span>変異</span><i class="badge" hidden></i></button>
       <button type="button" class="w-btn" data-open="quests"><em aria-hidden="true">📜</em><span>任務</span><i class="badge" hidden></i></button>
       <button type="button" class="w-btn" data-open="ach"><em aria-hidden="true">🏆</em><span>実績</span><i class="badge" hidden></i></button>
-      <button type="button" class="w-btn" data-open="gdim"><em aria-hidden="true">🌲</em><span>森へ</span></button>
+      <button type="button" class="w-btn" data-open="gdim"><em aria-hidden="true">🌀</em><span>次元</span></button>
     </nav>
     <nav class="rail rail-right f-rail" aria-label="その他のメニュー">
       <button type="button" class="w-btn" data-open="quests"><em aria-hidden="true">📜</em><span>任務</span><i class="badge" hidden></i></button>
@@ -161,6 +163,7 @@
 <script src="js/datagen.js"></script>
 <script src="js/germdata.js"></script>
 <script src="js/germgen.js"></script>
+<script src="js/dimgen.js"></script>
 <script src="js/game.js"></script>
 <script src="js/germ.js"></script>
 <script src="js/audio.js"></script>

@@ -22,6 +22,11 @@ const GFX = (() => {
   const glowRGB = () => { const eq = GM.stats().eq; return eq && eq.glow && eq.glow !== 'rainbow' ? L.hexRGB(eq.glow) : '200,235,255'; };
   const kSeed = (id) => 100 + Math.max(0, GD.KATANAS.findIndex((k) => k.id === id));
   const fmt = (x) => U.fmt(x);
+  // 次元ごとの言葉（菌→スライム、DNA→ゼリー、刀→剣…）と通貨・界のアイコン
+  const HAS_DM = typeof DM !== 'undefined' && !!DM;
+  const LL = (t) => (HAS_DM ? DM.L(t) : t);
+  const CI = () => (HAS_DM ? DM.LB.curIcon : '🧬');
+  const RI = () => (HAS_DM ? DM.LB.icon : '🦠');
   const scr = (x, y) => Micro.toScreen(x, y);
   const bolts = [], arrows = [], slots = [];
 
@@ -31,7 +36,9 @@ const GFX = (() => {
     if (e.deflect) Sfx.deflect(); else Sfx.kSlice(e.stier, e.core, e.crit, e.n);
     if (e.shatter) Sfx.shatter2();
     if (blocked()) return;
-    const x = e.x, y = e.y, g = e.g;
+    const g = e.g;
+    let x = e.x, y = e.y;
+    if (x == null) { const q = Micro.germScreen(g); x = q.x; y = q.y; }
     const R = Micro.germScreen(g).r;
     L.spawn({ t: 'slash', x, y, life: 0.2, max: 0.2, s: R * 1.9 + 30, w: 2.2 + e.stier * 0.6, rot: scrRot(e.ang), col: e.deflect ? '200,210,255' : e.crit ? '255,230,120' : glowRGB() });
     if (e.deflect) {
@@ -64,14 +71,14 @@ const GFX = (() => {
     if (blocked()) return;
     const x = d.x != null ? d.x : s.x, y = d.y != null ? d.y : s.y;
     L.coins(s.x, s.y, g.boss ? 14 : g.v === 'gold' ? 10 : g.v === 'rainbow' ? 16 : n >= 3 ? 3 : 1, 'dna');
-    L.mergeText('dna', s.x, s.y - s.r - 16, d.dna, (v) => '+' + fmt(v) + ' 🧬', { size: 18 + Math.min(10, n), fill: '#7affb8', stroke: '#002a14', vy: -60, life: 0.8 }, 0.5);
+    L.mergeText('dna', s.x, s.y - s.r - 16, d.dna, (v) => '+' + fmt(v) + ' ' + CI(), { size: 18 + Math.min(10, n), fill: '#7affb8', stroke: '#002a14', vy: -60, life: 0.8 }, 0.5);
     if (d.src === 'cell') return;
     // 擬音（一閃が続くほど大きく）
     const now = L.clock;
     if (n >= 2 || now - onoT > 0.18) {
       onoT = now;
       const c = pk(ONO_COL);
-      L.floatText(x + (RN() - 0.5) * 40, y - 30, n >= 5 ? pk(['滅!!', '両断!!', '殺菌!!']) : RN() < 0.4 ? pk(GD.KILL_WORDS) : pk(ONO), { size: Math.min(66, 24 + n * 5), fill: c[0], stroke: c[1], rainbow: n >= 8, vy: -40, life: 0.6, pop: 2.4, rot: (RN() - 0.5) * 0.5 });
+      L.floatText(x + (RN() - 0.5) * 40, y - 30, n >= 5 ? pk(['滅!!', '両断!!', LL('殺菌!!')]) : RN() < 0.4 ? pk(GD.KILL_WORDS) : pk(ONO), { size: Math.min(66, 24 + n * 5), fill: c[0], stroke: c[1], rainbow: n >= 8, vy: -40, life: 0.6, pop: 2.4, rot: (RN() - 0.5) * 0.5 });
     }
     // 何体斬り（一閃の掛け声）
     if (n >= 2 && d.src === 'slice') {
@@ -84,8 +91,8 @@ const GFX = (() => {
     L.pulse(Math.min(0.4, 0.06 + n * 0.03));
     if (n >= 4) { L.addFlash(Math.min(0.35, 0.08 + n * 0.02), '255,255,255'); Micro.punch(0.04 + n * 0.006); }
     if (n >= 3) L.focusLines(x, y, 0.3, glowRGB(), Math.min(1, n / 8));
-    if (g.v === 'gold') { Sfx.golden(); L.radial('rcoin', ['#ffcf4a'], 30, s.x, s.y, { sp: 520, s: 7, g: 500 }); L.bigTxt('黄金菌!!', s.x, s.y - 60, 40, '#ffd84a'); L.addFlash(0.3, '255,215,90'); }
-    if (g.v === 'rainbow') { L.confetti(90); L.radial('star', RAINBOW, 40, s.x, s.y, { sp: 560 }); L.bigTxt('虹色菌!!!', s.x, s.y - 70, 46, '#ffffff', { rainbow: true }); }
+    if (g.v === 'gold') { Sfx.golden(); L.radial('rcoin', ['#ffcf4a'], 30, s.x, s.y, { sp: 520, s: 7, g: 500 }); L.bigTxt(LL('黄金菌!!'), s.x, s.y - 60, 40, '#ffd84a'); L.addFlash(0.3, '255,215,90'); }
+    if (g.v === 'rainbow') { L.confetti(90); L.radial('star', RAINBOW, 40, s.x, s.y, { sp: 560 }); L.bigTxt(LL('虹色菌!!!'), s.x, s.y - 70, 46, '#ffffff', { rainbow: true }); }
     if (g.v === 'giant') L.waves(['#ff9a4a', '#ffd27a'], 2, s.x, s.y);
     const t = GM.TY[g.type];
     if (!g.child && !g.boss && (t.split || g.v === 'split')) L.floatText(s.x, s.y + 30, '分裂!', { size: 20, fill: '#9affc8', stroke: '#002a14', vy: -40, life: 0.6 });
@@ -160,13 +167,13 @@ const GFX = (() => {
     if (!on() || d.boss) return;
     Sfx.stage();
     if (blocked()) return;
-    if (d.biome) UI.banner(Micro.biomePal(GM.biomeIndex(d.wave)).name, `WAVE ${d.wave} ・ 新しいミクロの世界`, 'stage');
+    if (d.biome) UI.banner(Micro.biomePal(GM.biomeIndex(d.wave)).name, LL(`WAVE ${d.wave} ・ 新しいミクロの世界`), 'stage');
     else L.floatText(L.W / 2, L.H * 0.24, `WAVE ${d.wave}`, { size: 30, fill: '#ffffff', stroke: '#14081a', vy: -20, life: 0.9, pop: 2 });
   }
   function onBossStart(d) {
     if (!on()) return;
     Sfx.gBoss();
-    UI.banner('WARNING!!', `巨大病原体「${d.def.name}」 ${Math.round(d.time)}秒以内に斬れ！`, 'boss');
+    UI.banner('WARNING!!', LL('巨大病原体') + `「${d.def.name}」 ${Math.round(d.time)}秒以内に斬れ！`, 'boss');
     L.addFlash(0.3, '255,40,60');
     Micro.flashLight('#ff4060', 1.2);
     Micro.shake(0.8);
@@ -176,7 +183,7 @@ const GFX = (() => {
     Sfx.bossPhase();
     if (blocked()) return;
     L.bigTxt(`PHASE ${d.phase + 1}!!`, L.W / 2, L.H * 0.3, 56, '#ff4a6a', { life: 1.1 });
-    L.floatText(L.W / 2, L.H * 0.3 + 50, d.phase >= 2 ? '病原体が暴走している！ 弱点を狙え' : '病原体が怒った！ 光る弱点を斬れ', { size: 18, fill: '#ffffff', stroke: '#2a0010', vy: -16, life: 1.2 });
+    L.floatText(L.W / 2, L.H * 0.3 + 50, LL(d.phase >= 2 ? '病原体が暴走している！ 弱点を狙え' : '病原体が怒った！ 光る弱点を斬れ'), { size: 18, fill: '#ffffff', stroke: '#2a0010', vy: -16, life: 1.2 });
     L.addFlash(0.35, '255,40,60');
     Micro.shake(1);
     UI.shakeHud();
@@ -215,19 +222,19 @@ const GFX = (() => {
   function onBossWin(d) {
     if (!on()) return;
     Sfx.bossWin();
-    setTimeout(() => { if (on()) UI.banner('病原体 撃破!!', `🧪変異因子+${d.factor} ・ 💎+${d.gems}`, 'win'); }, 650);
+    setTimeout(() => { if (on()) UI.banner(LL('病原体 撃破!!'), `🧪変異因子+${d.factor} ・ 💎+${d.gems}`, 'win'); }, 650);
     L.coins(L.W / 2, L.H * 0.45, 20, 'dna');
   }
   function onBossFail() {
     if (!on()) return;
     Sfx.bossFail();
-    UI.banner('逃げられた…', '研ぎ・免疫細胞を強化して再挑戦！', 'fail');
+    UI.banner('逃げられた…', LL('研ぎ・免疫細胞を強化して再挑戦！'), 'fail');
   }
   function onOutbreak(d) {
     if (!on()) return;
     Sfx.outbreak();
     document.body.classList.add('outbreak');
-    UI.banner('☣️ OUTBREAK!!', `菌の大発生！ DNA×${GD.CFG.OUT_DNA}・ダメージ×2（${Math.round(d.time)}秒）`, 'fever');
+    UI.banner('☣️ OUTBREAK!!', LL(`菌の大発生！ DNA×${GD.CFG.OUT_DNA}・ダメージ×2（${Math.round(d.time)}秒）`), 'fever');
     L.addFlash(0.3, '90,255,140');
     Micro.flashLight('#5aff8a', 1);
   }
@@ -242,7 +249,7 @@ const GFX = (() => {
     Sfx.musouStart();
     document.body.classList.add('musou');
     if (blocked()) return;
-    UI.banner('👹 無双!!', `ダメージ×${GD.CFG.MUSOU_DMG}・DNA×${GD.CFG.MUSOU_DNA}・群れが押し寄せる（${Math.round(d.time)}秒）`, 'fever');
+    UI.banner('👹 無双!!', LL(`ダメージ×${GD.CFG.MUSOU_DMG}・DNA×${GD.CFG.MUSOU_DNA}・群れが押し寄せる（${Math.round(d.time)}秒）`), 'fever');
     L.bigTxt('無双', L.W / 2, L.H * 0.4, Math.min(120, L.W * 0.26), '#ffffff', { rainbow: true, life: 1.4 });
     L.addFlash(0.5, '255,120,220');
     L.confetti(100);
@@ -319,7 +326,7 @@ const GFX = (() => {
     L.bigTxt(txt, W / 2, cy + 70, s.cat === 'jackpot' ? 54 : s.cat === 'triple' ? 42 : 30, s.cat === 'jackpot' ? '#ffffff' : '#ffe14a', { rainbow: s.cat === 'jackpot', life: 1.3 });
     L.floatText(W / 2, cy + 112, `🧬+${fmt(s.dna)}${s.gems ? ` 💎+${s.gems}` : ''}`, { size: 20, fill: '#7affb8', stroke: '#002a14', vy: -20, life: 1.3 });
     L.coins(W / 2, cy + 40, s.cat === 'jackpot' ? 24 : s.cat === 'triple' ? 12 : 4, 'dna');
-    if (s.cat === 'jackpot') { L.confetti(220); L.addFlash(0.6, '255,230,120'); UI.banner('🎰 JACKPOT!!!', `7️⃣7️⃣7️⃣ DNA ×50 ・ 💎+${s.gems}`, 'win'); Micro.shake(1.2); }
+    if (s.cat === 'jackpot') { L.confetti(220); L.addFlash(0.6, '255,230,120'); UI.banner('🎰 JACKPOT!!!', LL(`7️⃣7️⃣7️⃣ DNA ×50 ・ 💎+${s.gems}`), 'win'); Micro.shake(1.2); }
     else if (s.cat === 'triple') { L.confetti(90); L.addFlash(0.3, '255,230,120'); }
   }
   function onChest(d) {
@@ -328,7 +335,7 @@ const GFX = (() => {
     if (blocked()) return;
     const p = scr(d.x, d.y);
     L.bigTxt('宝箱!!', p.x, p.y - 50, 38, '#ffd27a', { life: 1 });
-    L.floatText(p.x, p.y - 8, `💎+${d.gems}${d.rolls ? ` ・ 刀ガチャ${d.rolls}連!` : ''}${d.buff ? ' ・ DNA×2' : ''}`, { size: 17, fill: '#ffffff', stroke: '#2a1400', vy: -30, life: 1.2 });
+    L.floatText(p.x, p.y - 8, LL(`💎+${d.gems}${d.rolls ? ` ・ 刀ガチャ${d.rolls}連!` : ''}${d.buff ? ' ・ DNA×2' : ''}`), { size: 17, fill: '#ffffff', stroke: '#2a1400', vy: -30, life: 1.2 });
     L.coins(p.x, p.y, d.gems, 'gem');
     L.radial('star', ['#ffd27a', '#ffffff'], 24, p.x, p.y, { sp: 420 });
   }
@@ -338,7 +345,7 @@ const GFX = (() => {
     Sfx.critterGet();
     if (blocked()) return;
     const p = scr(d.x, d.y);
-    const bonus = { dna: 'DNA×2（60秒）', musou: '無双ゲージ満タン!!', outbreak: '大発生!!' }[d.bonus];
+    const bonus = LL({ dna: 'DNA×2（60秒）', musou: '無双ゲージ満タン!!', outbreak: '大発生!!' }[d.bonus]);
     L.bigTxt('ラッキー!!', p.x, p.y - 60, 44, '#fff2a0', { rainbow: true, life: 1.2 });
     L.floatText(p.x, p.y - 12, `🧬+${fmt(d.dna)} ・ 💎+${d.gems} ・ ${bonus}`, { size: 16, fill: '#ffffff', stroke: '#2a2000', vy: -30, life: 1.3 });
     L.confetti(80);
@@ -347,8 +354,8 @@ const GFX = (() => {
   function onNewStrain(d) {
     if (!on()) return;
     Sfx.newStrain();
-    UI.toast('🦠', `NEW! ${d.name}`, `菌図鑑 ${d.n}/${GD.STRAINS.length} ・ 🧬+${fmt(d.dna)} 💎+1`, 'gold');
-    if (d.ms) UI.banner(`菌図鑑 ${d.n}種!!`, `DNA +${Math.round(GD.CFG.DEX_BONUS * 100)}% ・ 💎+10`, 'win');
+    UI.toast(RI(), `NEW! ${d.name}`, LL(`菌図鑑 ${d.n}/${GD.STRAINS.length}`) + ` ・ ${CI()}+${fmt(d.dna)} 💎+1`, 'gold');
+    if (d.ms) UI.banner(LL(`菌図鑑 ${d.n}種!!`), LL(`DNA +${Math.round(GD.CFG.DEX_BONUS * 100)}% ・ 💎+10`), 'win');
   }
 
   // ------------------------------------------------------------- 免疫細胞・残心・黄金菌
@@ -372,13 +379,13 @@ const GFX = (() => {
   }
   function onSpawn(g) {
     if (!on() || blocked()) return;
-    if (g.v === 'gold') UI.toast('✨', '黄金菌が出た！', `逃げる前に斬れ！ DNA×${GD.CFG.GOLD_DNA}`, 'gold');
-    else if (g.v === 'rainbow') UI.toast('🌈', '虹色菌が出た！！', '斬ると大発生が始まる', 'gold');
-    else if (g.v === 'lucky') UI.toast('🎰', 'スロット菌が出た！', '斬るとスロットが回る（777でDNA×50）', 'gold');
+    if (g.v === 'gold') UI.toast('✨', LL('黄金菌が出た！'), LL(`逃げる前に斬れ！ DNA×${GD.CFG.GOLD_DNA}`), 'gold');
+    else if (g.v === 'rainbow') UI.toast('🌈', LL('虹色菌が出た！！'), '斬ると大発生が始まる', 'gold');
+    else if (g.v === 'lucky') UI.toast('🎰', LL('スロット菌が出た！'), LL('斬るとスロットが回る（777でDNA×50）'), 'gold');
   }
   function onEscape(g) {
     if (!on() || blocked()) return;
-    const name = { rainbow: '虹色菌', lucky: 'スロット菌', critter: 'ラッキー細胞' }[g.v] || '黄金菌';
+    const name = LL({ rainbow: '虹色菌', lucky: 'スロット菌', critter: 'ラッキー細胞' }[g.v] || '黄金菌');
     L.floatText(L.W / 2, L.H * 0.3, `${name}に逃げられた…`, { size: 20, fill: '#c8c8d8', stroke: '#14081a', vy: -20, life: 1 });
   }
 
@@ -537,7 +544,7 @@ const GFX = (() => {
       c.globalCompositeOperation = 'lighter';
       c.lineJoin = 'round';
       for (const [w, col] of [[9, `rgba(255,240,120,${0.3 * a})`], [3, `rgba(255,255,255,${a})`]]) {
-        c.strokeStyle = col; c.lineWidth = w;
+        c.strokeStyle = col; c.lineWidth = w * (b.wide ? 2.2 : 1);
         c.beginPath();
         b.pts.forEach((p, k) => (k ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1])));
         c.stroke();
@@ -562,6 +569,7 @@ const GFX = (() => {
     for (let i = slots.length - 1; i >= 0; i--) if (!drawSlot(c, slots[i], real)) slots.splice(i, 1);
   }
   function frame(real) {
+    stepDark(real);
     if (!on()) return;
     musicT += real;
     if (musicT > 0.5) {
@@ -570,6 +578,52 @@ const GFX = (() => {
       const night = document.body.classList.contains('night');
       Sfx.musicLevel(night || !G.S.settings.bgm ? 0 : T.musou > 0 || T.outbreak > 0 || T.boss ? 7 : Math.max(2, T.rank));
     }
+  }
+
+  // ------------------------------------------------------------- 次元ポータルのルール: 雷雲・鏡写・時止め・闇夜
+  function onStorm(d) {
+    if (!on()) return;
+    Sfx.zap();
+    if (blocked()) return;
+    const b = scr(d.g.x, d.g.y);
+    const a = { x: b.x + (RN() - 0.5) * 120, y: -20 };
+    bolts.push({ pts: jag(a, b), life: 0.36, max: 0.36, wide: 1 });
+    bolts.push({ pts: jag(a, b), life: 0.3, max: 0.3 });
+    L.radial('spark', ['#fff6a8', '#ffffff', '#9fe0ff'], 14, b.x, b.y, { sp: 420, life: 0.3, s: 3 });
+    L.addFlash(0.22, '230,240,255');
+    L.floatText(b.x, b.y - 40, '落雷!!', { size: 24, fill: '#fff6a8', stroke: '#1a1440', vy: -50, life: 0.6, pop: 2 });
+    Micro.shake(0.25);
+  }
+  function onMirror(d) {
+    if (!on() || blocked()) return;
+    const a = scr(d.from.x, d.from.y), b = scr(d.to.x, d.to.y);
+    L.spawn({ t: 'slash', x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, life: 0.28, max: 0.28, s: Math.hypot(b.x - a.x, b.y - a.y) + 40, w: 2, rot: Math.atan2(b.y - a.y, b.x - a.x), col: '200,240,255' });
+    L.floatText(b.x, b.y - 46, '鏡写!', { size: 20, fill: '#c8f0ff', stroke: '#0a1a3a', vy: -50, life: 0.55 });
+  }
+  function onSlowmo(d) {
+    if (!on()) return;
+    L.slowmo(Math.min(0.9, d.t * 0.45));
+    if (blocked()) return;
+    L.bigTxt('時よ、止まれ', L.W / 2, L.H * 0.33, Math.min(48, L.W * 0.1), '#c8f0ff', { life: 1.1 });
+    L.addFlash(0.25, '200,240,255');
+  }
+  // 闇夜: 刃のまわりだけ見える（HUD より下の層に暗幕を置くので、ボタンや数字は暗くならない）
+  let darkK = 0, veil = null;
+  function stepDark(real) {
+    const want = on() && HAS_DM && DM.cur && GD.GIM && GD.GIM.dark ? 1 : 0;
+    darkK += (want - darkK) * Math.min(1, real * 3);
+    if (!veil) {
+      veil = document.createElement('div');
+      veil.id = 'dark-veil';
+      (document.getElementById('app') || document.body).appendChild(veil);
+    }
+    if (darkK < 0.02) { if (veil.style.opacity !== '0') veil.style.opacity = '0'; return; }
+    const hi = Micro.holdInfo;
+    const t = Micro.katanaTip ? Micro.katanaTip() : null;
+    const p = hi && hi.on ? Micro.toScreen(hi.x, hi.y) : t || { x: L.W / 2, y: L.H / 2 };
+    const r = Math.min(L.W, L.H) * (0.3 + (0.06 * (GM.T.rank || 0)) / 7) * (GM.T.musou > 0 ? 1.6 : 1);
+    veil.style.opacity = darkK.toFixed(2);
+    veil.style.background = `radial-gradient(circle at ${Math.round(p.x)}px ${Math.round(p.y)}px, rgba(0,0,8,0) ${Math.round(r * 0.35)}px, rgba(0,0,8,0.93) ${Math.round(r)}px)`;
   }
 
   function init() {
@@ -583,9 +637,10 @@ const GFX = (() => {
       gBoom: onBoom, gChain: onChain, gThunder: onThunder, gBurn: onBurn, gBurnTick: onBurnTick, gFreeze: onFreeze,
       gSlot: onSlot, gChest: onChest, gCritter: onCritter, gCritterGet: onCritterGet, gNewStrain: onNewStrain,
       gCell: onCell, gZanshin: onZanshin, gSpawn: onSpawn, gEscape: onEscape, gOugi: onOugi, gOugiHit: onOugiHit, gOugiDone: onOugiDone,
+      gStorm: onStorm, gMirror: onMirror, gSlowmo: onSlowmo,
     };
     for (const k in ev) G.on(k, ev[k]);
-    G.on('dim', (d) => { Sfx.setMode(d.to); if (d.to !== 'germ') { document.body.classList.remove('outbreak'); document.body.classList.remove('musou'); } });
+    G.on('dim', (d) => { Sfx.setMode(d.to); if (d.to === 'germ' && HAS_DM) Sfx.setTheme(DM.C.music); if (d.to !== 'germ') { document.body.classList.remove('outbreak'); document.body.classList.remove('musou'); } });
   }
   return { init, frame, patternLines };
 })();

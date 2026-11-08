@@ -13,33 +13,66 @@ const GUI = (() => {
   const $ = (s) => document.querySelector(s);
   const fmt = (n) => U.fmt(n);
   const pct = (v) => `${Math.round(v * 100)}%`;
+  // 次元ごとの言葉（菌→スライム、DNA→ゼリー、刀→剣…）と通貨アイコン
+  const HAS_DM = typeof DM !== 'undefined' && !!DM;
+  const LL = (t) => (HAS_DM ? DM.L(t) : t);
+  const CI = () => (HAS_DM ? DM.LB.curIcon : '🧬');
 
   // ------------------------------------------------------------- 次元の移動
-  function applyDim() {
-    const g = gdim();
-    document.body.classList.toggle('dim-germ', g);
-    const ic = $('#dim-ico');
-    if (ic) ic.textContent = g ? '🌲' : '🧫';
-    const b = $('#btn-dim');
-    if (b) b.setAttribute('aria-label', g ? '森へ帰る' : '菌斬り次元へ行く');
-    Sfx.setMode(g ? 'germ' : 'forest');
+  const LB = () => (HAS_DM ? DM.LB : { noun: '菌', cur: 'DNA', curIcon: '🧬', wpn: '刀', ally: '免疫細胞', allyIcon: '🛡️', world: 'ミクロの世界', dim: '菌斬り次元', icon: '🧫' });
+  const portalOpenable = () => HAS_DM && G.germOpen() && DM.isOpen(S(), 1);
+  function setRail(key, icon, label) {
+    for (const b of document.querySelectorAll(`[data-open="${key}"]`)) {
+      const em = b.querySelector('em'), sp = b.querySelector('span');
+      if (em && icon) em.textContent = icon;
+      if (sp && label) sp.textContent = label;
+    }
   }
-  function travel(to) {
-    if (travelBusy || UI.blocked()) return;
-    if (to === 'germ' && !G.germOpen()) { _.toast('🔒', `転生${GD.CFG.UNLOCK_PRESTIGE}回で開く`, 'ステージを進めて転生しよう'); Sfx.error(); return; }
-    if ((to === 'germ') === gdim()) return;
+  function applyDim() {
+    const g = gdim(), lb = LB();
+    document.body.classList.toggle('dim-germ', g);
+    document.body.dataset.realm = HAS_DM && DM.cur ? DM.realmOf(DM.meta(DM.cur)).id : 'germ';
+    const ic = $('#dim-ico');
+    if (ic) ic.textContent = g ? '🌲' : lb.icon;
+    const b = $('#btn-dim');
+    if (b) { b.setAttribute('aria-label', g ? '森へ帰る' : `${lb.dim}へ行く`); b.title = g ? '森へ帰る' : `${lb.dim}へ行く（最後にいた次元）`; }
+    const ci = document.querySelector('#cur-dna .ico');
+    if (ci) ci.textContent = lb.curIcon;
+    const cd = $('#cur-dna');
+    if (cd) cd.title = `${lb.cur}（${lb.noun}を斬ると手に入る）`;
+    const other = HAS_DM && DM.cur;
+    setRail('gcells', lb.allyIcon, other ? '仲間' : '免疫');
+    setRail('gkat', '⚔️', lb.wpn);
+    if (_) Object.assign(_.TITLES, { gcells: `${lb.allyIcon} ${lb.ally}`, gkat: `⚔️ ${lb.wpn}ガチャ・${lb.wpn}`, gdim: `${lb.icon} ${lb.dim}` });
+    Sfx.setMode(g ? 'germ' : 'forest');
+    if (g && HAS_DM) Sfx.setTheme(DM.C.music);
+    portalBtn();
+  }
+  // to: 'germ' か 'forest'。idx: 行き先の次元（省略で最後にいた次元）。次元の中から別の次元へも行ける
+  function travel(to, idx) {
+    if (travelBusy || (UI.blocked() && !portalOn)) return;
+    const s = S();
+    if (to === 'germ') {
+      if (!G.germOpen()) { _.toast('🔒', `転生${GD.CFG.UNLOCK_PRESTIGE}回で開く`, 'ステージを進めて転生しよう'); Sfx.error(); return; }
+      if (idx == null) idx = s.dimCur || 0;
+      if (HAS_DM && !DM.isOpen(s, idx)) { _.toast('🔒', 'まだ開いていない次元', `前の次元でウェーブ${DM.unlockW(idx - 1)}に着くと開く`); Sfx.error(); return; }
+      if (gdim() && (!HAS_DM || idx === DM.cur)) { portalClose(); return; }
+    } else if (!gdim()) return;
+    portalClose();
     travelBusy = true;
     _.overlayBusy = true;
     _.closeDrawer();
     const w = $('#dim-warp');
     w.hidden = false;
     w.className = 'to-' + to;
-    $('#dw-t').textContent = to === 'germ' ? '菌斬り次元へ' : '森へ帰還';
+    const m = HAS_DM && to === 'germ' ? DM.meta(idx) : null;
+    $('#dw-t').textContent = to === 'germ' ? `${m ? m.icon + ' ' + m.name : '菌斬り次元'}へ` : '森へ帰還';
     requestAnimationFrame(() => w.classList.add('on'));
     Sfx.dimWarp(to === 'germ');
     Sfx.vibrate([20, 40, 60]);
     setTimeout(() => {
-      if (to === 'germ') GM.enter(); else GM.leave();
+      if (to === 'germ') GM.enter(idx); else GM.leave();
+      disp.dna = G.dstate().dna;
       applyDim();
       if (to === 'germ' && Micro.ok) Micro.warp();
       FX.resize();
@@ -47,9 +80,174 @@ const GUI = (() => {
       setTimeout(() => { w.hidden = true; w.className = ''; travelBusy = false; _.overlayBusy = false; }, 650);
     }, 720);
   }
+
+  // ------------------------------------------------------------- 次元ポータル（211の次元を探す・選ぶ・飛ぶ）
+  const PS = { q: '', f: 0, realm: -2, p: 0 };
+  let portalEl = null, portalOn = false;
+  const PF = [
+    ['すべて', () => true],
+    ['開いている', (i, o) => o.open],
+    ['未訪問', (i, o) => o.open && !o.seen],
+    ['★お気に入り', (i) => !!S().dimFav[i]],
+    ['まだ', (i, o) => !o.open],
+  ];
+  function dimInfo(i) {
+    const s = S(), m = DM.meta(i), ds = DM.peek(s, i), open = DM.isOpen(s, i);
+    const seen = i ? !!(ds && ds.seen) : (s.stats.gVisits || 0) > 0;
+    return { m, ds, open, seen, wave: (ds && ds.maxWave) || 1, stars: DM.stars(ds), kinds: ds ? Object.keys(ds.kat || {}).length : 0, tiers: i ? DM.ladTotal(ds) : 0, here: gdim() && DM.cur === i };
+  }
+  function portalBtn() {
+    const pb = $('#btn-portal');
+    if (!pb) return;
+    const ok = portalOpenable();
+    if (pb.hidden === ok) pb.hidden = !ok;
+    if (!ok) return;
+    let n = 0;
+    const s = S(), top = DM.frontier(s);
+    for (let i = 1; i <= top; i++) { const ds = DM.peek(s, i); if (!ds || !ds.seen) n++; }
+    const bd = pb.querySelector('.badge');
+    if (bd) { bd.hidden = !n; bd.textContent = n > 99 ? '99+' : String(n); }
+    pb.classList.toggle('pulse', n > 0);
+  }
+  function portalBuild() {
+    portalEl = document.createElement('div');
+    portalEl.id = 'portal';
+    portalEl.hidden = true;
+    portalEl.setAttribute('role', 'dialog');
+    portalEl.setAttribute('aria-label', '次元ポータル');
+    portalEl.innerHTML = `<div class="pt-back" data-x="1"></div><div class="pt-panel">
+      <div class="pt-head"><b>🌀 次元ポータル</b><button type="button" class="pt-x" data-x="1" aria-label="閉じる">✕</button></div>
+      <div class="pt-stats"></div>
+      <div class="pt-acts"><button type="button" class="btn primary pt-front">⏩ 最前線へ</button><button type="button" class="btn pt-rand">🎲 おまかせ</button><button type="button" class="btn pt-home">🌲 森へ</button></div>
+      <input class="pt-q" type="search" placeholder="名前・界・ルールで探す（例: 重力 / スライム / 闇夜）" aria-label="次元を探す">
+      <div class="pt-chips pt-f"></div>
+      <div class="pt-chips pt-r"></div>
+      <div class="pt-grid"></div>
+      <div class="pg-nav pt-nav"></div>
+    </div>`;
+    document.body.appendChild(portalEl);
+    portalEl.addEventListener('click', (e) => {
+      if (e.target.closest('[data-x]')) { portalClose(); return; }
+      const fav = e.target.closest('[data-fav]');
+      if (fav) { const i = +fav.dataset.fav, f = S().dimFav; if (f[i]) delete f[i]; else f[i] = 1; Sfx.buy(); portalRender(); return; }
+      const card = e.target.closest('[data-dim]');
+      if (card) { const i = +card.dataset.dim; if (DM.isOpen(S(), i)) travel('germ', i); else { Sfx.error(); card.classList.remove('shake'); void card.offsetWidth; card.classList.add('shake'); } return; }
+      const fb = e.target.closest('[data-pf]');
+      if (fb) { PS.f = +fb.dataset.pf; PS.p = 0; portalRender(); Sfx.buy(); return; }
+      const rb = e.target.closest('[data-pr]');
+      if (rb) { PS.realm = +rb.dataset.pr; PS.p = 0; portalRender(); Sfx.buy(); return; }
+      const nb = e.target.closest('[data-d]');
+      if (nb && nb.closest('.pt-nav')) { PS.p += +nb.dataset.d; portalRender(); Sfx.buy(); return; }
+      if (e.target.closest('.pt-front')) { travel('germ', DM.frontier(S())); return; }
+      if (e.target.closest('.pt-rand')) { const top = DM.frontier(S()); travel('germ', Math.floor(Math.random() * (top + 1))); return; }
+      if (e.target.closest('.pt-home')) { if (gdim()) travel('forest'); else portalClose(); }
+    });
+    const q = portalEl.querySelector('.pt-q');
+    q.addEventListener('input', () => { PS.q = q.value.trim(); PS.p = 0; portalRender(); });
+    q.addEventListener('keydown', (e) => { if (e.key === 'Escape') portalClose(); });
+  }
+  function portalOpen() {
+    if (!portalOpenable() || travelBusy) return;
+    if (!portalEl) portalBuild();
+    _.closeDrawer();
+    portalOn = true;
+    portalEl.hidden = false;
+    _.overlayBusy = true;
+    requestAnimationFrame(() => portalEl.classList.add('on'));
+    // 開いたら今いる次元のページへ
+    PS.p = -1;
+    portalRender();
+    Sfx.dimWarp(true);
+  }
+  function portalClose() {
+    if (!portalOn) return;
+    portalOn = false;
+    _.overlayBusy = false;
+    portalEl.classList.remove('on');
+    setTimeout(() => { if (!portalOn) portalEl.hidden = true; }, 220);
+  }
+  function portalRender() {
+    if (!portalEl) return;
+    const s = S(), tot = DM.totals(s, true), top = DM.frontier(s);
+    portalEl.querySelector('.pt-stats').innerHTML =
+      `<span>開いた次元 <b>${tot.open}/${DM.N}</b></span><span>★ <b>${fmt(tot.stars)}</b></span><span>武器 <b>${fmt(tot.kinds)}</b>種</span><span>段位 <b>${fmt(tot.tiers)}</b></span>` +
+      `<span class="pt-pow">次元の力 <b>×${fmt(tot.power)}</b><small>（森には ×${fmt(tot.forest)}）</small></span>`;
+    const fb = portalEl.querySelector('.pt-f');
+    fb.innerHTML = PF.map(([nm], i) => `<button type="button" class="pg-chip${PS.f === i ? ' on' : ''}" data-pf="${i}">${nm}</button>`).join('');
+    const rr = portalEl.querySelector('.pt-r');
+    const realmCnt = (ri) => { let o = 0; for (let i = 1 + ri * 10; i < 11 + ri * 10; i++) if (i <= top) o++; return o; };
+    rr.innerHTML = `<button type="button" class="pg-chip${PS.realm === -2 ? ' on' : ''}" data-pr="-2">全部の界</button><button type="button" class="pg-chip${PS.realm === -1 ? ' on' : ''}" data-pr="-1">🧫 菌</button>` +
+      DM.REALMS.map((R, ri) => `<button type="button" class="pg-chip${PS.realm === ri ? ' on' : ''}" data-pr="${ri}">${R.icon} ${R.name.replace(/界$/, '')} <small>${realmCnt(ri)}/10</small></button>`).join('');
+    const q = PS.q.toLowerCase();
+    const list = [];
+    for (let i = 0; i < DM.N; i++) {
+      const o = dimInfo(i), m = o.m, R = DM.realmOf(m), gm = DM.GIM[m.gim];
+      if (PS.realm !== -2 && m.realm !== PS.realm) continue;
+      if (!PF[PS.f][1](i, o)) continue;
+      if (q) { const hay = `${m.name} ${R ? R.name + R.noun + R.cur + R.wpn : '菌 DNA 刀'} ${gm.name} ${gm.desc}`.toLowerCase(); if (hay.indexOf(q) < 0) continue; }
+      list.push(o);
+    }
+    const per = window.innerWidth < 640 ? 12 : 24;
+    const pages = Math.max(1, Math.ceil(list.length / per));
+    if (PS.p < 0) { const k = list.findIndex((o) => o.m.i === (gdim() ? DM.cur : top)); PS.p = k >= 0 ? Math.floor(k / per) : 0; }
+    PS.p = Math.max(0, Math.min(pages - 1, PS.p));
+    const grid = portalEl.querySelector('.pt-grid');
+    grid.innerHTML = list.slice(PS.p * per, PS.p * per + per).map((o) => {
+      const m = o.m, i = m.i, R = DM.realmOf(m), gm = DM.GIM[m.gim], fav = !!s.dimFav[i];
+      const next = !o.open && i === top + 1;
+      const lock = i ? `前の次元「${DM.meta(i - 1).name}」でウェーブ${DM.unlockW(i - 1)}` : `転生${GD.CFG.UNLOCK_PRESTIGE}回で開く`;
+      const prevW = i ? DM.peek(s, i - 1) : null;
+      const prog = next && prevW ? `あとウェーブ${Math.max(0, DM.unlockW(i - 1) - (prevW.maxWave || 1))}` : '';
+      const hue = m.hue + (m.realm >= 0 ? m.realm * 17 : 120);
+      return `<div class="pt-card${o.open ? '' : ' locked'}${o.here ? ' here' : ''}${next ? ' next' : ''}" style="--h:${hue}" data-dim="${i}" role="button" tabindex="0" aria-label="${_.esc(m.name)}${o.open ? '' : '（まだ開いていない）'}">
+        <span class="pc-ico">${o.open ? m.icon : '🔒'}</span>
+        <span class="pc-no">#${i}</span>
+        <b class="pc-n">${o.open || next ? _.esc(m.name) : '？？？の次元'}</b>
+        <span class="pc-g">${R ? R.name : '原初'} ・ ${gm.icon}${gm.name}</span>
+        ${o.open ? `<span class="pc-s">W${o.wave} ・ ★${o.stars} ・ ⚔️${o.kinds}${i ? ` ・ 🏅${o.tiers}` : ''}</span>` : `<span class="pc-s">${next ? '🔓 ' + prog : _.esc(lock)}</span>`}
+        ${o.here ? '<em class="pc-here">現在地</em>' : o.open && !o.seen ? '<em class="pc-new">NEW!</em>' : ''}
+        <button type="button" class="pc-fav${fav ? ' on' : ''}" data-fav="${i}" aria-label="お気に入り">${fav ? '★' : '☆'}</button>
+      </div>`;
+    }).join('') || '<p class="muted">見つからなかった</p>';
+    portalEl.querySelector('.pt-nav').innerHTML = `<button type="button" class="pg-b" data-d="-1" ${PS.p <= 0 ? 'disabled' : ''}>◀</button><span>${PS.p + 1} / ${pages}ページ ・ ${list.length}件</span><button type="button" class="pg-b" data-d="1" ${PS.p >= pages - 1 ? 'disabled' : ''}>▶</button>`;
+  }
+  // 新しい次元が開いた
+  function onUnlock(d) {
+    const m = d.meta, gm = DM.GIM[m.gim], R = DM.realmOf(m);
+    Sfx.rankUp(7);
+    Sfx.vibrate([30, 40, 30, 40, 80]);
+    FX.confetti(180);
+    UI.banner('🌀 新しい次元が開いた!!', `${m.icon} ${m.name}（${R.name}）・ ${gm.icon}${gm.name}`, 'win');
+    _.toast('🌀', `NEW! ${m.name}`, `右上の 🌀 から行ける ・ ${gm.desc}`, 'gold');
+    portalBtn();
+    if (d.i === 1 && !UI.blocked()) {
+      setTimeout(() => _.modal({
+        title: '🌀 次元ポータルが開いた！',
+        body: `<p>菌斬り次元でウェーブ${DM.unlockW(0)}に着いたので、次の次元「<b>${_.esc(m.name)}</b>」が開いた。</p><ul class="g-tut"><li>全部で <b>${DM.N}</b> の次元がある（21の界 × 10 ＋ 菌斬り次元）</li><li>界ごとに<b>敵・武器の形・通貨・仲間・BGM</b>が違い、次元ごとに<b>ルール</b>（重力・群体・闇夜・雷雲・鏡写…）が違う</li><li>どの次元でもウェーブ${DM.UNLOCK_W}（奥の次元ほど少し深く、最大40）で次の次元が開く。★（ボス撃破）・武器・段位が<b>次元の力</b>になり、全部の次元と森が強くなる</li><li>仲間はどの次元でも、離れている間も稼ぎ続ける</li></ul><p class="muted">右上の 🌀 でいつでもポータルを開ける。</p>`,
+        buttons: [{ text: 'いますぐ行く', cls: 'primary', onClick: () => setTimeout(() => travel('germ', 1), 260) }, { text: 'あとで' }],
+      }), 1400);
+    }
+  }
+  // 段位（はしご）の通知はまとめて出す
+  let ladAcc = null;
+  function onLadder(d) {
+    if (!ladAcc) { ladAcc = { gain: 0, gems: 0, top: null }; setTimeout(() => { const a = ladAcc; ladAcc = null; if (!a || !gdim()) return; Sfx.ach(); _.toast('🏅', `段位 +${a.gain}`, `${a.top.l.icon} ${a.top.l.name} ${a.top.to}/${a.top.l.n}段${a.gems ? ` ・ 💎+${a.gems}` : ''}`, a.gain >= 20 ? 'gold' : ''); }, 1200); }
+    ladAcc.gain += d.gain;
+    ladAcc.gems += d.gems || 0;
+    for (const u of d.ups) if (!ladAcc.top || u.to - u.from > ladAcc.top.to - ladAcc.top.from) ladAcc.top = u;
+  }
   function onDim(d) {
     if (d.to === 'forest') { const hud = $('#hud'); hud.dataset.rank = String(G.T.rank); hud.style.setProperty('--rkc', D.STYLE.RANKS[G.T.rank].col); }
-    if (d.to === 'germ' && d.first) setTimeout(tutorial, 900);
+    if (d.to === 'germ' && d.first && !(d.i > 0)) setTimeout(tutorial, 900);
+    if (d.to === 'germ' && HAS_DM && d.i > 0) {
+      // 次元に入ったら: 名前とルール（初めてなら武器・通貨・仲間も）
+      const m = DM.meta(d.i), gm = DM.GIM[m.gim], lb = DM.LB;
+      setTimeout(() => {
+        UI.banner(`${m.icon} ${m.name}`, `${gm.icon} ルール「${gm.name}」 ${gm.desc}`, 'stage');
+        if (d.first) _.toast(lb.icon, `${DM.realmOf(m).name}へようこそ`, `武器: ${lb.wpn} ・ 通貨: ${lb.curIcon}${lb.cur} ・ 仲間: ${lb.ally} ・ ウェーブ${DM.unlockW(d.i)}で次の次元`, 'gold');
+      }, 500);
+    }
+    portalBtn();
     if (d.to === 'forest' && d.away) {
       const a = d.away;
       const r = a.rolls;
@@ -79,22 +277,31 @@ const GUI = (() => {
   }
 
   // ------------------------------------------------------------- HUD
+  let pbT = 0;
   function frame(dt) {
     const open = G.germOpen();
+    pbT -= dt;
+    if (pbT <= 0) { pbT = 1; portalBtn(); }
     const bd = $('#btn-dim');
     if (bd && bd.hidden === open) bd.hidden = !open;
     if (bd) bd.classList.toggle('pulse', open && !S().stats.gVisits);
     if (!gdim()) return;
-    const g = S().germ, T = GM.T, st = GM.stats();
+    const g = G.dstate(), T = GM.T, st = GM.stats();
     const k = Math.min(1, dt * 9);
     disp.dna += (g.dna - disp.dna) * k;
     if (Math.abs(g.dna - disp.dna) < Math.max(1, g.dna * 0.0005)) disp.dna = g.dna;
     _.setText('dna', fmt(disp.dna));
-    _.setText('dna-rate', `+${fmt(Math.max(GM.dnaRate || 0, GM.cellRate()))}/秒 ・ 免疫 ${fmt(st.cellDps)}`);
-    _.setText('factor', fmt(g.factor));
+    _.setText('dna-rate', `+${fmt(Math.max(GM.dnaRate || 0, GM.cellRate()))}/秒 ・ ${HAS_DM && DM.cur ? '仲間' : '免疫'} ${fmt(st.cellDps)}`);
+    _.setText('factor', fmt(S().germ.factor));
     // ウェーブ
     _.setText('wave-n', String(g.wave));
     _.setText('gbiome', Micro.ok ? Micro.biomeName() : GD.BIOMES[0].name);
+    if (HAS_DM) {
+      const m = DM.meta(DM.cur), gm = DM.GIM[m.gim];
+      _.setText('gdim-name', `${m.icon} ${m.name}${DM.cur ? ` ・ ${gm.icon}${gm.name}` : ''}`);
+      const uw = DM.unlockW(DM.cur);
+      _.setText('gdim-next', DM.cur + 1 < DM.N && (g.maxWave || 1) < uw ? `🌀 W${uw}で次の次元` : '');
+    }
     const boss = T.boss;
     _.setCls('wave-box', 'boss', !!boss || T.pendingBoss);
     if (boss) {
@@ -110,7 +317,7 @@ const GUI = (() => {
       _.setScale('wave-fill', 0);
     } else {
       _.setCls('gboss-timer', 'show', false);
-      _.setText('gboss-name', T.pendingBoss ? '⚠️ 巨大病原体 接近中…' : '');
+      _.setText('gboss-name', T.pendingBoss ? LL('⚠️ 巨大病原体 接近中…') : '');
       const need = GD.CFG.WAVE_KILLS;
       _.setScale('wave-fill', g.farming ? 1 : g.wkills / need);
       _.setText('wave-txt', g.farming ? '修行中（ボスに再挑戦できる）' : `${g.wkills}/${need}体`);
@@ -144,7 +351,7 @@ const GUI = (() => {
     _.setScale('grank-g', (T.style - lo) / Math.max(1, hi - lo));
     _.setText('grank-l', RK[rk].id);
     _.setText('grank-w', RK[rk].word);
-    _.setText('grank-m', rk ? `DNA×${RK[rk].mult}` : '');
+    _.setText('grank-m', rk ? LL(`DNA×${RK[rk].mult}`) : '');
     _.setCls('grank-box', 'show', T.style > 1.5 || rk > 0);
     const gb = $('#grank-box');
     if (gb && gb.dataset.r !== String(rk)) { gb.dataset.r = String(rk); gb.style.setProperty('--rk', RK[rk].col); const hud = $('#hud'); hud.dataset.rank = String(rk); hud.style.setProperty('--rkc', RK[rk].col); }
@@ -161,7 +368,7 @@ const GUI = (() => {
   function badges(setBadge) {
     setBadge('dex', dexStats().pending || 0);
     if (!G.germOpen()) return;
-    const g = S().germ;
+    const g = G.dstate();
     let c = 0;
     for (const x of visibleCells()) if (GM.cellCost(x, g.cells[x.id] || 0, 1) <= g.dna) c++;
     setBadge('gcells', c);
@@ -169,7 +376,7 @@ const GUI = (() => {
     for (const x of GD.UPGRADES) if (!GM.upgMaxed(x) && GM.upgCost(x) <= g.dna) u++;
     setBadge('gupg', u);
     let m = 0;
-    for (const x of GD.MUTATIONS) if (!GM.mutMaxed(x) && GM.mutCost(x) <= g.factor) m++;
+    for (const x of GD.MUTATIONS) if (!GM.mutMaxed(x) && GM.mutCost(x) <= S().germ.factor) m++;
     setBadge('gmut', m);
   }
 
@@ -195,7 +402,7 @@ const GUI = (() => {
     }
   }
   function bestCell() {
-    const g = S().germ;
+    const g = G.dstate();
     let best = null;
     for (const c of visibleCells()) {
       const have = g.cells[c.id] || 0;
@@ -211,27 +418,27 @@ const GUI = (() => {
     if (!force && dockT < 0.15) return;
     dockT = 0;
     if (!dockSlots.length) return;
-    const g = S().germ;
+    const g = G.dstate();
     const set = (slot, kind, id, icon, name, sub, cost) => {
       slot.kind = kind; slot.id = id;
       const b = slot.b;
       b.querySelector('.dk-i').textContent = icon;
       b.querySelector('.dk-n').textContent = name;
       b.querySelector('.dk-s').textContent = sub;
-      b.querySelector('.dk-c').textContent = '🧬' + fmt(cost);
+      b.querySelector('.dk-c').textContent = CI() + fmt(cost);
       b.classList.toggle('can', cost <= g.dna);
     };
     const sharp = GM.UP.sharp;
-    set(dockSlots[0], 'upg', 'sharp', sharp.icon, `切れ味 Lv${GM.lv('sharp')}`, '刀のダメージ', GM.upgCost(sharp));
+    set(dockSlots[0], 'upg', 'sharp', sharp.icon, `切れ味 Lv${GM.lv('sharp')}`, LL('刀のダメージ'), GM.upgCost(sharp));
     const bc = bestCell();
-    if (bc) set(dockSlots[1], 'cell', bc.c.id, bc.c.icon, `${bc.c.name} ×${g.cells[bc.c.id] || 0}`, '免疫細胞', bc.cost);
+    if (bc) set(dockSlots[1], 'cell', bc.c.id, bc.c.icon, `${bc.c.name} ×${g.cells[bc.c.id] || 0}`, LL('免疫細胞'), bc.cost);
     const an = GM.UP.analyze;
-    set(dockSlots[2], 'upg', 'analyze', an.icon, `DNA解析 Lv${GM.lv('analyze')}`, 'DNA ×1.15', GM.upgCost(an));
+    set(dockSlots[2], 'upg', 'analyze', an.icon, LL(`DNA解析 Lv${GM.lv('analyze')}`), LL('DNA ×1.15'), GM.upgCost(an));
   }
 
   // ------------------------------------------------------------- タブ: 免疫細胞
   function visibleCells() {
-    const g = S().germ;
+    const g = G.dstate();
     let maxIdx = -1;
     GD.CELLS.forEach((c, i) => { if ((g.cells[c.id] || 0) > 0) maxIdx = i; });
     return GD.CELLS.slice(0, Math.min(GD.CELLS.length, maxIdx + 3));
@@ -239,11 +446,11 @@ const GUI = (() => {
   function nextMs(n) { for (const [c, x] of GD.MILESTONES) if (n < c) return { at: c, mult: x }; return null; }
   const TabCells = {
     build(root) {
-      const s = S(), g = s.germ;
+      const s = S(), g = G.dstate();
       root.innerHTML = '';
       const head = _.el('div', 'tab-head');
       const amts = [1, 10, 100, 'max'];
-      head.innerHTML = `<div class="seg" role="group" aria-label="まとめ買い">${amts.map((a) => `<button type="button" data-amt="${a}" class="${s.settings.buyAmt === a ? 'on' : ''}">${a === 'max' ? 'MAX' : '×' + a}</button>`).join('')}</div><div class="tab-stat">免疫の攻撃 <b class="c-dps">0</b>/秒</div>`;
+      head.innerHTML = `<div class="seg" role="group" aria-label="まとめ買い">${amts.map((a) => `<button type="button" data-amt="${a}" class="${s.settings.buyAmt === a ? 'on' : ''}">${a === 'max' ? 'MAX' : '×' + a}</button>`).join('')}</div><div class="tab-stat">${LL('免疫の攻撃')} <b class="c-dps">0</b>/秒</div>`;
       head.querySelector('.seg').addEventListener('click', (e) => {
         const b = e.target.closest('[data-amt]');
         if (!b) return;
@@ -253,7 +460,7 @@ const GUI = (() => {
         this.update();
       });
       root.appendChild(head);
-      root.appendChild(_.el('p', 'muted small tab-note', '免疫細胞は画面の端から飛んできて菌を食べる。森にいる間も、離れている間もDNAを稼ぐ。'));
+      root.appendChild(_.el('p', 'muted small tab-note', LL('免疫細胞は画面の端から飛んできて菌を食べる。森にいる間も、離れている間も、ほかの次元にいる間もDNAを稼ぐ。')));
       const list = _.el('div', 'list');
       this.rows = {};
       this.vis = visibleCells();
@@ -276,7 +483,7 @@ const GUI = (() => {
       void g;
     },
     update() {
-      const s = S(), g = s.germ, st = GM.stats();
+      const s = S(), g = G.dstate(), st = GM.stats();
       this.dps.textContent = fmt(st.cellDps);
       if (visibleCells().length !== this.vis.length) { _.rebuild(); return; }
       for (const c of this.vis) {
@@ -292,7 +499,7 @@ const GUI = (() => {
         r.ms.style.transform = `scaleX(${nm ? U.clamp(have / nm.at, 0, 1) : 1})`;
         r.msT.textContent = nm ? `${nm.at}体で ×${nm.mult}` : 'MAX';
         r.bn.textContent = `×${fmt(n)}`;
-        r.bc.textContent = '🧬' + fmt(cost);
+        r.bc.textContent = CI() + fmt(cost);
         r.btn.classList.toggle('can', cost <= g.dna);
       }
     },
@@ -302,14 +509,14 @@ const GUI = (() => {
   const TabUpg = {
     build(root) {
       root.innerHTML = '';
-      root.appendChild(_.el('div', 'tab-head', '<div class="tab-stat">刀のダメージ <b class="u-dmg">0</b></div><div class="tab-stat">DNA倍率 <b class="u-dna">×1</b></div>'));
+      root.appendChild(_.el('div', 'tab-head', LL('<div class="tab-stat">刀のダメージ <b class="u-dmg">0</b></div><div class="tab-stat">DNA倍率 <b class="u-dna">×1</b></div>')));
       this.rows = {};
       for (const [cat, title] of GD.UPG_CATS) {
         root.appendChild(_.el('div', 'sec-title', title));
         const list = _.el('div', 'list');
         for (const u of GD.UPGRADES.filter((x) => x.cat === cat)) {
           const row = _.el('div', 'row upg');
-          row.innerHTML = `<div class="r-ico"><span class="emo">${u.icon}</span><b class="r-cnt">0</b></div><div class="r-main"><div class="r-name">${_.esc(u.name)}</div><div class="r-desc">${_.esc(u.desc)}</div><div class="r-sub"></div></div><button type="button" class="buy"><span class="b-n">強化</span><b class="b-c">0</b></button>`;
+          row.innerHTML = `<div class="r-ico"><span class="emo">${u.icon}</span><b class="r-cnt">0</b></div><div class="r-main"><div class="r-name">${_.esc(LL(u.name))}</div><div class="r-desc">${_.esc(u.desc)}</div><div class="r-sub"></div></div><button type="button" class="buy"><span class="b-n">強化</span><b class="b-c">0</b></button>`;
           const btn = row.querySelector('.buy');
           _.holdButton(btn, () => {
             const ok = GM.buyUpg(u.id);
@@ -326,7 +533,7 @@ const GUI = (() => {
       this.dna = root.querySelector('.u-dna');
     },
     update() {
-      const g = S().germ, st = GM.stats();
+      const g = G.dstate(), st = GM.stats();
       this.dmg.textContent = fmt(st.kdmg);
       this.dna.textContent = `×${fmt(st.dnaMult)}`;
       for (const u of GD.UPGRADES) {
@@ -334,9 +541,9 @@ const GUI = (() => {
         const l = GM.lv(u.id);
         const maxed = GM.upgMaxed(u);
         r.cnt.textContent = String(l);
-        r.sub.textContent = upgNow(u.id, st) + (u.max ? ` ・ Lv${l}/${u.max}` : '');
+        r.sub.textContent = LL(upgNow(u.id, st)) + (u.max ? ` ・ Lv${l}/${u.max}` : '');
         const c = GM.upgCost(u);
-        r.bc.textContent = maxed ? 'MAX' : '🧬' + fmt(c);
+        r.bc.textContent = maxed ? 'MAX' : CI() + fmt(c);
         r.bn.textContent = maxed ? '完了' : '強化';
         r.btn.classList.toggle('can', !maxed && c <= g.dna);
         r.btn.disabled = maxed;
@@ -374,7 +581,7 @@ const GUI = (() => {
   // ------------------------------------------------------------- タブ: 刀ガチャ・刀
   const kspText = (k, lv) => (k.sp ? Object.keys(k.sp).map((x) => GD.KSP_TEXT[x](k.sp[x] * (1 + 0.2 * (Math.max(1, lv) - 1)))).join(' / ') : 'なし');
   function katDetail(k) {
-    const g = S().germ;
+    const g = G.dstate();
     const n = g.kat[k.id] || 0, lv = G.lvOf(n), R = D.RARITY[k.r];
     const ou = GD.OUGI[k.id], tier = GD.OUGI_TIER[k.r];
     const body = _.el('div', 'axe-detail');
@@ -382,36 +589,36 @@ const GUI = (() => {
       `<dl><dt>レア</dt><dd><span class="rb r-${k.r}">${_.RLAB(k.r)}</span> ${_.oneIn(R.p)}</dd>` +
       `<dt>Lv</dt><dd>${n ? `Lv${lv}（${fmt(n)}本・次のLvまで あと${fmt(Math.pow(2, lv) - n)}本）` : '未所持'}</dd>` +
       `<dt>装備時の斬撃</dt><dd>×${(R.tap * (1 + 0.1 * (Math.max(1, lv) - 1))).toFixed(2)}</dd><dt>装備時特性</dt><dd>${_.esc(kspText(k, lv))}</dd>` +
-      (ou ? `<dt>奥義</dt><dd>「${_.esc(ou.name)}」 ${tier.need}ゲージで画面の菌を一斉に斬る（×${tier.mult}）</dd>` : '') +
-      `<dt>所持ボーナス</dt><dd>刀ダメージ +${(R.pas * 0.5 * Math.max(1, lv) * 100).toFixed(1)}% ・ 森の全ダメージ +${Math.round(GD.CFG.KAT_SYNERGY * 100)}%</dd></dl>`;
+      (ou ? `<dt>奥義</dt><dd>「${_.esc(ou.name)}」 ${tier.need}ゲージで画面の${LL('菌')}を一斉に斬る（×${tier.mult}）</dd>` : '') +
+      `<dt>所持ボーナス</dt><dd>${LL('刀')}ダメージ +${(R.pas * 0.5 * Math.max(1, lv) * 100).toFixed(1)}% ・ ${HAS_DM && DM.cur ? '次元の力が少し上がる' : `森の全ダメージ +${Math.round(GD.CFG.KAT_SYNERGY * 100)}%`}</dd></dl>`;
     const isEq = g.keq === k.id;
     _.modal({ title: k.name, body, cls: 'r-' + k.r, buttons: [{ text: isEq ? '装備中' : '装備する', cls: 'primary', disabled: isEq || !n, onClick: () => { GM.equipK(k.id); _.rebuild(); } }, { text: '閉じる' }] });
   }
   const TabKat = {
     build(root) {
-      const s = S(), g = s.germ;
+      const s = S(), g = G.dstate();
       root.innerHTML = '';
       const st = GM.stats();
       const eq = st.eq;
       if (eq) {
         const ou = GD.OUGI[eq.id];
-        const hero = _.el('button', `kat-hero r-${eq.r}`, `<span class="kh-img">${FX.axeIcon(eq, 96)}</span><span class="kh-t"><small>装備中の刀</small><b>${_.esc(eq.name)}</b><span class="rb r-${eq.r}">${_.RLAB(eq.r)}</span>${ou ? `<em>奥義「${_.esc(ou.name)}」</em>` : '<em class="muted">SSR以上の刀には奥義がある</em>'}</span>`);
+        const hero = _.el('button', `kat-hero r-${eq.r}`, `<span class="kh-img">${FX.axeIcon(eq, 96)}</span><span class="kh-t"><small>${LL('装備中の刀')}</small><b>${_.esc(eq.name)}</b><span class="rb r-${eq.r}">${_.RLAB(eq.r)}</span>${ou ? `<em>奥義「${_.esc(ou.name)}」</em>` : `<em class="muted">${LL('SSR以上の刀には奥義がある')}</em>`}</span>`);
         hero.type = 'button';
         hero.addEventListener('click', () => katDetail(eq));
         root.appendChild(hero);
       }
       const auto = _.el('div', 'auto-card');
-      auto.innerHTML = `<div class="ac-h"><b>⚔️ 刀ガチャ（自動）</b><span class="ac-live">● 回転中</span></div>` +
+      auto.innerHTML = `<div class="ac-h"><b>⚔️ ${LL('刀ガチャ')}（自動）</b><span class="ac-live">● 回転中</span></div>` +
         `<div class="ac-stats"><div><small>毎秒</small><b class="ac-r">0</b><small>回</small></div><div><small>幸運</small><b class="ac-luck">×1</b></div><div><small>総回転</small><b class="ac-total">0</b></div></div>` +
-        `<div class="ac-glvrow"><span>刀ガチャLv <b class="ac-glv">1</b></span><div class="ac-gbarw"><i class="ac-gbar"></i></div><small class="ac-gxp"></small></div>` +
+        `<div class="ac-glvrow"><span>${LL('刀ガチャ')}Lv <b class="ac-glv">1</b></span><div class="ac-gbarw"><i class="ac-gbar"></i></div><small class="ac-gxp"></small></div>` +
         `<p class="ac-boost"></p><div class="ac-feed"></div>`;
       root.appendChild(auto);
-      root.appendChild(_.el('p', 'muted small tab-note', '菌斬り次元にいる間ずっと回る。連斬が続くほど回転と幸運が上がり、大発生中は回転×2・幸運×1.5。'));
+      root.appendChild(_.el('p', 'muted small tab-note', LL('菌斬り次元にいる間ずっと回る。連斬が続くほど回転と幸運が上がり、大発生中は回転×2・幸運×1.5。')));
       const tbl = _.el('div', 'rate-tbl');
       tbl.innerHTML = '<div class="rt-h"><span>レア</span><span>基本</span><span>いま</span></div>' + D.RARITY_ORDER.slice().reverse().map((k) => `<div class="rt-r"><span class="rb r-${k}">${_.RLAB(k)}</span><span>${_.oneIn(D.RARITY[k].p)}</span><b class="now-${k}"></b></div>`).join('');
       root.appendChild(tbl);
       const owned = Object.keys(g.kat).length;
-      root.appendChild(_.el('div', 'sec-title', `刀コレクション <b>${owned}/${GD.KATANAS.length}</b><span>1種類ごとに森の全ダメージ +${Math.round(GD.CFG.KAT_SYNERGY * 100)}% ・ 所持ボーナス 刀 +${fmt(Math.round(st.pas * 100))}%</span>`));
+      root.appendChild(_.el('div', 'sec-title', `${LL('刀コレクション')} <b>${owned}/${GD.KATANAS.length}</b><span>${HAS_DM && DM.cur ? '1種類ごとに次元の力 +0.2%' : `1種類ごとに森の全ダメージ +${Math.round(GD.CFG.KAT_SYNERGY * 100)}%`} ・ 所持ボーナス ${LL('刀')} +${fmt(Math.round(st.pas * 100))}%</span>`));
       const order = D.RARITY_ORDER.slice().reverse();
       const RI = G.RANK;
       _.paged(root, 'kat', GD.KATANAS.slice().sort((a, b) => order.indexOf(a.r) - order.indexOf(b.r)), 48, [['すべて', () => true], ['持っている', (k) => g.kat[k.id]], ['未入手', (k) => !g.kat[k.id]], ['奥義つき', (k) => !!GD.OUGI[k.id]], ['MYTH以上', (k) => RI[k.r] >= 7]], (k) => {
@@ -425,7 +632,7 @@ const GUI = (() => {
       Object.assign(this, { aR: auto.querySelector('.ac-r'), aLuck: auto.querySelector('.ac-luck'), aTotal: auto.querySelector('.ac-total'), aGlv: auto.querySelector('.ac-glv'), aGbar: auto.querySelector('.ac-gbar'), aGxp: auto.querySelector('.ac-gxp'), aBoost: auto.querySelector('.ac-boost'), aFeed: auto.querySelector('.ac-feed'), tbl, feedN: -1 });
     },
     update() {
-      const s = S(), g = s.germ, T = GM.T;
+      const s = S(), g = G.dstate(), T = GM.T;
       const rate = GM.kRollRate(), luck = GM.kLuckNow();
       this.aR.textContent = rate < 100 ? rate.toFixed(1) : fmt(rate);
       this.aLuck.textContent = `×${luck.toFixed(2)}`;
@@ -458,8 +665,8 @@ const GUI = (() => {
   const TabMut = {
     build(root) {
       root.innerHTML = '';
-      root.appendChild(_.el('div', 'tab-head', '<div class="tab-stat">🧪 変異因子 <b class="m-f">0</b></div><div class="tab-stat">ボス病原体を倒すと手に入る</div>'));
-      root.appendChild(_.el('p', 'muted small tab-note', '変異は転生してもなくならない。🌿の印は森、🗡️の印は菌斬り次元、🌈は両方に効く。'));
+      root.appendChild(_.el('div', 'tab-head', '<div class="tab-stat">🧪 変異因子 <b class="m-f">0</b></div><div class="tab-stat">どの次元でもボスを倒すと手に入る</div>'));
+      root.appendChild(_.el('p', 'muted small tab-note', '変異は転生してもなくならない。🌿の印は森、🗡️の印は斬る次元（全部の次元）、🌈は両方に効く。'));
       const list = _.el('div', 'list');
       this.rows = {};
       for (const m of GD.MUTATIONS) {
@@ -479,7 +686,7 @@ const GUI = (() => {
       this.f = root.querySelector('.m-f');
     },
     update() {
-      const g = S().germ;
+      const g = S().germ; // 変異因子と変異は全部の次元で共通
       this.f.textContent = fmt(g.factor);
       for (const m of GD.MUTATIONS) {
         const r = this.rows[m.id];
@@ -497,23 +704,46 @@ const GUI = (() => {
   // ------------------------------------------------------------- タブ: 次元（記録と帰り道）
   const TabDim = {
     build(root) {
-      const s = S(), st = s.stats, g = s.germ, gst = GM.stats(), fst = G.stats();
+      const s = S(), st = GM.ST(), gst = GM.stats(), fst = G.stats(), lb = LB();
       root.innerHTML = '';
+      const m = HAS_DM ? DM.meta(DM.cur) : null, gm = m ? DM.GIM[m.gim] : null;
       const box = _.el('div', 'prestige-box dim-box');
-      box.innerHTML = `<div class="pb-ring" aria-hidden="true"></div><div class="pb-t">🌲 森へ帰る</div><p>森の木こりはずっと働いている。菌斬り次元の免疫細胞も、森にいる間にDNAを稼ぐ。</p><button type="button" class="btn primary big">森へ帰る</button>`;
-      box.querySelector('button').addEventListener('click', () => travel('forest'));
+      box.innerHTML = `<div class="pb-ring" aria-hidden="true"></div><div class="pb-t">${lb.icon} ${_.esc(lb.dim)}</div>` +
+        (m && DM.cur ? `<p>${_.esc(DM.realmOf(m).name)} ・ ルール ${gm.icon}${gm.name}: ${_.esc(gm.desc)}</p>` : `<p>森の木こりはずっと働いている。${LL('免疫細胞')}も、森やほかの次元にいる間に${lb.cur}を稼ぐ。</p>`) +
+        `<div class="dim-btns">${portalOpenable() ? '<button type="button" class="btn primary big d-portal">🌀 次元ポータル</button>' : ''}<button type="button" class="btn big d-home">🌲 森へ帰る</button></div>`;
+      box.querySelector('.d-home').addEventListener('click', () => travel('forest'));
+      const pb = box.querySelector('.d-portal');
+      if (pb) pb.addEventListener('click', portalOpen);
       root.appendChild(box);
-      root.appendChild(_.el('div', 'sec-title', '2つの世界のつながり'));
+      root.appendChild(_.el('div', 'sec-title', '世界のつながり'));
+      const tot = HAS_DM ? DM.totals(s, true) : null;
+      const links = _.el('div', 'dim-links');
+      links.innerHTML = [
+        ...(tot ? [['🌀 次元の力', `×${fmt(tot.power)}`, `★${fmt(tot.stars)} ・ 武器${fmt(tot.kinds)}種 ・ 段位${fmt(tot.tiers)}`], ['🌲 次元の力 → 森', `×${fmt(tot.forest)}`, '次元の力の √ が森に効く']] : []),
+        ['🪓 森の斧 → 斬る次元', `×${gst.axeSyn.toFixed(2)}`, '斧1種類ごとに +1%'], ['⚔️ 菌斬り次元の刀 → 森', `×${fst.katMult.toFixed(2)}`, '刀1種類ごとに +1%'],
+        ['🧚 精霊 → 斬る次元', `×${gst.spiritK.toFixed(2)}`, '精霊の数の対数で効く'], ['🏆 実績 → 全部', `×${fst.achMult.toFixed(2)}`, ''],
+      ].map(([k, v, n]) => `<div class="dl-i"><span>${k}</span><b>${v}</b>${n ? `<small>${n}</small>` : ''}</div>`).join('');
+      root.appendChild(links);
+      root.appendChild(_.el('div', 'sec-title', `${_.esc(lb.dim)}の記録`));
+      const g = G.dstate();
       root.appendChild(_.el('dl', 'records', [
-        ['森の斧の種類 → 刀', `×${gst.axeSyn.toFixed(2)}`], ['刀の種類 → 森', `×${fst.katMult.toFixed(2)}`], ['精霊 → 刀', `×${gst.spiritK.toFixed(2)}`], ['実績 → 両方', `×${fst.achMult.toFixed(2)}`],
+        ['最高ウェーブ', g.maxWave || 1], [`斬った${lb.noun}`, fmt(st.gKills)], ['最高の一閃', `${st.gBestIssen}体`], ['最大連斬', fmt(st.gMaxCombo)],
+        ['ボス撃破', fmt(st.gBosses)], ['大発生', fmt(st.gOutbreaks)], ['奥義', fmt(st.gOugi)], [`${lb.wpn}ガチャ`, fmt(st.gRolls) + '回'],
+        [`累計${lb.cur}`, fmt(st.gDnaAll)], ['滞在時間', U.fmtTime(st.gTime)],
       ].map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')));
-      root.appendChild(_.el('div', 'sec-title', '菌斬り次元の記録'));
-      root.appendChild(_.el('dl', 'records', [
-        ['最高ウェーブ', st.gBestWave], ['斬った菌', fmt(st.gKills)], ['最高の一閃', `${st.gBestIssen}体`], ['最大連斬', fmt(st.gMaxCombo)],
-        ['ボス撃破', fmt(st.gBosses)], ['大発生', fmt(st.gOutbreaks)], ['奥義', fmt(st.gOugi)], ['刀ガチャ', fmt(st.gRolls) + '回'],
-        ['累計DNA', fmt(st.gDnaAll)], ['滞在時間', U.fmtTime(st.gTime)],
-      ].map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')));
-      void g;
+      // 次元の段位（はしご）
+      if (HAS_DM && DM.cur) {
+        const lad = g.lad || {};
+        let done = 0;
+        for (const l of DM.LAD) done += lad[l.k] || 0;
+        root.appendChild(_.el('div', 'sec-title', `🏅 段位 <b>${fmt(done)}/${fmt(DM.LAD_N)}</b><span>3段ごとに💎+1・1段ごとに次元の力 +0.1%</span>`));
+        const list = _.el('div', 'lad-list');
+        list.innerHTML = DM.LAD.map((l) => {
+          const d = lad[l.k] || 0, nx = d < l.n ? l.th(d) : null;
+          return `<div class="lad${d >= l.n ? ' done' : ''}"><span class="lad-i">${l.icon}</span><b>${l.name}</b><small>${nx != null ? _.esc(l.txt(nx)) : 'コンプリート！'}</small><em>${d}/${l.n}</em><div class="dx-bar"><i style="transform:scaleX(${(d / l.n).toFixed(3)})"></i></div></div>`;
+        }).join('');
+        root.appendChild(list);
+      }
     },
     update() {},
   };
@@ -537,21 +767,39 @@ const GUI = (() => {
       ['🏆', '実績', Object.keys(s.ach).length, D.ACH.length],
     ];
     if (open) {
+      // 菌斬り次元の数は入れ替える前の中身（DM.BASE）で数える
+      const B = HAS_DM ? DM.BASE : GD;
       const g = s.germ, mw = g.maxWave || 1;
-      cats.push(['⚔️', '刀', Object.keys(g.kat).length, GD.KATANAS.length], ['🦠', '菌の株', Object.keys(g.dex || {}).length, GD.STRAINS.length],
-        ['🔬', 'ミクロの世界', Math.min(GD.BIOMES.length, Math.floor((mw - 1) / 10) + 1), GD.BIOMES.length], ['☣️', 'ボス病原体', Math.min(GD.BOSSES.length, Math.floor((mw - 1) / 10)), GD.BOSSES.length]);
+      cats.push(['⚔️', '刀', Object.keys(g.kat).length, B.KATANAS.length], ['🦠', '菌の株', Object.keys(g.dex || {}).length, B.STRAINS.length],
+        ['🔬', 'ミクロの世界', Math.min(B.BIOMES.length, Math.floor((mw - 1) / 10) + 1), B.BIOMES.length], ['☣️', 'ボス病原体', Math.min(B.BOSSES.length, Math.floor((mw - 1) / 10)), B.BOSSES.length]);
     }
     const pct = cats.reduce((a, c) => a + c[2] / c[3], 0) / cats.length;
     const steps = Math.floor(pct * 50);
-    return { cats, pct, steps, pending: Math.max(0, steps - (s.dexClaim || 0)) };
+    const pd = portalDex();
+    return { cats, pct, steps, pending: Math.max(0, steps - (s.dexClaim || 0)) + (pd ? pd.pending : 0), pd };
+  }
+  // 次元ポータルの図鑑（別のコンプ率。1%ごとに報酬）
+  function portalDex() {
+    if (!portalOpenable()) return null;
+    const s = S(), t = DM.totals(s), n = DM.N - 1;
+    const cats = [
+      ['🌀', '開いた次元', t.open, DM.N], ['⚔️', '全次元の武器', t.kinds, n * 440], ['📖', '全次元の敵の種類', t.dex, n * 140],
+      ['★', '全次元のボス', t.stars, DM.N * 110], ['🏅', '全次元の段位', t.tiers, n * DM.LAD_N],
+    ];
+    const pct = cats.reduce((a, c) => a + Math.min(1, c[2] / c[3]), 0) / cats.length;
+    const steps = Math.floor(pct * 100);
+    return { cats, pct, steps, pending: Math.max(0, steps - (s.dimDexClaim || 0)) };
   }
   function claimDex() {
     const s = S(), d = dexStats();
     if (d.pending <= 0) return;
     let gems = 0;
-    for (let i = 0; i < d.pending; i++) gems += 10 + 2 * ((s.dexClaim || 0) + i);
+    const p1 = Math.max(0, d.steps - (s.dexClaim || 0)), p2 = d.pd ? d.pd.pending : 0;
+    for (let i = 0; i < p1; i++) gems += 10 + 2 * ((s.dexClaim || 0) + i);
+    for (let i = 0; i < p2; i++) gems += 20 + 3 * ((s.dimDexClaim || 0) + i);
     G.gainGems(gems);
-    s.dexClaim = d.steps;
+    s.dexClaim = Math.max(s.dexClaim || 0, d.steps);
+    if (d.pd) s.dimDexClaim = Math.max(s.dimDexClaim || 0, d.pd.steps);
     Sfx.gachaUp(4);
     FX.confetti(120);
     const res = G.autoRoll(60 * d.pending, G.luckNow() * 2);
@@ -570,9 +818,16 @@ const GUI = (() => {
       const list = _.el('div', 'dex-cats');
       list.innerHTML = d.cats.map(([ic, nm, a, b]) => `<div class="dx-cat"><span>${ic} ${nm}</span><b>${fmt(a)}/${fmt(b)}</b><div class="dx-bar"><i style="transform:scaleX(${Math.min(1, a / b)})"></i></div></div>`).join('');
       root.appendChild(list);
+      if (d.pd) {
+        const pd = d.pd;
+        root.appendChild(_.el('div', 'sec-title', `🌀 次元ポータルの図鑑 <b>${(pd.pct * 100).toFixed(2)}%</b><span>1%ごとに報酬（💎）</span>`));
+        const pl = _.el('div', 'dex-cats');
+        pl.innerHTML = pd.cats.map(([ic, nm, a, b]) => `<div class="dx-cat"><span>${ic} ${nm}</span><b>${fmt(a)}/${fmt(b)}</b><div class="dx-bar"><i style="transform:scaleX(${Math.min(1, a / b)})"></i></div></div>`).join('');
+        root.appendChild(pl);
+      }
       if (G.germOpen()) {
-        const dex = s.germ.dex || {};
-        root.appendChild(_.el('div', 'sec-title', `🦠 菌図鑑 <b>${Object.keys(dex).length}/${GD.STRAINS.length}</b><span>10種ごとに DNA +${Math.round(GD.CFG.DEX_BONUS * 100)}%（いま ×${GM.stats().dexMult.toFixed(2)}）</span>`));
+        const dex = G.dstate().dex || {};
+        root.appendChild(_.el('div', 'sec-title', `${LB().icon} ${_.esc(LB().dim)}の${LL('菌図鑑')} <b>${Object.keys(dex).length}/${GD.STRAINS.length}</b><span>${LL(`10種ごとに DNA +${Math.round(GD.CFG.DEX_BONUS * 100)}%`)}（いま ×${GM.stats().dexMult.toFixed(2)}）</span>`));
         _.paged(root, 'dex', GD.STRAINS, 40, [['すべて', () => true], ['登録済み', (x) => dex[x.sid]], ['未登録', (x) => !dex[x.sid]]], (x) => {
           const known = !!dex[x.sid];
           return _.el('div', `dex-cell${known ? ' known' : ''}`, `${germSVG(x, 40, known)}<small>${known ? _.esc(x.name) : `W${x.wave}〜`}</small>${known ? `<em>${fmt(dex[x.sid])}</em>` : ''}`);
@@ -590,18 +845,25 @@ const GUI = (() => {
     Object.assign(_.TABS, { gcells: TabCells, gupg: TabUpg, gkat: TabKat, gmut: TabMut, gdim: TabDim });
     const bd = $('#btn-dim');
     if (bd) bd.addEventListener('click', () => { Sfx.unlock(); travel(gdim() ? 'forest' : 'germ'); });
+    const bp = $('#btn-portal');
+    if (bp) bp.addEventListener('click', () => { Sfx.unlock(); if (portalOn) portalClose(); else portalOpen(); });
+    if (HAS_DM) {
+      G.on('dimUnlock', onUnlock);
+      G.on('ladder', onLadder);
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && portalOn) portalClose(); });
+    }
     const bb = $('#btn-gboss');
     if (bb) bb.addEventListener('click', () => { if (GM.challengeBoss()) Sfx.boss(); });
     buildDock();
     G.on('dim', onDim);
-    G.on('kgLevel', (u) => { if (gdim()) _.toast('🎰', `刀ガチャ Lv${u.lv}!`, `💎+${u.gems} ・ 回転と幸運が少し上がった`); });
+    G.on('kgLevel', (u) => { if (gdim()) _.toast('🎰', LL(`刀ガチャ Lv${u.lv}!`), `💎+${u.gems} ・ 回転と幸運が少し上がった`); });
     G.on('kEquip', (k) => { if (gdim() && !UI.blocked()) _.toast('⚔️', `${k.name} に持ち替えた`, GD.OUGI[k.id] ? `奥義「${GD.OUGI[k.id].name}」` : _.RLAB(k.r)); });
     G.on('gBuyUpg', () => updateDock(true));
     G.on('gBuyCell', () => updateDock(true));
     G.on('load', applyDim);
-    disp.dna = S().germ ? S().germ.dna : 0;
+    disp.dna = G.dstate() ? G.dstate().dna : 0;
     applyDim();
-    if (gdim()) { GM.T.spawnT = 0.6; if (GM.isBossWave(S().germ.wave) && !S().germ.farming) { GM.T.pendingBoss = true; GM.T.bossDelay = 2; } }
+    if (gdim()) { GM.T.spawnT = 0.6; if (GM.isBossWave(G.dstate().wave) && !G.dstate().farming) { GM.T.pendingBoss = true; GM.T.bossDelay = 2; } }
   }
-  return { init, frame, badges, travel, keySlash, applyDim };
+  return { init, frame, badges, travel, keySlash, applyDim, portalOpen, portalClose, get portalOn() { return portalOn; } };
 })();

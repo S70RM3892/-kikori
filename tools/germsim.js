@@ -19,10 +19,12 @@ class FakeDate extends Date { static now() { return simNow; } }
 const M = Object.create(Math);
 M.random = rng;
 const ctx = vm.createContext({ console, Math: M, Date: FakeDate, TextEncoder, TextDecoder, btoa, atob });
-for (const f of ['util.js', 'data.js', 'datagen.js', 'germdata.js', 'germgen.js', 'game.js', 'germ.js']) {
+for (const f of ['util.js', 'data.js', 'datagen.js', 'germdata.js', 'germgen.js', 'dimgen.js', 'game.js', 'germ.js']) {
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'js', f), 'utf8'), ctx, { filename: f });
 }
-const G = vm.runInContext('G', ctx), GM = vm.runInContext('GM', ctx), GD = vm.runInContext('GD', ctx), D = vm.runInContext('D', ctx);
+const G = vm.runInContext('G', ctx), GM = vm.runInContext('GM', ctx), GD = vm.runInContext('GD', ctx), D = vm.runInContext('D', ctx), DM = vm.runInContext('DM', ctx);
+// SIM_DIMS=n: ウェーブ15で次の次元が開いたらすぐ移る（最前線を追う人）。n番目の次元まで
+const SIM_DIMS = Number(process.env.SIM_DIMS || 0);
 if (process.env.SIM_GCFG) Object.assign(GD.CFG, JSON.parse(process.env.SIM_GCFG));
 G.init(null);
 const S = G.S;
@@ -41,8 +43,9 @@ G.on('gIssen', (d) => { ev.maxIssen = Math.max(ev.maxIssen, d.n); });
 const TIER_V = [0.8, 2, 3.6, 5.8, 8.6, 11];
 const TIER_P = [0.03, 0.17, 0.35, 0.3, 0.12, 0.03];
 const pickV = () => { let r = rng(); for (let i = 0; i < 6; i++) { r -= TIER_P[i]; if (r <= 0) return TIER_V[i]; } return 3; };
-const g = S.germ;
+let g = G.dstate();
 function shop() {
+  g = G.dstate();
   // ボスに負けたら少し稼いでから再挑戦
   if (g.farming && GM.T.time - (shop.failT || 0) > 25) GM.challengeBoss();
   for (let k = 0; k < 40; k++) {
@@ -68,11 +71,12 @@ function shop() {
     if (!o || o.c > g.dna) break;
     o.f();
   }
-  for (const m of GD.MUTATIONS) while (!GM.mutMaxed(m) && GM.mutCost(m) <= g.factor) GM.buyMut(m.id);
+  for (const m of GD.MUTATIONS) while (!GM.mutMaxed(m) && GM.mutCost(m) <= S.germ.factor) GM.buyMut(m.id);
 }
 G.on('gBossFail', () => { shop.failT = GM.T.time; });
 const dt = 1 / 30;
-let t = 0, nextStroke = 0, nextShop = 0, nextLog = 0;
+let t = 0, nextStroke = 0, nextShop = 0, nextLog = 0, dimT = 0;
+const dimLog = [];
 const marks = [10, 20, 30, 40, 50, 60, 80, 100, 120, 150, 200];
 const reached = {};
 while (t < MIN * 60) {
@@ -98,14 +102,27 @@ while (t < MIN * 60) {
       GM.strokeEnd();
     }
   }
-  if (t >= nextShop) { nextShop = t + 1; shop(); }
+  if (t >= nextShop) {
+    nextShop = t + 1;
+    shop();
+    if (SIM_DIMS && g.maxWave >= DM.unlockW(DM.cur) && DM.cur < SIM_DIMS) {
+      const from = DM.cur;
+      GM.enter(from + 1);
+      g = G.dstate();
+      const tt = DM.totals(S, true);
+      dimLog.push(`${from + 1}:${((t - dimT) / 60).toFixed(1)}分`);
+      if ((from + 1) % 10 === 0 || from + 1 === SIM_DIMS) console.log(`${(t / 60).toFixed(1)}分 次元${from + 1}「${DM.meta(from + 1).name}」へ  力×${tt.power.toFixed(1)} ★${tt.stars} 武器${tt.kinds} 段位${tt.tiers} hk ${fmt(g.hk)} 💎${fmt(S.gems)}`);
+      dimT = t;
+    }
+  }
   for (const m of marks) if (!reached[m] && g.maxWave >= m) reached[m] = t;
   if (t >= nextLog) {
     nextLog += Number(process.env.SIM_LOG || 300);
     const st = GM.stats();
-    console.log(`${(t / 60).toFixed(0).padStart(3)}分 wave ${String(g.wave).padStart(3)} (max ${g.maxWave}) dna ${G.U ? '' : ''}${fmt(g.dna)} sharp ${GM.lv('sharp')} ana ${GM.lv('analyze')} cells ${fmt(st.cellDps)}/s kdmg ${fmt(st.kdmg)} hp ${fmt(GM.hpAt(g.wave))} 🧪${g.factor} kat ${Object.keys(g.kat).length} boss ${ev.boss}/${ev.fail}f out ${ev.out} ougi ${ev.ougi} maxIssen ${ev.maxIssen}`);
+    if (!SIM_DIMS || process.env.SIM_LOG) console.log(`${(t / 60).toFixed(0).padStart(3)}分 dim${DM.cur} wave ${String(g.wave).padStart(3)} (max ${g.maxWave}) dna ${G.U ? '' : ''}${fmt(g.dna)} sharp ${GM.lv('sharp')} ana ${GM.lv('analyze')} cells ${fmt(st.cellDps)}/s kdmg ${fmt(st.kdmg)} hp ${fmt(GM.hpAt(g.wave))} 🧪${g.factor} kat ${Object.keys(g.kat).length} boss ${ev.boss}/${ev.fail}f out ${ev.out} ougi ${ev.ougi} maxIssen ${ev.maxIssen}`);
   }
 }
 function fmt(x) { return x >= 1e6 ? x.toExponential(2) : x >= 100 ? Math.round(x).toString() : x.toFixed(1); }
 console.log('到達時間:', Object.entries(reached).map(([w, s]) => `W${w}=${(s / 60).toFixed(1)}分`).join(' '));
+if (SIM_DIMS) console.log('次元ごとの到達時間（W15まで）:', dimLog.join(' '));
 console.log('刀:', Object.keys(g.kat).length, '種 / 装備', g.keq, ' 刀ガチャLv', g.kgLv, ' 回転', S.stats.gRolls, ' 森の木材', fmt(S.wood));

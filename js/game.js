@@ -32,6 +32,14 @@ const G = (() => {
     return m.mul ? Math.pow(1 + m.k, l) : 1 + m.k * l;
   }
   const germOpen = () => HAS_GD && (S.stats.prestiges || 0) >= GD.CFG.UNLOCK_PRESTIGE;
+  // 今いる（最後にいた）斬る次元の状態。0番 = 菌斬り次元は S.germ、1番以降は S.dims（はじめて使うときに作る）
+  const HAS_DM = typeof DM !== 'undefined' && !!DM;
+  function dstate(i) {
+    if (i == null) i = HAS_DM ? DM.cur : 0;
+    if (!i || !HAS_DM) return S.germ;
+    const k = 'd' + i;
+    return S.dims[k] || (S.dims[k] = DM.fresh(i));
+  }
   const katKinds = () => (S.germ && S.germ.kat ? Object.keys(S.germ.kat).length : 0);
   // 実績の重み（手作りの実績は1、自動で増やした実績は0.1〜0.3）
   const ACHW = {};
@@ -59,6 +67,7 @@ const G = (() => {
       },
       daily: { last: '' },
       dim: 'forest', germ: HAS_GD ? GD.freshGerm() : {}, dexClaim: 0,
+      dims: {}, dimCur: 0, dimFav: {}, dimDexClaim: 0, // 次元ポータル: 1番以降の次元の状態・最後にいた次元・お気に入り・図鑑の報酬
       settings: { sound: true, bgm: true, vol: 0.7, vibe: true, fx: 2, shake: true, flash: true, num: 'jp', night: true, buyAmt: 1, speed: 1 },
       study: null,
       tut: 0,
@@ -133,7 +142,9 @@ const G = (() => {
     st.levelMult = 1 + C.LEVEL_BONUS * ((S.lvl || 1) - 1);
     // 菌斬り次元から: 集めた刀の種類と「完全変異」が森の全ダメージに効く
     st.katMult = 1 + (HAS_GD ? GD.CFG.KAT_SYNERGY * katKinds() : 0);
-    st.global = st.achMult * st.spiritMult * st.axeMult * st.levelMult * (1 + (sp.all || 0)) * st.katMult * mutv('m_all');
+    // 次元の力（全部の次元の★・武器・段位）は森にも √ で効く
+    st.dimMult = HAS_DM ? DM.totals(S).forest : 1;
+    st.global = st.achMult * st.spiritMult * st.axeMult * st.levelMult * (1 + (sp.all || 0)) * st.katMult * mutv('m_all') * st.dimMult;
     const guild = Math.pow(1.3, lv('guild'));
     st.wdps = {};
     let dps = 0;
@@ -1205,7 +1216,8 @@ const G = (() => {
     }
     return base;
   }
-  function serialize() { return JSON.stringify(S); }
+  // 次元の状態は武器・図鑑を短い文字列に詰めて保存する（211次元ぶんでも軽く）
+  function serialize() { return JSON.stringify(HAS_DM ? Object.assign({}, S, { dims: DM.packAll(S.dims) }) : S); }
   function save() {
     S.lastSave = Date.now();
     const json = serialize();
@@ -1227,6 +1239,11 @@ const G = (() => {
       for (const id in S.axes) S.stats.bestAxeLv = Math.max(S.stats.bestAxeLv || 0, axeLv(id));
       if (S.equip && !S.axes[S.equip]) S.equip = null;
       if (S.study && !(S.study.end > 0)) S.study = null;
+      if (HAS_DM) {
+        S.dims = DM.unpackAll(S.dims);
+        if (!(S.dimCur >= 0 && S.dimCur < DM.N) || !DM.isOpen(S, S.dimCur)) S.dimCur = 0;
+        if (!S.dimFav || typeof S.dimFav !== 'object') S.dimFav = {};
+      }
       if (S.dim !== 'germ' || !germOpen()) S.dim = 'forest';
       return true;
     } catch (e) {
@@ -1280,7 +1297,7 @@ const G = (() => {
     startStudy, abortStudy, finishStudy, studyLeft, applyOffline, checkDaily,
     save, serialize, loadFrom, init, exportSave, importSave, hardReset,
     hpFor, biomeIndex, isBossStage, incomeRate, milestoneMult, nextMilestone, buffMult, comboMult, tapBase,
-    gainGems, addBuff, rollRarity, mutv, germOpen, takeAway, katKinds,
+    gainGems, addBuff, rollRarity, mutv, germOpen, takeAway, katKinds, dstate,
     AX, WK, UP, RANK, COMBO_MS,
   };
 })();

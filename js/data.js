@@ -362,9 +362,9 @@ const D = (() => {
     { id: 'tap5', icon: '💪', name: '剛力ドリンク', desc: '斬撃 ×5（3分）', gems: 50, buff: ['tap', 5, 180] },
     { id: 'fever', icon: '🎉', name: 'フィーバー薬', desc: 'いますぐフィーバー', gems: 30, act: 'fever' },
     { id: 'golden', icon: '✨', name: '黄金の果実', desc: 'いますぐゴールデンタイム', gems: 40, act: 'golden' },
-    { id: 'dna2', icon: '🧬', name: 'DNA増殖剤', desc: '菌斬り次元のDNA ×2（10分）', gems: 50, buff: ['dna', 2, 600] },
-    { id: 'blade3', icon: '🗡️', name: '天然砥石', desc: '刀のダメージ ×3（3分）', gems: 50, buff: ['kdmg', 3, 180] },
-    { id: 'outbreak', icon: '☣️', name: '培養液', desc: 'いますぐ菌の大発生（菌斬り次元で）', gems: 40, act: 'outbreak' },
+    { id: 'dna2', icon: '🧬', name: 'DNA増殖剤', desc: '斬る次元の通貨（DNAなど）×2（10分）', gems: 50, buff: ['dna', 2, 600] },
+    { id: 'blade3', icon: '🗡️', name: '天然砥石', desc: '斬る次元の武器のダメージ ×3（3分）', gems: 50, buff: ['kdmg', 3, 180] },
+    { id: 'outbreak', icon: '☣️', name: '培養液', desc: 'いますぐ大発生（斬る次元で）', gems: 40, act: 'outbreak' },
   ];
 
   // ---------------------------------------------------------------- バイオーム（10ステージ毎）

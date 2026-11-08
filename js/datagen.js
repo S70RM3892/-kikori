@@ -38,12 +38,14 @@
     const p = Math.pow(10, Math.floor(Math.log10(x)) - 1);
     return Math.round(x / p) * p;
   }
+  // 色相を deg 回し、明るさを l（-1〜1）だけ足す。U.shiftHue は hsl() を返すので、明るさも hsl のまま足す
+  // （以前は hsl を16進として読んでいたため、明るさを変えた色が黒や灰色になっていた）
   const shift = (c, deg, l = 0) => {
     const h = U.shiftHue(c, deg);
     if (!l) return h;
-    const n = parseInt(h.slice(1), 16);
-    const f = (v) => Math.max(0, Math.min(255, Math.round(v + l * 255)));
-    return '#' + [f(n >> 16), f((n >> 8) & 255), f(n & 255)].map((v) => v.toString(16).padStart(2, '0')).join('');
+    const m = /^hsl\((\d+),(\d+)%,(\d+)%\)$/.exec(h);
+    if (!m) return h;
+    return `hsl(${m[1]},${m[2]}%,${Math.max(0, Math.min(100, Math.round(+m[3] + l * 100)))}%)`;
   };
   D.GEN = { mulberry, kname, nice, shift };
 

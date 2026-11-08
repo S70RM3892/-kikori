@@ -1509,8 +1509,38 @@ const FX = (() => {
     return axeIconSVG(a, size);
   }
   // 刀の小さな絵（SVG）
+  // 刀以外の武器の形（一覧の軽い絵）。柄は左下、刃は右上へ
+  function formSVG(k, id) {
+    const f = k.k && k.k.form;
+    const P = (pts) => 'M' + pts.map((q) => q[0].toFixed(1) + ' ' + q[1].toFixed(1)).join(' L') + ' Z';
+    const blade = (b, t, w0, w1, taper) => {
+      const dx = t[0] - b[0], dy = t[1] - b[1], L = Math.hypot(dx, dy), ux = dx / L, uy = dy / L, nx = -uy, ny = ux;
+      const a = [], c = [];
+      for (let i = 0; i <= 6; i++) { const s = i / 6, w = (w0 + (w1 - w0) * s) * (s < taper ? 1 : Math.max(0.02, 1 - (s - taper) / (1 - taper))) / 2; a.push([b[0] + ux * L * s + nx * w, b[1] + uy * L * s + ny * w]); c.push([b[0] + ux * L * s - nx * w, b[1] + uy * L * s - ny * w]); }
+      return P(a.concat(c.reverse()));
+    };
+    const st = `fill="url(#${id})" stroke="#140c18" stroke-width="1.5" stroke-linejoin="round"`;
+    const hand = (c) => `<path d="M7 59 L15 51" stroke="${c || k.handle || '#222'}" stroke-width="7" stroke-linecap="round"/>`;
+    const guard = (w) => `<path d="M${17.5 - w} ${46.5 - w} L${17.5 + w} ${46.5 + w}" stroke="#c8a050" stroke-width="3.4" stroke-linecap="round"/>`;
+    if (f === 'sword' || f === 'greatsword' || f === 'dagger') {
+      const big = f === 'greatsword', sm = f === 'dagger';
+      return hand() + `<path d="${blade([19, 44], sm ? [40, 23] : [57, 6], big ? 11 : sm ? 6 : 7, big ? 8 : sm ? 4 : 5, 0.82)}" ${st}/>` + guard(big ? 9 : sm ? 5 : 7);
+    }
+    if (f === 'cleaver') return hand() + `<path d="M18 45 L44 19 C 48 15, 52 13, 55 13 L 52 22 L 25 49 Z" ${st}/>`;
+    if (f === 'saber') { const g = k.glow && k.glow !== 'rainbow' ? k.glow : k.blade[0]; return hand('#3a3f4a') + `<path d="M18 46 L58 6" stroke="${g}" stroke-width="7" stroke-linecap="round" opacity=".85"/><path d="M18 46 L58 6" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/>`; }
+    if (f === 'spear') return `<path d="M5 61 L44 22" stroke="${k.handle || '#5a3a1a'}" stroke-width="3.4" stroke-linecap="round"/><path d="${blade([42, 24], [60, 4], 8, 2, 0.45)}" ${st}/>`;
+    if (f === 'scythe') return `<path d="M8 60 L40 12" stroke="${k.handle || '#3a2a1a'}" stroke-width="3.6" stroke-linecap="round"/><path d="M38 11 C 50 9, 59 16, 61 30 C 55 21, 48 17, 40 18 Z" ${st}/>`;
+    if (f === 'claw') return hand() + [0, 1, 2].map((i) => `<path d="M${17 + i * 4} ${49 - i * 4} C ${30 + i * 4} ${38 - i * 4}, ${42 + i * 3} ${24 - i * 4}, ${50 + i * 3} ${8 + i * 2}" stroke="url(#${id})" stroke-width="3" fill="none" stroke-linecap="round"/>`).join('');
+    return '';
+  }
   function katanaSVG(k, size = 48) {
     const id = 'kg-' + k.id + '-' + size;
+    const fs = k.k && k.k.form && k.k.form !== 'katana' ? formSVG(k, id) : '';
+    if (fs) {
+      const glow = k.glow && k.glow !== 'rainbow' ? `filter:drop-shadow(0 0 4px ${k.glow})` : '';
+      return `<svg class="axe-svg${k.glow === 'rainbow' ? ' rainbow-glow' : ''}" viewBox="0 0 64 64" width="${size}" height="${size}" style="${glow}" aria-hidden="true">` +
+        `<defs><linearGradient id="${id}" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="${k.blade[1]}"/><stop offset="1" stop-color="${k.blade[0]}"/></linearGradient></defs>` + fs + '</svg>';
+    }
     const glow = k.glow && k.glow !== 'rainbow' ? `filter:drop-shadow(0 0 4px ${k.glow})` : '';
     const ts = (k.k && k.k.tsuba) || 'round';
     const tsuba = ts === 'square' ? '<rect x="11" y="41" width="13" height="11" rx="1" fill="#2a2a32" stroke="#000" stroke-width="1.5" transform="rotate(45 17.5 46.5)"/>' : ts === 'none' ? '' : `<ellipse cx="17.5" cy="46.5" rx="7.5" ry="7.5" fill="${ts === 'flower' || ts === 'star' ? '#d8b040' : '#2a2a32'}" stroke="#000" stroke-width="1.5"/>`;

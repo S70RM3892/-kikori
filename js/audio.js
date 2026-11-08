@@ -8,7 +8,8 @@ const Sfx = (() => {
   const last = {};
   let feverOn = false;
   // BGM: スタイルランクが上がるほど楽器が重なる（0 = 無音 … 7 = 全部）。小節の頭で切り替える
-  const BPM = 132, STEP = 60 / BPM / 4;
+  const BPM = 132;
+  let STEP = 60 / BPM / 4;
   const mus = { timer: null, next: 0, t0: 0, step: 0, level: 0, target: 0, enabled: true };
   let ROOT = [0, 0, 3, -2]; // ラ・ラ・ド・ソ（ラの短調）
   let ARP = [0, 7, 12, 7, 15, 12, 7, 3];
@@ -18,7 +19,16 @@ const Sfx = (() => {
     forest: { root: [0, 0, 3, -2], arp: [0, 7, 12, 7, 15, 12, 7, 3] },
     germ: { root: [0, 1, 0, -2], arp: [0, 3, 7, 13, 12, 7, 3, 1] },
   };
-  function setMode(m) { if (!MODES[m]) return; MODE = m; ROOT = MODES[m].root; ARP = MODES[m].arp; }
+  function setMode(m) { if (!MODES[m]) return; MODE = m; ROOT = MODES[m].root; ARP = MODES[m].arp; STEP = 60 / BPM / 4; }
+  // 次元ごとの音階・テンポ（界ごとの音階を次元ごとに移調）。null で菌斬り次元の音
+  function setTheme(m) {
+    if (!m) { setMode('germ'); return; }
+    MODE = 'germ';
+    const tr = m.tr || 0;
+    ROOT = m.root.map((x) => x + tr);
+    ARP = m.arp.slice();
+    STEP = 60 / (m.bpm || BPM) / 4;
+  }
 
   function ensure() {
     if (!enabled) return false;
@@ -665,7 +675,7 @@ const Sfx = (() => {
     feverStart, feverEnd, boss, bossWin, bossFail, tick, stage, ach, squirrel, chest, gachaRoll, gachaReveal,
     prestige, goddess, gachaUp, showcase, equip, speed, comboFinish, axeHit, spawn, carry, multi,
     cutin, skillStart, skillHit, rollTick, musicLevel, beatPhase, musicOn, setBgm, rankUp, rankDown, twinkle, shatter,
-    kWhoosh, kSlice, kSplit, sheath, deflect, cellBite, dnaTick, outbreak, outbreakEnd, gBoss, dimWarp, setMode,
+    kWhoosh, kSlice, kSplit, sheath, deflect, cellBite, dnaTick, outbreak, outbreakEnd, gBoss, dimWarp, setMode, setTheme,
     ladder, announce, boom, zap, freeze, shatter2, burn, musouStart, musouEnd, slotTick, slotStop, slotWin, critter, critterGet, newStrain, formIn, formClear, bossPhase, finish, weak,
   };
 })();

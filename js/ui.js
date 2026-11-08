@@ -119,7 +119,7 @@ const UI = (() => {
       const r = GM.kRollRate();
       setText('rs-rate', r < 100 ? r.toFixed(1) : fmt(r));
       setText('rs-luck', `×${GM.kLuckNow().toFixed(2)}`);
-      setText('rs-lv', String(S().germ.kgLv || 1));
+      setText('rs-lv', String(G.dstate().kgLv || 1));
       setCls('roll-strip', 'boost', GM.T.outbreak > 0 || GM.T.combo >= 30 || G.gameSpeed() > 1);
       return;
     }
@@ -744,7 +744,7 @@ const UI = (() => {
         b.addEventListener('click', () => {
           const r = G.buyShop(it.id);
           if (r.error === 'gems') { toast('💎', 'ジェムが足りない', 'ボス・実績・ガチャLvで集めよう'); Sfx.error(); failShake(b); return; }
-          if (r.error === 'dim') { toast('☣️', '菌斬り次元で使う', 'ボス戦・大発生の最中は使えない'); Sfx.error(); failShake(b); return; }
+          if (r.error === 'dim') { toast('☣️', '斬る次元で使う', 'ボス戦・大発生の最中は使えない'); Sfx.error(); failShake(b); return; }
           if (r.ok) { Sfx.unlockFx(); sparkAt(b, '#5ee8ff'); toast(it.icon, `${it.name}！`, it.desc, 'gold'); }
         });
         shop.appendChild(b);
@@ -967,6 +967,8 @@ const UI = (() => {
       if (fd.length > 30) fd.length = 30;
       const rk = G.RANK[o.r];
       if (blocked() && !overlayBusy) continue;
+      // 次元ポータルを見ている間は、カットインで邪魔しない（一覧には残る）
+      if (typeof GUI !== 'undefined' && GUI.portalOn) continue;
       const now = performance.now();
       if ((rk >= 7 || (rk >= 5 && o.isNew)) && (rk >= 8 || now - lastCut > 6000) && cutQ.length < 3) { lastCut = now; cutscene(o); }
       else if (rk >= 3 && (o.isNew || o.lvUp)) cutIn(o.axe, 'get', o);
@@ -1197,7 +1199,10 @@ const UI = (() => {
       const s = S();
       root.innerHTML = '';
       const n = Object.keys(s.ach).length;
-      root.appendChild(el('div', 'tab-head', `<div class="tab-stat">実績 <b>${n}/${D.ACH.length}</b></div><div class="tab-stat">ボーナス 両方の世界の全ダメージ <b>+${fmt(Math.round((G.stats().achMult - 1) * 100))}%</b></div>`));
+      const dt = typeof DM !== 'undefined' && DM ? DM.totals(s) : null;
+      root.appendChild(el('div', 'tab-head', `<div class="tab-stat">実績 <b>${n}/${D.ACH.length}</b></div><div class="tab-stat">ボーナス 全部の世界の全ダメージ <b>+${fmt(Math.round((G.stats().achMult - 1) * 100))}%</b></div>` +
+        (dt && dt.open > 1 ? `<div class="tab-stat">🏅 次元の段位 <b>${fmt(dt.tiers)}/${fmt((DM.N - 1) * DM.LAD_N)}</b></div>` : '')));
+      if (dt && dt.open > 1) root.appendChild(el('p', 'muted small tab-note', '次元の段位（1次元に1,549段）は、各次元の右の「🌀 次元」タブで見られる。3段ごとに💎+1、1段ごとに次元の力 +0.1%。'));
       const cat = (a) => a.cat || (a.germ ? '菌斬り' : '基本');
       const CATS = ['基本', '菌斬り', '世界', '図鑑', '記録'];
       const filt = [['すべて', () => true], ['未達成', (a) => !s.ach[a.id]]].concat(CATS.map((c) => [`${c} ${D.ACH.filter((a) => cat(a) === c && s.ach[a.id]).length}/${D.ACH.filter((a) => cat(a) === c).length}`, (a) => cat(a) === c]));
@@ -1639,7 +1644,8 @@ const UI = (() => {
         if (feed.length > 30) feed.length = 30;
       }
       const gm = d.germ;
-      const germHtml = gm && gm.dna > 0 ? `<p class="off-germ">🧫 菌斬り次元では免疫細胞が戦った: <b>🧬+${fmt(gm.dna)}</b>${gm.krolls ? ` ・ 刀ガチャ ${fmt(gm.krolls.n)}回` : ''}</p>` : '';
+      const germHtml = (gm && gm.dna > 0 ? `<p class="off-germ">🧫 菌斬り次元では免疫細胞が戦った: <b>🧬+${fmt(gm.dna)}</b>${gm.krolls && gm.cur === 0 ? ` ・ 刀ガチャ ${fmt(gm.krolls.n)}回` : ''}</p>` : '') +
+        (gm && gm.dims > 0 ? `<p class="off-germ">🌀 ほかの${gm.dims}の次元でも仲間が戦って稼いだ${gm.krolls && gm.cur > 0 ? `（今いる次元の武器ガチャ ${fmt(gm.krolls.n)}回）` : ''}</p>` : '');
       body.innerHTML = `<p>${U.fmtTime(d.sec)}の間に木こり達が働いた（効率 ${Math.round(d.eff * 100)}%）</p><div class="big-num wood-num">+0</div>` +
         (d.slept ? `<p class="sleep-bonus">😴 睡眠ボーナス ×${D.CFG.SLEEP_BONUS}！ よく寝た。</p>` : '') + rollHtml + germHtml;
       modal({

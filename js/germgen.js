@@ -174,6 +174,10 @@
     GD.KSERIES.push({ id: 'ks' + si, icon: motif, name: `${label}の系譜`, ids, focus });
   });
 
+  // 次元ポータル（dimgen.js）が同じ表で別の次元の武器・株・ボスを作る
+  GD.KGEN = { KS, SEQ, SEQ_HI, RI, C2, SUF, OUGI_W, KSPK, ALL_HI, TSUBA, TITLES };
+  GD.SGEN = { ADJ, PAL, CAP, ACC };
+
   // ------------------------------------------------------------- 実績（菌斬り次元）
   const ACH = D.ACH;
   const st = (S, k) => S.stats[k] || 0;
@@ -201,8 +205,10 @@
   for (let n = 10; n <= GD.KATANAS.length; n += 10) a('kN' + n, '⚔️', `刀${n}本`, `刀を${n}種類集める`, (S) => Object.keys((S.germ && S.germ.kat) || {}).length >= n, 3 + Math.floor(n / 80), 0.1, '図鑑');
   for (let l = 5; l <= 200; l += 5) a('kglv' + l, '🎰', `刀ガチャLv${l}`, `刀ガチャLv${l}に到達`, (S) => ((S.germ && S.germ.kgLv) || 1) >= l, 2 + Math.floor(l / 25), 0.1, '記録');
   // 「刀剣コンプリート」は全部の刀に合わせる
+  // （GD.KATANAS・GD.OUGI は次元ごとに入れ替わるので、菌斬り次元の数をここで固定する）
+  const NK = GD.KATANAS.length, NO = Object.keys(GD.OUGI).length;
   for (const x of ACH) {
-    if (x.id === 'gkat2') { x.desc = `刀を${GD.KATANAS.length}種類集める`; x.check = (S) => Object.keys((S.germ && S.germ.kat) || {}).length >= GD.KATANAS.length; }
-    if (x.id === 'guAll') { const n = Object.keys(GD.OUGI).length; x.desc = `${n}種類すべての奥義を見る`; x.check = (S) => Object.keys((S.germ && S.germ.ougiSeen) || {}).length >= n; }
+    if (x.id === 'gkat2') { x.desc = `刀を${NK}種類集める`; x.check = (S) => Object.keys((S.germ && S.germ.kat) || {}).length >= NK; }
+    if (x.id === 'guAll') { x.desc = `${NO}種類すべての奥義を見る`; x.check = (S) => Object.keys((S.germ && S.germ.ougiSeen) || {}).length >= NO; }
   }
 })();
